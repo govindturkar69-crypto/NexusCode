@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function Projects() {
   const [projects, setProjects] = useState([]);
   const [name, setName] = useState("");
@@ -14,7 +16,7 @@ function Projects() {
   }, []);
 
   function fetchProjects() {
-    fetch("http://127.0.0.1:8000/projects", {
+    fetch(`${API_URL}/projects`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -23,7 +25,7 @@ function Projects() {
 
   function createProject() {
     if (!name.trim()) return;
-    fetch("http://127.0.0.1:8000/projects", {
+    fetch(`${API_URL}/projects`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -41,7 +43,7 @@ function Projects() {
 
   function deleteProject(e, projectId) {
     e.stopPropagation();
-    fetch(`http://127.0.0.1:8000/projects/${projectId}`, {
+    fetch(`${API_URL}/projects/${projectId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     }).then(() => fetchProjects());
@@ -53,7 +55,7 @@ function Projects() {
   }
 
   function connectGithub() {
-    fetch("http://127.0.0.1:8000/auth/github/login", {
+    fetch(`${API_URL}/auth/github/login`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())

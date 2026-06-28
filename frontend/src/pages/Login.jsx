@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -15,7 +17,7 @@ function Login() {
     formData.append("username", username);
     formData.append("password", password);
 
-    fetch("http://127.0.0.1:8000/login", {
+    fetch(`${API_URL}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: formData,

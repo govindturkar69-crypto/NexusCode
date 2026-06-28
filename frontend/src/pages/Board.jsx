@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
+const API_URL = import.meta.env.VITE_API_URL;
+const WS_URL = API_URL.replace("http", "ws");
+
 function Board() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -28,7 +31,7 @@ function Board() {
   }, []);
 
   function fetchTasks() {
-    fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks`, {
+    fetch(`${API_URL}/projects/${projectId}/tasks`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -37,7 +40,7 @@ function Board() {
 
   function createTask() {
     if (!title.trim()) return;
-    fetch(`http://127.0.0.1:8000/projects/${projectId}/tasks`, {
+    fetch(`${API_URL}/projects/${projectId}/tasks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -53,7 +56,7 @@ function Board() {
   }
 
   function updateTaskStatus(taskId, newStatus) {
-    fetch(`http://127.0.0.1:8000/tasks/${taskId}`, {
+    fetch(`${API_URL}/tasks/${taskId}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -64,14 +67,14 @@ function Board() {
   }
 
   function deleteTask(taskId) {
-    fetch(`http://127.0.0.1:8000/tasks/${taskId}`, {
+    fetch(`${API_URL}/tasks/${taskId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     }).then(() => fetchTasks());
   }
 
   function fetchFiles() {
-    fetch(`http://127.0.0.1:8000/projects/${projectId}/files`, {
+    fetch(`${API_URL}/projects/${projectId}/files`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -86,7 +89,7 @@ function Board() {
     formData.append("file", selectedFile);
 
     setUploading(true);
-    fetch(`http://127.0.0.1:8000/projects/${projectId}/files`, {
+    fetch(`${API_URL}/projects/${projectId}/files`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
@@ -97,14 +100,14 @@ function Board() {
   }
 
   function deleteFile(fileId) {
-    fetch(`http://127.0.0.1:8000/files/${fileId}`, {
+    fetch(`${API_URL}/files/${fileId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     }).then(() => fetchFiles());
   }
 
   function fetchMessages() {
-    fetch(`http://127.0.0.1:8000/projects/${projectId}/messages`, {
+    fetch(`${API_URL}/projects/${projectId}/messages`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -112,7 +115,7 @@ function Board() {
   }
 
   function connectWebSocket() {
-    ws.current = new WebSocket(`ws://127.0.0.1:8000/ws/projects/${projectId}/chat`);
+    ws.current = new WebSocket(`${WS_URL}/ws/projects/${projectId}/chat`);
 
     ws.current.onmessage = (event) => {
       const message = JSON.parse(event.data);

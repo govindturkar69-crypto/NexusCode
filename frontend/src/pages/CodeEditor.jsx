@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function CodeEditor() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -19,7 +21,7 @@ function CodeEditor() {
   }, []);
 
   function fetchCode() {
-    fetch(`http://127.0.0.1:8000/projects/${projectId}/code`, {
+    fetch(`${API_URL}/projects/${projectId}/code`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -31,7 +33,7 @@ function CodeEditor() {
 
   function saveCode(newCode, newLanguage) {
     setSaveStatus("Saving...");
-    fetch(`http://127.0.0.1:8000/projects/${projectId}/code`, {
+    fetch(`${API_URL}/projects/${projectId}/code`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -64,7 +66,7 @@ function CodeEditor() {
     if (!repoName) return;
 
     setSaveStatus("Pushing to GitHub...");
-    fetch(`http://127.0.0.1:8000/projects/${projectId}/push-to-github`, {
+    fetch(`${API_URL}/projects/${projectId}/push-to-github`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -90,7 +92,7 @@ function CodeEditor() {
 
     const endpoint = type === "bugs" ? "detect-bugs" : "generate-docs";
 
-    fetch(`http://127.0.0.1:8000/ai/${endpoint}`, {
+    fetch(`${API_URL}/ai/${endpoint}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

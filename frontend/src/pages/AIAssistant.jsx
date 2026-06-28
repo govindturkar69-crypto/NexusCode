@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function AIAssistant() {
   const [activeTab, setActiveTab] = useState("generate");
   const [input, setInput] = useState("");
@@ -38,7 +40,7 @@ function AIAssistant() {
 
     const config = tabConfig[activeTab];
 
-    fetch(`http://127.0.0.1:8000/ai/${config.endpoint}`, {
+    fetch(`${API_URL}/ai/${config.endpoint}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

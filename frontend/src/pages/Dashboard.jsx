@@ -2,13 +2,15 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/analytics", {
+    fetch(`${API_URL}/analytics`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())

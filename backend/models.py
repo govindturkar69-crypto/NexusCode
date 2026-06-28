@@ -32,6 +32,7 @@ class ProjectModel(Base):
     tasks = relationship("TaskModel", back_populates="project", cascade="all, delete-orphan")
     files = relationship("FileModel", back_populates="project", cascade="all, delete-orphan")
     messages = relationship("MessageModel", back_populates="project", cascade="all, delete-orphan")
+    code_file = relationship("CodeFileModel", back_populates="project", cascade="all, delete-orphan", uselist=False)
 
 class TaskModel(Base):
     __tablename__ = "tasks"
@@ -71,3 +72,5 @@ class CodeFileModel(Base):
     content = Column(String, default="")
     language = Column(String, default="python")
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, unique=True)
+
+    project = relationship("ProjectModel", back_populates="code_file")
