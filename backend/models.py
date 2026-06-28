@@ -16,6 +16,7 @@ class UserModel(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     github_token = Column(String, nullable=True)
+    is_admin = Column(Boolean, default=False)
 
     projects = relationship("ProjectModel", back_populates="owner")
 

@@ -7,12 +7,14 @@ function Projects() {
   const [projects, setProjects] = useState([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
 
   const token = localStorage.getItem("token");
 
   useEffect(() => {
     fetchProjects();
+    checkAdminStatus();
   }, []);
 
   function fetchProjects() {
@@ -54,6 +56,14 @@ function Projects() {
     navigate("/login");
   }
 
+  function checkAdminStatus() {
+    fetch(`${API_URL}/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => setIsAdmin(data.is_admin));
+  }
+
   function connectGithub() {
     fetch(`${API_URL}/auth/github/login`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -77,6 +87,11 @@ function Projects() {
             </h1>
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
+            {isAdmin && (
+              <button onClick={() => navigate("/admin")} style={{ ...ghostButtonStyle, color: "#F85149", borderColor: "#F85149" }}>
+                🛠️ Admin
+              </button>
+            )}
             <button onClick={() => navigate("/dashboard")} style={ghostButtonStyle}>📊 Dashboard</button>
             <button onClick={() => navigate("/ai")} style={aiButtonStyle}>✨ AI Assistant</button>
             <button onClick={connectGithub} style={ghostButtonStyle}>🐙 Connect GitHub</button>

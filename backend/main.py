@@ -44,6 +44,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
     return user
 
+def get_current_admin(current_user: UserModel = Depends(get_current_user)):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
 # Pydantic models — these define the shape of data going in/out of the API
 class Todo(BaseModel):
     task: str
@@ -147,7 +152,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 @app.get("/me")
 def read_current_user(current_user: UserModel = Depends(get_current_user)):
-    return {"id": current_user.id, "username": current_user.username}
+    return {"id": current_user.id, "username": current_user.username, "is_admin": current_user.is_admin}
 
 @app.post("/projects")
 def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
@@ -406,7 +411,7 @@ def github_callback(code: str, db: Session = Depends(get_db)):
         db.commit()
 
     # Redirect back to the frontend once linking is complete
-    return RedirectResponse(url="http://localhost:5173/projects")
+    return RedirectResponse(url="https://nexus-code-chi.vercel.app/projects")
 
 @app.post("/projects/{project_id}/push-to-github")
 def push_to_github(project_id: int, request: PushToGithubRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
@@ -465,4 +470,39 @@ def get_analytics(db: Session = Depends(get_db), current_user: UserModel = Depen
         "tasks_by_status": tasks_by_status,
         "total_files": total_files,
         "total_messages": total_messages,
+    }
+
+@app.get("/admin/users")
+def admin_get_all_users(db: Session = Depends(get_db), admin: UserModel = Depends(get_current_admin)):
+    users = db.query(UserModel).all()
+    return {
+        "users": [
+            {"id": u.id, "username": u.username, "is_admin": u.is_admin, "project_count": len(u.projects)}
+            for u in users
+        ]
+    }
+
+@app.get("/admin/projects")
+def admin_get_all_projects(db: Session = Depends(get_db), admin: UserModel = Depends(get_current_admin)):
+    projects = db.query(ProjectModel).all()
+    return {
+        "projects": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "owner_username": p.owner.username,
+                "task_count": len(p.tasks),
+            }
+            for p in projects
+        ]
+    }
+
+@app.get("/admin/stats")
+def admin_get_platform_stats(db: Session = Depends(get_db), admin: UserModel = Depends(get_current_admin)):
+    return {
+        "total_users": db.query(UserModel).count(),
+        "total_projects": db.query(ProjectModel).count(),
+        "total_tasks": db.query(TaskModel).count(),
+        "total_files": db.query(FileModel).count(),
+        "total_messages": db.query(MessageModel).count(),
     }
