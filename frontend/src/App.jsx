@@ -4,6 +4,7 @@ import Projects from "./pages/Projects";
 import Board from "./pages/Board";
 import AIAssistant from "./pages/AIAssistant";
 import CodeEditor from "./pages/CodeEditor";
+import Dashboard from "./pages/Dashboard";
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/projects/:projectId" element={<Board />} />
         <Route path="/ai" element={<AIAssistant />} />
         <Route path="/projects/:projectId/editor" element={<CodeEditor />} />
+        <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     </BrowserRouter>
   );

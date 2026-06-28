@@ -75,6 +75,7 @@ function Projects() {
             </h1>
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button onClick={() => navigate("/dashboard")} style={ghostButtonStyle}>📊 Dashboard</button>
             <button onClick={() => navigate("/ai")} style={aiButtonStyle}>✨ AI Assistant</button>
             <button onClick={connectGithub} style={ghostButtonStyle}>🐙 Connect GitHub</button>
             <button onClick={logout} style={ghostButtonStyle}>Log out</button>

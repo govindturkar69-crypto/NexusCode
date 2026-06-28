@@ -427,3 +427,39 @@ def push_to_github(project_id: int, request: PushToGithubRequest, db: Session = 
         "message": "Pushed to GitHub successfully",
         "repo_url": repo_result.get("html_url"),
     }
+
+@app.get("/analytics")
+def get_analytics(db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    # Get all of this user's projects
+    project_ids = [p.id for p in db.query(ProjectModel).filter(ProjectModel.owner_id == current_user.id).all()]
+
+    total_projects = len(project_ids)
+
+    if not project_ids:
+        return {
+            "total_projects": 0,
+            "total_tasks": 0,
+            "tasks_by_status": {"todo": 0, "in_progress": 0, "done": 0},
+            "total_files": 0,
+            "total_messages": 0,
+        }
+
+    tasks = db.query(TaskModel).filter(TaskModel.project_id.in_(project_ids)).all()
+    total_tasks = len(tasks)
+
+    tasks_by_status = {
+        "todo": len([t for t in tasks if t.status == "todo"]),
+        "in_progress": len([t for t in tasks if t.status == "in_progress"]),
+        "done": len([t for t in tasks if t.status == "done"]),
+    }
+
+    total_files = db.query(FileModel).filter(FileModel.project_id.in_(project_ids)).count()
+    total_messages = db.query(MessageModel).filter(MessageModel.project_id.in_(project_ids)).count()
+
+    return {
+        "total_projects": total_projects,
+        "total_tasks": total_tasks,
+        "tasks_by_status": tasks_by_status,
+        "total_files": total_files,
+        "total_messages": total_messages,
+    }
