@@ -506,3 +506,15 @@ def admin_get_platform_stats(db: Session = Depends(get_db), admin: UserModel = D
         "total_files": db.query(FileModel).count(),
         "total_messages": db.query(MessageModel).count(),
     }
+@app.websocket("/ws/projects/{project_id}/meeting")
+async def meeting_websocket(websocket: WebSocket, project_id: int):
+    await manager.connect(websocket, project_id)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            if project_id in manager.active_connections:
+                for connection in manager.active_connections[project_id]:
+                    if connection != websocket:
+                        await connection.send_json(data)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, project_id)

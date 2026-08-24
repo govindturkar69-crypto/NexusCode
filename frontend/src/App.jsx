@@ -6,6 +6,7 @@ import AIAssistant from "./pages/AIAssistant";
 import CodeEditor from "./pages/CodeEditor";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import VideoMeeting from "./pages/VideoMeeting";
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
         <Route path="/projects/:projectId/editor" element={<CodeEditor />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/projects/:projectId/meeting" element={<VideoMeeting />} />
       </Routes>
     </BrowserRouter>
   );

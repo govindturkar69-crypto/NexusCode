@@ -15,7 +15,7 @@ function Board() {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const ws = useRef(null);
-  const username = "govind"; // we'll improve this later to use the real logged-in user
+  const username = "govind";
 
   const token = localStorage.getItem("token");
 
@@ -164,6 +164,9 @@ function Board() {
               <button onClick={() => navigate("/projects")} style={backButtonStyle}>← All projects</button>
               <button onClick={() => navigate(`/projects/${projectId}/editor`)} style={{ ...backButtonStyle, marginLeft: "1rem" }}>
                 💻 Open Code Editor
+              </button>
+              <button onClick={() => navigate(`/projects/${projectId}/meeting`)} style={{ ...backButtonStyle, marginLeft: "1rem" }}>
+                📹 Start Meeting
               </button>
             </div>
             <h1 style={{ fontFamily: "'JetBrains Mono', monospace", color: "#E6EDF3", fontSize: "24px", margin: "0.5rem 0 0", fontWeight: 600 }}>
