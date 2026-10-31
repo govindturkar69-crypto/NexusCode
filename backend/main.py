@@ -1,23 +1,28 @@
+import json
+import logging
 import os
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from database import engine, get_db, Base
+from database import engine, get_db, Base, SessionLocal
 from models import TodoModel, UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel
 from auth import hash_password, verify_password, create_access_token, decode_access_token, create_oauth_state, verify_oauth_state
 from ai import generate_code, detect_bugs, generate_docs, AIQuotaExceededError, AIServiceBusyError
 from files import upload_file_to_cloudinary
-from websocket_manager import manager
+from websocket_manager import manager, video_manager
 from github_oauth import get_github_authorize_url, exchange_code_for_token, create_github_repo, push_file_to_repo, GitHubAPIError
 
 load_dotenv()
+
+logger = logging.getLogger("nexuscode")
 
 # Where the React app lives (e.g. https://nexus-code-chi.vercel.app). Used for
 # CORS and for redirecting back after GitHub OAuth.
@@ -342,28 +347,75 @@ def get_project_messages(project_id: int, db: Session = Depends(get_db), current
     messages = db.query(MessageModel).filter(MessageModel.project_id == project_id).all()
     return {"messages": messages}
 
+MAX_CHAT_MESSAGE_LENGTH = 2000
+MAX_SIGNAL_FRAME_BYTES = 64 * 1024  # SDP offers are a few KB; this is generous
+SIGNAL_TYPES = {"offer", "answer", "ice-candidate"}
+
+def _ws_user_for_project(token: str | None, project_id: int) -> str | None:
+    """
+    Returns the username behind `token` if that user may access the project,
+    otherwise None. Runs in a worker thread because it touches the database.
+    """
+    username = decode_access_token(token) if token else None
+    if username is None:
+        return None
+    with SessionLocal() as db:
+        user = db.query(UserModel).filter(UserModel.username == username).first()
+        if user is None:
+            return None
+        project = db.query(ProjectModel).filter(
+            ProjectModel.id == project_id,
+            ProjectModel.owner_id == user.id
+        ).first()
+        return user.username if project else None
+
+async def _authorize_websocket(websocket: WebSocket, project_id: int) -> str | None:
+    """Checks ?token= before accept(); closes with 1008 (policy violation) if not allowed."""
+    username = await run_in_threadpool(_ws_user_for_project, websocket.query_params.get("token"), project_id)
+    if username is None:
+        await websocket.close(code=1008)
+    return username
+
+def _save_chat_message(project_id: int, username: str, content: str) -> dict:
+    with SessionLocal() as db:
+        message = MessageModel(content=content, username=username, project_id=project_id)
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        return {"id": message.id, "username": message.username, "content": message.content}
+
 @app.websocket("/ws/projects/{project_id}/chat")
 async def chat_websocket(websocket: WebSocket, project_id: int):
-    await manager.connect(websocket, project_id)
-    db = next(get_db())
+    username = await _authorize_websocket(websocket, project_id)
+    if username is None:
+        return
 
+    await manager.connect(websocket, project_id)
     try:
         while True:
-            data = await websocket.receive_json()
-            username = data.get("username", "Unknown")
-            content = data.get("content", "")
+            raw = await websocket.receive_text()
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                continue
+            if not isinstance(data, dict):
+                continue
 
-            new_message = MessageModel(content=content, username=username, project_id=project_id)
-            db.add(new_message)
-            db.commit()
-            db.refresh(new_message)
+            # The sender's name always comes from their token, never the client
+            content = str(data.get("content", "")).strip()
+            if not content:
+                continue
+            if len(content) > MAX_CHAT_MESSAGE_LENGTH:
+                await websocket.send_json({"type": "error", "detail": f"Messages can be at most {MAX_CHAT_MESSAGE_LENGTH} characters."})
+                continue
 
-            await manager.broadcast(project_id, {
-                "id": new_message.id,
-                "username": new_message.username,
-                "content": new_message.content,
-            })
+            message = await run_in_threadpool(_save_chat_message, project_id, username, content)
+            await manager.broadcast(project_id, message)
     except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Chat socket error (project %s, user %s)", project_id, username)
+    finally:
         manager.disconnect(websocket, project_id)
 
 @app.get("/projects/{project_id}/code")
@@ -548,15 +600,30 @@ def admin_get_platform_stats(db: Session = Depends(get_db), admin: UserModel = D
         "total_files": db.query(FileModel).count(),
         "total_messages": db.query(MessageModel).count(),
     }
+
 @app.websocket("/ws/projects/{project_id}/meeting")
 async def meeting_websocket(websocket: WebSocket, project_id: int):
-    await manager.connect(websocket, project_id)
+    username = await _authorize_websocket(websocket, project_id)
+    if username is None:
+        return
+
+    # Separate room from chat, so signaling never shows up in the chat box
+    await video_manager.connect(websocket, project_id)
     try:
         while True:
-            data = await websocket.receive_json()
-            if project_id in manager.active_connections:
-                for connection in manager.active_connections[project_id]:
-                    if connection != websocket:
-                        await connection.send_json(data)
+            raw = await websocket.receive_text()
+            if len(raw.encode()) > MAX_SIGNAL_FRAME_BYTES:
+                continue
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                continue
+            if not isinstance(data, dict) or data.get("type") not in SIGNAL_TYPES:
+                continue
+            await video_manager.broadcast_to_peer(project_id, websocket, data)
     except WebSocketDisconnect:
-        manager.disconnect(websocket, project_id)
+        pass
+    except Exception:
+        logger.exception("Meeting socket error (project %s, user %s)", project_id, username)
+    finally:
+        video_manager.disconnect(websocket, project_id)

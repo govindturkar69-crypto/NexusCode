@@ -4,6 +4,8 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 const API_URL = import.meta.env.VITE_API_URL;
 const WS_URL = API_URL.replace("http", "ws");
+// Matches the server-side limit
+const MAX_CHAT_MESSAGE_LENGTH = 2000;
 
 function Board() {
   const { projectId } = useParams();
@@ -14,6 +16,7 @@ function Board() {
   const [uploading, setUploading] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
+  const [chatError, setChatError] = useState("");
   const ws = useRef(null);
   const username = "govind";
 
@@ -115,10 +118,15 @@ function Board() {
   }
 
   function connectWebSocket() {
-    ws.current = new WebSocket(`${WS_URL}/ws/projects/${projectId}/chat`);
+    ws.current = new WebSocket(`${WS_URL}/ws/projects/${projectId}/chat?token=${encodeURIComponent(token)}`);
 
     ws.current.onmessage = (event) => {
       const message = JSON.parse(event.data);
+      if (message.type === "error") {
+        setChatError(message.detail);
+        return;
+      }
+      setChatError("");
       setMessages((prev) => [...prev, message]);
     };
   }
@@ -297,10 +305,14 @@ function Board() {
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  maxLength={MAX_CHAT_MESSAGE_LENGTH}
                   style={{ ...inputStyle, flex: 1 }}
                 />
                 <button onClick={sendMessage} style={primaryButtonStyle}>Send</button>
               </div>
+              {chatError && (
+                <p role="alert" style={{ color: "#F85149", fontSize: "12px", margin: "0.5rem 0 0" }}>{chatError}</p>
+              )}
             </div>
           </div>
         </div>

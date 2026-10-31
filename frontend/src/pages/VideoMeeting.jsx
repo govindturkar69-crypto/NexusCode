@@ -43,7 +43,8 @@ function VideoMeeting() {
       setStatus("Camera ready. Waiting for someone to join...");
 
       // Step 2: connect to signaling server
-      const ws = new WebSocket(`${WS_URL}/ws/projects/${projectId}/meeting`);
+      const token = localStorage.getItem("token") ?? "";
+      const ws = new WebSocket(`${WS_URL}/ws/projects/${projectId}/meeting?token=${encodeURIComponent(token)}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
