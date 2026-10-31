@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from database import engine, get_db, Base
 from models import TodoModel, UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel
@@ -15,7 +15,7 @@ from auth import hash_password, verify_password, create_access_token, decode_acc
 from ai import generate_code, detect_bugs, generate_docs, AIQuotaExceededError, AIServiceBusyError
 from files import upload_file_to_cloudinary
 from websocket_manager import manager
-from github_oauth import get_github_authorize_url, exchange_code_for_token, create_github_repo, push_file_to_repo
+from github_oauth import get_github_authorize_url, exchange_code_for_token, create_github_repo, push_file_to_repo, GitHubAPIError
 
 load_dotenv()
 
@@ -98,7 +98,8 @@ class CodeFileUpdate(BaseModel):
     language: str = "python"
 
 class PushToGithubRequest(BaseModel):
-    repo_name: str
+    repo_name: str = Field(pattern=r"^[A-Za-z0-9._-]{1,100}$")
+    private: bool = True
 
 @app.get("/")
 def read_root():
@@ -437,26 +438,45 @@ def github_callback(code: str | None = None, state: str | None = None, db: Sessi
 
 @app.post("/projects/{project_id}/push-to-github")
 def push_to_github(project_id: int, request: PushToGithubRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    project = db.query(ProjectModel).filter(
+        ProjectModel.id == project_id,
+        ProjectModel.owner_id == current_user.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
     if not current_user.github_token:
         raise HTTPException(status_code=400, detail="GitHub account not connected")
 
-    code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project_id).first()
+    code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).first()
     if not code_file:
         raise HTTPException(status_code=404, detail="No code file found for this project")
-
-    repo_result = create_github_repo(current_user.github_token, request.repo_name)
-    if "full_name" not in repo_result:
-        raise HTTPException(status_code=400, detail=repo_result.get("message", "Failed to create repository"))
 
     extension = {"python": "py", "javascript": "js", "java": "java", "cpp": "cpp", "html": "html"}.get(code_file.language, "txt")
     filename = f"main.{extension}"
 
-    push_result = push_file_to_repo(current_user.github_token, repo_result["full_name"], filename, code_file.content)
+    try:
+        repo_result = create_github_repo(current_user.github_token, request.repo_name, request.private)
+    except GitHubAPIError as e:
+        raise _github_http_error(e, "Could not create the repository")
+
+    try:
+        push_file_to_repo(current_user.github_token, repo_result["full_name"], filename, code_file.content or "")
+    except GitHubAPIError as e:
+        raise _github_http_error(e, f"Repository {repo_result['full_name']} was created, but pushing {filename} failed")
 
     return {
         "message": "Pushed to GitHub successfully",
         "repo_url": repo_result.get("html_url"),
+        "private": repo_result.get("private", request.private),
     }
+
+def _github_http_error(error: GitHubAPIError, context: str) -> HTTPException:
+    if error.status_code == 401:
+        return HTTPException(status_code=400, detail="Your GitHub authorization has expired or was revoked. Please reconnect GitHub.")
+    if error.status_code in (400, 403, 404, 422):
+        return HTTPException(status_code=400, detail=f"{context}: {error.message}")
+    return HTTPException(status_code=502, detail=f"{context}: {error.message}")
 
 @app.get("/analytics")
 def get_analytics(db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):

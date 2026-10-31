@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 
 const API_URL = import.meta.env.VITE_API_URL;
+// Same rule the backend enforces
+const REPO_NAME_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 
 function CodeEditor() {
   const { projectId } = useParams();
@@ -12,6 +14,7 @@ function CodeEditor() {
   const [saveStatus, setSaveStatus] = useState("");
   const [aiResult, setAiResult] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [pushPrivate, setPushPrivate] = useState(true);
 
   const token = localStorage.getItem("token");
   const saveTimeout = useRef(null);
@@ -64,6 +67,10 @@ function CodeEditor() {
   function pushToGithub() {
     const repoName = prompt("Enter a name for the new GitHub repository:");
     if (!repoName) return;
+    if (!REPO_NAME_PATTERN.test(repoName)) {
+      setSaveStatus("Repo name may only use letters, numbers, '.', '-' and '_' (max 100).");
+      return;
+    }
 
     setSaveStatus("Pushing to GitHub...");
     fetch(`${API_URL}/projects/${projectId}/push-to-github`, {
@@ -72,11 +79,11 @@ function CodeEditor() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ repo_name: repoName }),
+      body: JSON.stringify({ repo_name: repoName, private: pushPrivate }),
     })
       .then(async (res) => {
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Push failed");
+        if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Push failed");
         return data;
       })
       .then((data) => {
@@ -131,6 +138,10 @@ function CodeEditor() {
               <option value="cpp">C++</option>
               <option value="html">HTML</option>
             </select>
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", color: "#8B949E", fontSize: "13px", cursor: "pointer" }}>
+              <input type="checkbox" checked={pushPrivate} onChange={(e) => setPushPrivate(e.target.checked)} />
+              Private repo
+            </label>
             <button onClick={pushToGithub} style={{ ...selectStyle, cursor: "pointer", background: "#58A6FF", color: "#0D1117", fontWeight: 600 }}>
               🐙 Push to GitHub
             </button>

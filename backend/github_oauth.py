@@ -1,3 +1,4 @@
+import base64
 import os
 from urllib.parse import urlencode
 import httpx
@@ -50,16 +51,51 @@ def exchange_code_for_token(code: str) -> str | None:
     return data.get("access_token") or None
 
 
-def create_github_repo(token: str, repo_name: str) -> dict:
+class GitHubAPIError(Exception):
+    """Raised when a GitHub API call fails. `status_code` is GitHub's (0 if unreachable)."""
+
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+
+
+def _github_request(method: str, url: str, token: str, payload: dict) -> dict:
+    try:
+        response = httpx.request(
+            method,
+            url,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+            json=payload,
+            timeout=GITHUB_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as e:
+        raise GitHubAPIError(0, "Could not reach GitHub. Please try again.") from e
+
+    try:
+        data = response.json()
+    except ValueError:
+        data = {}
+
+    if not response.is_success:
+        # 422 responses put the useful part (e.g. "name already exists on this
+        # account") in errors[0].message rather than the top-level message.
+        errors = data.get("errors") or []
+        detail = next((err.get("message") for err in errors if isinstance(err, dict) and err.get("message")), None)
+        raise GitHubAPIError(response.status_code, detail or data.get("message") or f"GitHub returned {response.status_code}")
+    return data
+
+
+def create_github_repo(token: str, repo_name: str, private: bool = True) -> dict:
     """
     Creates a new repository on the user's GitHub account using their token.
     """
-    response = httpx.post(
+    return _github_request(
+        "POST",
         "https://api.github.com/user/repos",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-        json={"name": repo_name, "private": False},
+        token,
+        {"name": repo_name, "private": private},
     )
-    return response.json()
 
 
 def push_file_to_repo(token: str, repo_full_name: str, filename: str, content: str) -> dict:
@@ -67,15 +103,10 @@ def push_file_to_repo(token: str, repo_full_name: str, filename: str, content: s
     Creates or updates a single file in a GitHub repo.
     GitHub's API requires file content to be Base64-encoded.
     """
-    import base64
     encoded_content = base64.b64encode(content.encode()).decode()
-
-    response = httpx.put(
+    return _github_request(
+        "PUT",
         f"https://api.github.com/repos/{repo_full_name}/contents/{filename}",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-        json={
-            "message": f"Update {filename} from NexusCode",
-            "content": encoded_content,
-        },
+        token,
+        {"message": f"Update {filename} from NexusCode", "content": encoded_content},
     )
-    return response.json()
