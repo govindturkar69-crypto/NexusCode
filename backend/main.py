@@ -1,3 +1,7 @@
+import os
+from urllib.parse import urlencode
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -7,11 +11,21 @@ from pydantic import BaseModel
 
 from database import engine, get_db, Base
 from models import TodoModel, UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel
-from auth import hash_password, verify_password, create_access_token, decode_access_token
+from auth import hash_password, verify_password, create_access_token, decode_access_token, create_oauth_state, verify_oauth_state
 from ai import generate_code, detect_bugs, generate_docs, AIQuotaExceededError, AIServiceBusyError
 from files import upload_file_to_cloudinary
 from websocket_manager import manager
 from github_oauth import get_github_authorize_url, exchange_code_for_token, create_github_repo, push_file_to_repo
+
+load_dotenv()
+
+# Where the React app lives (e.g. https://nexus-code-chi.vercel.app). Used for
+# CORS and for redirecting back after GitHub OAuth.
+FRONTEND_URL = (os.getenv("FRONTEND_URL") or "").rstrip("/")
+if not FRONTEND_URL:
+    raise RuntimeError("FRONTEND_URL environment variable is not set (e.g. http://localhost:5173).")
+
+DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 # This creates all tables in Postgres, if they don't exist yet.
 Base.metadata.create_all(bind=engine)
@@ -20,10 +34,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://nexus-code-chi.vercel.app",
-    ],
+    allow_origins=list(dict.fromkeys([FRONTEND_URL, *DEV_ORIGINS])),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -393,25 +404,36 @@ def update_code_file(project_id: int, update: CodeFileUpdate, db: Session = Depe
     db.refresh(code_file)
     return {"message": "Code saved", "code_file": code_file}
 
+def _github_result_redirect(result: str) -> RedirectResponse:
+    """Sends the browser back to the projects page with ?github=connected|error."""
+    return RedirectResponse(url=f"{FRONTEND_URL}/projects?{urlencode({'github': result})}")
+
 @app.get("/auth/github/login")
 def github_login(current_user: UserModel = Depends(get_current_user)):
-    url = get_github_authorize_url()
+    state = create_oauth_state(current_user.id)
+    url = get_github_authorize_url(state)
     return {"url": url}
 
 @app.get("/auth/github/callback")
-def github_callback(code: str, db: Session = Depends(get_db)):
+def github_callback(code: str | None = None, state: str | None = None, db: Session = Depends(get_db)):
+    # The signed state tells us which user started the flow. Without a valid
+    # one we can't safely attach a token to anybody.
+    user_id = verify_oauth_state(state) if state else None
+    if not code or user_id is None:
+        return _github_result_redirect("error")
+
+    user = db.query(UserModel).filter(UserModel.id == user_id).first()
+    if user is None:
+        return _github_result_redirect("error")
+
     access_token = exchange_code_for_token(code)
+    if not access_token:
+        # Keep any token the user already had
+        return _github_result_redirect("error")
 
-    # NOTE: for simplicity, we're attaching this token to our test user directly.
-    # A more complete version would track *which* user initiated this request
-    # (e.g. via a temporary session/state parameter) before reaching this point.
-    user = db.query(UserModel).filter(UserModel.username == "govind").first()
-    if user:
-        user.github_token = access_token
-        db.commit()
-
-    # Redirect back to the frontend once linking is complete
-    return RedirectResponse(url="https://nexus-code-chi.vercel.app/projects")
+    user.github_token = access_token
+    db.commit()
+    return _github_result_redirect("connected")
 
 @app.post("/projects/{project_id}/push-to-github")
 def push_to_github(project_id: int, request: PushToGithubRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):

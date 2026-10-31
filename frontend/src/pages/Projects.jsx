@@ -1,7 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL;
+
+const GITHUB_MESSAGES = {
+  connected: { text: "GitHub account connected.", color: "#7EE787" },
+  error: { text: "Couldn't connect your GitHub account. Please try again.", color: "#F85149" },
+};
 
 function Projects() {
   const [projects, setProjects] = useState([]);
@@ -9,6 +14,9 @@ function Projects() {
   const [description, setDescription] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Set by the backend when it redirects back here after GitHub OAuth
+  const githubMessage = GITHUB_MESSAGES[searchParams.get("github")];
 
   const token = localStorage.getItem("token");
 
@@ -98,6 +106,13 @@ function Projects() {
             <button onClick={logout} style={ghostButtonStyle}>Log out</button>
           </div>
         </div>
+
+        {githubMessage && (
+          <div role="status" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#161B22", border: `1px solid ${githubMessage.color}`, borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "1.5rem" }}>
+            <span style={{ color: githubMessage.color, fontSize: "13px" }}>{githubMessage.text}</span>
+            <button onClick={() => navigate("/projects", { replace: true })} aria-label="Dismiss" style={{ ...ghostButtonStyle, padding: "2px 8px" }}>✕</button>
+          </div>
+        )}
 
         <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1.25rem", marginBottom: "2rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           <input

@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlencode
 import httpx
 from dotenv import load_dotenv
 
@@ -7,38 +8,46 @@ load_dotenv()
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI")
+GITHUB_TIMEOUT_SECONDS = 15
 
 
-def get_github_authorize_url() -> str:
+def get_github_authorize_url(state: str) -> str:
     """
     Builds the URL we send the user to, so they can approve our app on GitHub.
     'repo' scope lets us create/push to repositories on their behalf.
+    `state` is echoed back to the callback so we know which user started the flow.
     """
-    return (
-        f"https://github.com/login/oauth/authorize"
-        f"?client_id={GITHUB_CLIENT_ID}"
-        f"&redirect_uri={GITHUB_REDIRECT_URI}"
-        f"&scope=repo"
-    )
+    params = {
+        "client_id": GITHUB_CLIENT_ID,
+        "redirect_uri": GITHUB_REDIRECT_URI,
+        "scope": "repo",
+        "state": state,
+    }
+    return f"https://github.com/login/oauth/authorize?{urlencode(params)}"
 
 
-def exchange_code_for_token(code: str) -> str:
+def exchange_code_for_token(code: str) -> str | None:
     """
     Exchanges the temporary 'code' GitHub gave us for a real access token.
     This call happens server-to-server, never visible to the browser.
+    Returns None if GitHub rejects the code or can't be reached.
     """
-    response = httpx.post(
-        "https://github.com/login/oauth/access_token",
-        data={
-            "client_id": GITHUB_CLIENT_ID,
-            "client_secret": GITHUB_CLIENT_SECRET,
-            "code": code,
-            "redirect_uri": GITHUB_REDIRECT_URI,
-        },
-        headers={"Accept": "application/json"},
-    )
-    data = response.json()
-    return data.get("access_token")
+    try:
+        response = httpx.post(
+            "https://github.com/login/oauth/access_token",
+            data={
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code,
+                "redirect_uri": GITHUB_REDIRECT_URI,
+            },
+            headers={"Accept": "application/json"},
+            timeout=GITHUB_TIMEOUT_SECONDS,
+        )
+        data = response.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    return data.get("access_token") or None
 
 
 def create_github_repo(token: str, repo_name: str) -> dict:
