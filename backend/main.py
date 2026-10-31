@@ -353,7 +353,14 @@ def get_project_messages(project_id: int, db: Session = Depends(get_db), current
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    messages = db.query(MessageModel).filter(MessageModel.project_id == project_id).all()
+    # Oldest first. There is no timestamp column yet; the auto-increment id
+    # follows insertion order.
+    messages = (
+        db.query(MessageModel)
+        .filter(MessageModel.project_id == project_id)
+        .order_by(MessageModel.id.asc())
+        .all()
+    )
     return {"messages": messages}
 
 MAX_CHAT_MESSAGE_LENGTH = 2000
