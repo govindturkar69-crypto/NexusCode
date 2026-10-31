@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react";
+import { apiFetch } from "../api/client";
 
-const API_URL = import.meta.env.VITE_API_URL;
 // Same rule the backend enforces
 const REPO_NAME_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 
@@ -16,34 +16,25 @@ function CodeEditor() {
   const [aiLoading, setAiLoading] = useState(false);
   const [pushPrivate, setPushPrivate] = useState(true);
 
-  const token = localStorage.getItem("token");
   const saveTimeout = useRef(null);
 
   useEffect(() => {
-    fetchCode();
-  }, []);
-
-  function fetchCode() {
-    fetch(`${API_URL}/projects/${projectId}/code`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
+    apiFetch(`/projects/${projectId}/code`)
       .then((data) => {
-        setCode(data.code_file.content);
-        setLanguage(data.code_file.language);
-      });
-  }
+        setCode(data.code_file?.content ?? "");
+        setLanguage(data.code_file?.language ?? "python");
+      })
+      .catch((err) => setSaveStatus(`Couldn't load code: ${err.message}`));
+  }, [projectId]);
 
   function saveCode(newCode, newLanguage) {
     setSaveStatus("Saving...");
-    fetch(`${API_URL}/projects/${projectId}/code`, {
+    apiFetch(`/projects/${projectId}/code`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ content: newCode, language: newLanguage }),
-    }).then(() => setSaveStatus("Saved"));
+      body: { content: newCode, language: newLanguage },
+    })
+      .then(() => setSaveStatus("Saved"))
+      .catch((err) => setSaveStatus(`Save failed: ${err.message}`));
   }
 
   // Debounced auto-save: waits 1 second after the user stops typing before saving,
@@ -73,19 +64,10 @@ function CodeEditor() {
     }
 
     setSaveStatus("Pushing to GitHub...");
-    fetch(`${API_URL}/projects/${projectId}/push-to-github`, {
+    apiFetch(`/projects/${projectId}/push-to-github`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ repo_name: repoName, private: pushPrivate }),
+      body: { repo_name: repoName, private: pushPrivate },
     })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Push failed");
-        return data;
-      })
       .then((data) => {
         setSaveStatus("Pushed!");
         window.open(data.repo_url, "_blank");
@@ -99,23 +81,9 @@ function CodeEditor() {
 
     const endpoint = type === "bugs" ? "detect-bugs" : "generate-docs";
 
-    fetch(`${API_URL}/ai/${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ code }),
-    })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) {
-          // Show the backend's real error message (e.g. quota exceeded, busy)
-          throw new Error(data.detail || "Something went wrong.");
-        }
-        return data;
-      })
-      .then((data) => setAiResult(data.result))
+    // Errors carry the backend's real message (e.g. quota exceeded, busy)
+    apiFetch(`/ai/${endpoint}`, { method: "POST", body: { code } })
+      .then((data) => setAiResult(data.result ?? ""))
       .catch((err) => setAiResult(err.message))
       .finally(() => setAiLoading(false));
   }

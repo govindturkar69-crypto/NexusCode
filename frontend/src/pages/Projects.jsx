@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetch, clearToken } from "../api/client";
 
 const GITHUB_MESSAGES = {
   connected: { text: "GitHub account connected.", color: "#7EE787" },
@@ -17,69 +16,55 @@ function Projects() {
   const [searchParams] = useSearchParams();
   // Set by the backend when it redirects back here after GitHub OAuth
   const githubMessage = GITHUB_MESSAGES[searchParams.get("github")];
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const token = localStorage.getItem("token");
+  const fetchProjects = useCallback(() => {
+    return apiFetch("/projects")
+      .then((data) => setProjects(data.projects ?? []))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     fetchProjects();
-    checkAdminStatus();
-  }, []);
-
-  function fetchProjects() {
-    fetch(`${API_URL}/projects`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setProjects(data.projects));
-  }
+    apiFetch("/me")
+      .then((data) => setIsAdmin(Boolean(data.is_admin)))
+      .catch(() => setIsAdmin(false));
+  }, [fetchProjects]);
 
   function createProject() {
     if (!name.trim()) return;
-    fetch(`${API_URL}/projects`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ name, description }),
-    })
-      .then((res) => res.json())
+    setError("");
+    apiFetch("/projects", { method: "POST", body: { name, description } })
       .then(() => {
         setName("");
         setDescription("");
-        fetchProjects();
-      });
+        return fetchProjects();
+      })
+      .catch((err) => setError(err.message));
   }
 
   function deleteProject(e, projectId) {
     e.stopPropagation();
-    fetch(`${API_URL}/projects/${projectId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(() => fetchProjects());
+    setError("");
+    apiFetch(`/projects/${projectId}`, { method: "DELETE" })
+      .then(() => fetchProjects())
+      .catch((err) => setError(err.message));
   }
 
   function logout() {
-    localStorage.removeItem("token");
+    clearToken();
     navigate("/login");
   }
 
-  function checkAdminStatus() {
-    fetch(`${API_URL}/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setIsAdmin(data.is_admin));
-  }
-
   function connectGithub() {
-    fetch(`${API_URL}/auth/github/login`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
+    setError("");
+    apiFetch("/auth/github/login")
       .then((data) => {
         window.location.href = data.url;
-      });
+      })
+      .catch((err) => setError(err.message));
   }
 
   return (
@@ -132,7 +117,13 @@ function Projects() {
           <button onClick={createProject} style={primaryButtonStyle}>+ New Project</button>
         </div>
 
-        {projects.length === 0 && (
+        {error && (
+          <p role="alert" style={{ color: "#F85149", fontSize: "13px", marginBottom: "1rem" }}>{error}</p>
+        )}
+
+        {loading && <p style={{ color: "#8B949E", fontSize: "14px" }}>Loading projects...</p>}
+
+        {!loading && !error && projects.length === 0 && (
           <p style={{ color: "#8B949E", fontSize: "14px" }}>No projects yet — create your first one above.</p>
         )}
 

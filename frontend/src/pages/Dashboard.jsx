@@ -1,21 +1,27 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../api/client";
 
 function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
+  const [error, setError] = useState("");
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
 
   useEffect(() => {
-    fetch(`${API_URL}/analytics`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setAnalytics(data));
+    apiFetch("/analytics")
+      .then((data) => setAnalytics(data))
+      .catch((err) => setError(err.message));
   }, []);
+
+  if (error) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0D1117", padding: "3rem", fontFamily: "'Inter', system-ui, sans-serif" }}>
+        <p role="alert" style={{ color: "#F85149", fontSize: "14px", marginBottom: "1rem" }}>Couldn't load analytics: {error}</p>
+        <button onClick={() => navigate("/projects")} style={backButtonStyle}>← All projects</button>
+      </div>
+    );
+  }
 
   if (!analytics) {
     return (

@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../api/client";
 
 function AdminDashboard() {
   const [stats, setStats] = useState(null);
@@ -9,24 +8,17 @@ function AdminDashboard() {
   const [projects, setProjects] = useState([]);
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API_URL}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${API_URL}/admin/users`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${API_URL}/admin/projects`, { headers: { Authorization: `Bearer ${token}` } }),
+      apiFetch("/admin/stats"),
+      apiFetch("/admin/users"),
+      apiFetch("/admin/projects"),
     ])
-      .then(async ([statsRes, usersRes, projectsRes]) => {
-        if (!statsRes.ok) {
-          throw new Error("Admin access required");
-        }
-        const statsData = await statsRes.json();
-        const usersData = await usersRes.json();
-        const projectsData = await projectsRes.json();
+      .then(([statsData, usersData, projectsData]) => {
         setStats(statsData);
-        setUsers(usersData.users);
-        setProjects(projectsData.projects);
+        setUsers(usersData.users ?? []);
+        setProjects(projectsData.projects ?? []);
       })
       .catch((err) => setError(err.message));
   }, []);

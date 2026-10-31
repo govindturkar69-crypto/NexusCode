@@ -8,20 +8,23 @@ import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import VideoMeeting from "./pages/VideoMeeting";
 import NotFound from "./pages/NotFound";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+const protect = (element) => <ProtectedRoute>{element}</ProtectedRoute>;
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/" element={<Navigate to="/projects" replace />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/projects" element={<Projects />} />
-        <Route path="/projects/:projectId" element={<Board />} />
-        <Route path="/ai" element={<AIAssistant />} />
-        <Route path="/projects/:projectId/editor" element={<CodeEditor />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/projects/:projectId/meeting" element={<VideoMeeting />} />
+        <Route path="/projects" element={protect(<Projects />)} />
+        <Route path="/projects/:projectId" element={protect(<Board />)} />
+        <Route path="/ai" element={protect(<AIAssistant />)} />
+        <Route path="/projects/:projectId/editor" element={protect(<CodeEditor />)} />
+        <Route path="/dashboard" element={protect(<Dashboard />)} />
+        <Route path="/admin" element={protect(<AdminDashboard />)} />
+        <Route path="/projects/:projectId/meeting" element={protect(<VideoMeeting />)} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../api/client";
 
 function AIAssistant() {
   const [activeTab, setActiveTab] = useState("generate");
@@ -9,8 +8,6 @@ function AIAssistant() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  const token = localStorage.getItem("token");
 
   const tabConfig = {
     generate: {
@@ -40,20 +37,9 @@ function AIAssistant() {
 
     const config = tabConfig[activeTab];
 
-    fetch(`${API_URL}/ai/${config.endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ [config.bodyKey]: input }),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Request failed");
-        return res.json();
-      })
-      .then((data) => setResult(data.result))
-      .catch(() => setResult("Something went wrong. The AI service may be busy — try again."))
+    apiFetch(`/ai/${config.endpoint}`, { method: "POST", body: { [config.bodyKey]: input } })
+      .then((data) => setResult(data.result ?? ""))
+      .catch((err) => setResult(err.message || "Something went wrong. The AI service may be busy — try again."))
       .finally(() => setLoading(false));
   }
 

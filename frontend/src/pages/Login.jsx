@@ -1,36 +1,33 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { useLocation, useNavigate } from "react-router-dom";
+import { apiFetch, setToken } from "../api/client";
 
 function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where ProtectedRoute was sending the user before they were bounced here
+  const redirectTo = location.state?.from?.pathname ?? "/projects";
 
   function handleLogin(e) {
     e.preventDefault();
     setError("");
+    setSubmitting(true);
 
-    const formData = new URLSearchParams();
-    formData.append("username", username);
-    formData.append("password", password);
+    const form = new URLSearchParams();
+    form.append("username", username);
+    form.append("password", password);
 
-    fetch(`${API_URL}/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: formData,
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Invalid username or password");
-        return res.json();
-      })
+    apiFetch("/login", { method: "POST", form, auth: false })
       .then((data) => {
-        localStorage.setItem("token", data.access_token);
-        navigate("/projects");
+        setToken(data.access_token);
+        navigate(redirectTo, { replace: true });
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.status === 401 ? "Invalid username or password" : err.message))
+      .finally(() => setSubmitting(false));
   }
 
   return (
@@ -132,8 +129,8 @@ function Login() {
             </p>
           )}
 
-          <button type="submit" style={buttonStyle}>
-            Sign in
+          <button type="submit" disabled={submitting} style={{ ...buttonStyle, opacity: submitting ? 0.7 : 1 }}>
+            {submitting ? "Signing in..." : "Sign in"}
           </button>
         </form>
       </div>

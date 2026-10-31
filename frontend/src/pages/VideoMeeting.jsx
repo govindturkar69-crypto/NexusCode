@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL;
-const WS_URL = API_URL.replace("http", "ws");
+import { wsUrl } from "../api/client";
 
 // Google's free STUN servers — help browsers find their public IP
 const ICE_SERVERS = {
@@ -43,8 +41,7 @@ function VideoMeeting() {
       setStatus("Camera ready. Waiting for someone to join...");
 
       // Step 2: connect to signaling server
-      const token = localStorage.getItem("token") ?? "";
-      const ws = new WebSocket(`${WS_URL}/ws/projects/${projectId}/meeting?token=${encodeURIComponent(token)}`);
+      const ws = new WebSocket(wsUrl(`/ws/projects/${projectId}/meeting`));
       wsRef.current = ws;
 
       ws.onopen = () => {

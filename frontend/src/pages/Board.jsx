@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import { apiFetch, wsUrl } from "../api/client";
 
-const API_URL = import.meta.env.VITE_API_URL;
-const WS_URL = API_URL.replace("http", "ws");
 // Matches the server-side limit
 const MAX_CHAT_MESSAGE_LENGTH = 2000;
 
@@ -17,110 +16,35 @@ function Board() {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState("");
+  const [error, setError] = useState("");
   const ws = useRef(null);
   const username = "govind";
 
-  const token = localStorage.getItem("token");
+  const fetchTasks = useCallback(() => {
+    return apiFetch(`/projects/${projectId}/tasks`)
+      .then((data) => setTasks(data.tasks ?? []))
+      .catch((err) => setError(err.message));
+  }, [projectId]);
+
+  const fetchFiles = useCallback(() => {
+    return apiFetch(`/projects/${projectId}/files`)
+      .then((data) => setFiles(data.files ?? []))
+      .catch((err) => setError(err.message));
+  }, [projectId]);
 
   useEffect(() => {
     fetchTasks();
     fetchFiles();
-    fetchMessages();
-    connectWebSocket();
+    apiFetch(`/projects/${projectId}/messages`)
+      .then((data) => setMessages(data.messages ?? []))
+      .catch((err) => setError(err.message));
+  }, [projectId, fetchTasks, fetchFiles]);
 
-    return () => {
-      if (ws.current) ws.current.close();
-    };
-  }, []);
+  useEffect(() => {
+    const socket = new WebSocket(wsUrl(`/ws/projects/${projectId}/chat`));
+    ws.current = socket;
 
-  function fetchTasks() {
-    fetch(`${API_URL}/projects/${projectId}/tasks`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setTasks(data.tasks));
-  }
-
-  function createTask() {
-    if (!title.trim()) return;
-    fetch(`${API_URL}/projects/${projectId}/tasks`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title }),
-    })
-      .then((res) => res.json())
-      .then(() => {
-        setTitle("");
-        fetchTasks();
-      });
-  }
-
-  function updateTaskStatus(taskId, newStatus) {
-    fetch(`${API_URL}/tasks/${taskId}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ status: newStatus }),
-    }).then(() => fetchTasks());
-  }
-
-  function deleteTask(taskId) {
-    fetch(`${API_URL}/tasks/${taskId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(() => fetchTasks());
-  }
-
-  function fetchFiles() {
-    fetch(`${API_URL}/projects/${projectId}/files`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setFiles(data.files));
-  }
-
-  function uploadFile(e) {
-    const selectedFile = e.target.files[0];
-    if (!selectedFile) return;
-
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    setUploading(true);
-    fetch(`${API_URL}/projects/${projectId}/files`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    })
-      .then((res) => res.json())
-      .then(() => fetchFiles())
-      .finally(() => setUploading(false));
-  }
-
-  function deleteFile(fileId) {
-    fetch(`${API_URL}/files/${fileId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(() => fetchFiles());
-  }
-
-  function fetchMessages() {
-    fetch(`${API_URL}/projects/${projectId}/messages`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setMessages(data.messages));
-  }
-
-  function connectWebSocket() {
-    ws.current = new WebSocket(`${WS_URL}/ws/projects/${projectId}/chat?token=${encodeURIComponent(token)}`);
-
-    ws.current.onmessage = (event) => {
+    socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
       if (message.type === "error") {
         setChatError(message.detail);
@@ -129,10 +53,70 @@ function Board() {
       setChatError("");
       setMessages((prev) => [...prev, message]);
     };
+    // The server refuses the socket if the token is missing/expired or the
+    // project isn't ours, which shows up here as a close.
+    socket.onclose = () => setChatError("Chat disconnected. Refresh the page to reconnect.");
+
+    return () => {
+      socket.onclose = null;
+      socket.close();
+    };
+  }, [projectId]);
+
+  function createTask() {
+    if (!title.trim()) return;
+    setError("");
+    apiFetch(`/projects/${projectId}/tasks`, { method: "POST", body: { title } })
+      .then(() => {
+        setTitle("");
+        return fetchTasks();
+      })
+      .catch((err) => setError(err.message));
+  }
+
+  function updateTaskStatus(taskId, newStatus) {
+    // Always resync afterwards: on failure this undoes the optimistic move
+    apiFetch(`/tasks/${taskId}`, { method: "PUT", body: { status: newStatus } })
+      .catch((err) => setError(err.message))
+      .finally(() => fetchTasks());
+  }
+
+  function deleteTask(taskId) {
+    setError("");
+    apiFetch(`/tasks/${taskId}`, { method: "DELETE" })
+      .then(() => fetchTasks())
+      .catch((err) => setError(err.message));
+  }
+
+  function uploadFile(e) {
+    const selectedFile = e.target.files[0];
+    e.target.value = "";
+    if (!selectedFile) return;
+
+    const form = new FormData();
+    form.append("file", selectedFile);
+
+    setError("");
+    setUploading(true);
+    apiFetch(`/projects/${projectId}/files`, { method: "POST", form })
+      .then(() => fetchFiles())
+      .catch((err) => setError(err.message))
+      .finally(() => setUploading(false));
+  }
+
+  function deleteFile(fileId) {
+    setError("");
+    apiFetch(`/files/${fileId}`, { method: "DELETE" })
+      .then(() => fetchFiles())
+      .catch((err) => setError(err.message));
   }
 
   function sendMessage() {
-    if (!chatInput.trim() || !ws.current) return;
+    if (!chatInput.trim()) return;
+    if (ws.current?.readyState !== WebSocket.OPEN) {
+      setChatError("Chat is not connected. Refresh the page to reconnect.");
+      return;
+    }
     ws.current.send(JSON.stringify({ username, content: chatInput }));
     setChatInput("");
   }
@@ -142,6 +126,7 @@ function Board() {
     if (!destination) return;
 
     const newStatus = destination.droppableId;
+    if (newStatus === result.source.droppableId) return;
     updateTaskStatus(draggableId, newStatus);
 
     setTasks((prev) =>
@@ -182,6 +167,10 @@ function Board() {
             </h1>
           </div>
         </div>
+
+        {error && (
+          <p role="alert" style={{ color: "#F85149", fontSize: "13px", marginBottom: "1rem" }}>{error}</p>
+        )}
 
         <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1.25rem", marginBottom: "2rem", display: "flex", gap: "0.75rem" }}>
           <input
