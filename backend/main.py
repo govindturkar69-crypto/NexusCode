@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from typing import Literal, get_args
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from database import engine, get_db, Base, SessionLocal
-from models import UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel
+from models import UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel, TASK_STATUSES
 from auth import hash_password, verify_password, create_access_token, decode_access_token, create_oauth_state, verify_oauth_state
 from ai import generate_code, detect_bugs, generate_docs, AIQuotaExceededError, AIServiceBusyError
 from files import upload_file_to_cloudinary
@@ -82,8 +83,12 @@ class TaskCreate(BaseModel):
     title: str
     description: str | None = None
 
+TaskStatus = Literal["todo", "in_progress", "done"]
+# The API schema and the DB CHECK constraint must allow exactly the same values
+assert get_args(TaskStatus) == TASK_STATUSES
+
 class TaskUpdate(BaseModel):
-    status: str
+    status: TaskStatus
 
 class CodeGenRequest(BaseModel):
     prompt: str
@@ -502,7 +507,7 @@ def get_analytics(db: Session = Depends(get_db), current_user: UserModel = Depen
         return {
             "total_projects": 0,
             "total_tasks": 0,
-            "tasks_by_status": {"todo": 0, "in_progress": 0, "done": 0},
+            "tasks_by_status": {status: 0 for status in TASK_STATUSES},
             "total_files": 0,
             "total_messages": 0,
         }
@@ -510,11 +515,7 @@ def get_analytics(db: Session = Depends(get_db), current_user: UserModel = Depen
     tasks = db.query(TaskModel).filter(TaskModel.project_id.in_(project_ids)).all()
     total_tasks = len(tasks)
 
-    tasks_by_status = {
-        "todo": len([t for t in tasks if t.status == "todo"]),
-        "in_progress": len([t for t in tasks if t.status == "in_progress"]),
-        "done": len([t for t in tasks if t.status == "done"]),
-    }
+    tasks_by_status = {status: len([t for t in tasks if t.status == status]) for status in TASK_STATUSES}
 
     total_files = db.query(FileModel).filter(FileModel.project_id.in_(project_ids)).count()
     total_messages = db.query(MessageModel).filter(MessageModel.project_id.in_(project_ids)).count()

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, CheckConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -28,13 +28,21 @@ class ProjectModel(Base):
     messages = relationship("MessageModel", back_populates="project", cascade="all, delete-orphan")
     code_file = relationship("CodeFileModel", back_populates="project", cascade="all, delete-orphan", uselist=False)
 
+TASK_STATUSES = ("todo", "in_progress", "done")
+
 class TaskModel(Base):
     __tablename__ = "tasks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN (" + ", ".join(f"'{s}'" for s in TASK_STATUSES) + ")",
+            name="ck_tasks_status",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    status = Column(String, default="todo")
+    status = Column(String, nullable=False, default="todo", server_default="todo")
 
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     project = relationship("ProjectModel", back_populates="tasks")
