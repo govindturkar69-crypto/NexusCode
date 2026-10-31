@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 from typing import Literal, get_args
 from urllib.parse import urlencode
 
@@ -11,8 +12,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from pydantic_core import PydanticCustomError
 
 from database import engine, get_db, Base, SessionLocal
 from models import UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel, TASK_STATUSES
@@ -68,9 +71,32 @@ def get_current_admin(current_user: UserModel = Depends(get_current_user)):
     return current_user
 
 # Pydantic models — these define the shape of data going in/out of the API
+USERNAME_PATTERN = re.compile(r"^[a-z0-9_]{3,30}$")
+
 class UserCreate(BaseModel):
     username: str
     password: str
+
+    # PydanticCustomError keeps the message clean (no "Value error, " prefix)
+    # so the frontend can show it as-is.
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        if not USERNAME_PATTERN.fullmatch(value):
+            raise PydanticCustomError(
+                "username_invalid",
+                "Username must be 3-30 characters using only lowercase letters, numbers and _",
+            )
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        # bcrypt only looks at the first 72 bytes, so cap there instead of
+        # silently ignoring the rest.
+        if not 8 <= len(value.encode("utf-8")) <= 72:
+            raise PydanticCustomError("password_invalid", "Password must be between 8 and 72 bytes long")
+        return value
 
 class Token(BaseModel):
     access_token: str
@@ -120,18 +146,23 @@ def health():
         return JSONResponse(status_code=503, content={"status": "error", "database": "unreachable"})
     return {"status": "ok", "database": "ok"}
 
-@app.post("/signup")
+@app.post("/signup", status_code=201)
 def signup(user: UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(UserModel).filter(UserModel.username == user.username).first()
     if existing_user:
-        return {"error": "Username already taken"}
+        raise HTTPException(status_code=409, detail="Username already taken")
 
     new_user = UserModel(
         username=user.username,
         hashed_password=hash_password(user.password)
     )
     db.add(new_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two sign-ups for the same name at the same moment: the unique index wins
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Username already taken")
     db.refresh(new_user)
     return {"message": "User created successfully", "username": new_user.username}
 
