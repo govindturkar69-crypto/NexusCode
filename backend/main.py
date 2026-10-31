@@ -9,7 +9,8 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, WebSocket
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
@@ -107,6 +108,17 @@ class PushToGithubRequest(BaseModel):
 @app.get("/")
 def read_root():
     return {"message": "Hello! Your FastAPI server is running."}
+
+@app.get("/health")
+def health():
+    """Liveness + database check for Docker HEALTHCHECK and Render health checks."""
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("Health check: database unreachable")
+        return JSONResponse(status_code=503, content={"status": "error", "database": "unreachable"})
+    return {"status": "ok", "database": "ok"}
 
 @app.post("/signup")
 def signup(user: UserCreate, db: Session = Depends(get_db)):

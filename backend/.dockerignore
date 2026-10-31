@@ -1,0 +1,13 @@
+# Secrets and local environments must never end up in the image
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git/
+Dockerfile
+.dockerignore
