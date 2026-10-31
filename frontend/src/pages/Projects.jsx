@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { apiFetch, clearToken } from "../api/client";
+import { apiFetch } from "../api/client";
+import { useAuth } from "../auth/useAuth";
 
 const GITHUB_MESSAGES = {
   connected: { text: "GitHub account connected.", color: "#7EE787" },
@@ -11,8 +12,9 @@ function Projects() {
   const [projects, setProjects] = useState([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const isAdmin = Boolean(user?.is_admin);
   const [searchParams] = useSearchParams();
   // Set by the backend when it redirects back here after GitHub OAuth
   const githubMessage = GITHUB_MESSAGES[searchParams.get("github")];
@@ -28,9 +30,6 @@ function Projects() {
 
   useEffect(() => {
     fetchProjects();
-    apiFetch("/me")
-      .then((data) => setIsAdmin(Boolean(data.is_admin)))
-      .catch(() => setIsAdmin(false));
   }, [fetchProjects]);
 
   function createProject() {
@@ -54,7 +53,7 @@ function Projects() {
   }
 
   function logout() {
-    clearToken();
+    signOut();
     navigate("/login");
   }
 
@@ -73,7 +72,7 @@ function Projects() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
           <div>
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "13px", color: "#58A6FF", marginBottom: "0.3rem" }}>
-              $ your-workspace
+              $ {user ? `${user.username}-workspace` : "your-workspace"}
             </div>
             <h1 style={{ fontFamily: "'JetBrains Mono', monospace", color: "#E6EDF3", fontSize: "24px", margin: 0, fontWeight: 600 }}>
               My Projects

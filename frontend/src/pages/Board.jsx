@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { apiFetch, wsUrl } from "../api/client";
+import { useAuth } from "../auth/useAuth";
 
 // Matches the server-side limit
 const MAX_CHAT_MESSAGE_LENGTH = 2000;
@@ -18,7 +19,7 @@ function Board() {
   const [chatError, setChatError] = useState("");
   const [error, setError] = useState("");
   const ws = useRef(null);
-  const username = "govind";
+  const { user } = useAuth();
 
   const fetchTasks = useCallback(() => {
     return apiFetch(`/projects/${projectId}/tasks`)
@@ -117,7 +118,8 @@ function Board() {
       setChatError("Chat is not connected. Refresh the page to reconnect.");
       return;
     }
-    ws.current.send(JSON.stringify({ username, content: chatInput }));
+    // The server attaches our username from the token
+    ws.current.send(JSON.stringify({ content: chatInput }));
     setChatInput("");
   }
 
@@ -281,7 +283,9 @@ function Board() {
                 )}
                 {messages.map((msg, idx) => (
                   <div key={msg.id || idx} style={{ marginBottom: "0.5rem" }}>
-                    <span style={{ color: "#58A6FF", fontSize: "12px", fontWeight: 600 }}>{msg.username}: </span>
+                    <span style={{ color: msg.username === user?.username ? "#7EE787" : "#58A6FF", fontSize: "12px", fontWeight: 600 }}>
+                      {msg.username === user?.username ? `${msg.username} (you)` : msg.username}:{" "}
+                    </span>
                     <span style={{ color: "#E6EDF3", fontSize: "13px" }}>{msg.content}</span>
                   </div>
                 ))}

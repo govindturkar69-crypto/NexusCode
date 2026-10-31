@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { apiFetch, setToken } from "../api/client";
+import { apiFetch } from "../api/client";
+import { useAuth } from "../auth/useAuth";
 
 function Login() {
   const [username, setUsername] = useState("");
@@ -9,6 +10,7 @@ function Login() {
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { signIn } = useAuth();
   // Where ProtectedRoute was sending the user before they were bounced here
   const redirectTo = location.state?.from?.pathname ?? "/projects";
 
@@ -23,7 +25,7 @@ function Login() {
 
     apiFetch("/login", { method: "POST", form, auth: false })
       .then((data) => {
-        setToken(data.access_token);
+        signIn(data.access_token);
         navigate(redirectTo, { replace: true });
       })
       .catch((err) => setError(err.status === 401 ? "Invalid username or password" : err.message))
@@ -96,7 +98,8 @@ function Login() {
             </label>
             <input
               type="text"
-              placeholder="govind"
+              placeholder="your_username"
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               style={inputStyle}
@@ -117,6 +120,7 @@ function Login() {
             <input
               type="password"
               placeholder="••••••••"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               style={inputStyle}
