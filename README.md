@@ -19,8 +19,8 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 
 | Feature | Description |
 |---|---|
-| 🔐 **Secure Authentication** | JWT-based signup/login with bcrypt password hashing |
-| 👥 **Team Collaboration** | Project ownership model with per-user data isolation |
+| 🔐 **Secure Authentication** | Sign-up and login screens, JWT auth with bcrypt password hashing, protected routes |
+| 👤 **Private Workspaces** | Each project belongs to one user; projects can't be shared with teammates yet |
 | 📈 **Project Management (Kanban)** | Drag-and-drop task board (`@hello-pangea/dnd`) with live status sync |
 | 💻 **Online Code Editor** | Monaco Editor (the engine behind VS Code) with auto-save and language switching |
 | 🤖 **AI Code Generation** | Generate code from natural-language prompts via Gemini |
@@ -28,9 +28,11 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 | 📄 **AI Documentation** | Auto-generated Markdown documentation for any code snippet |
 | 🐙 **GitHub Integration** | Full OAuth flow — authorize once, then push code from the editor directly to a new GitHub repo |
 | 📂 **File Manager** | Upload/download project files via Cloudinary cloud storage |
-| 💬 **Real-time Chat** | Per-project chat over WebSockets, with persisted history |
+| 💬 **Real-time Chat** | Per-project chat over authenticated WebSockets, with persisted history |
+| 📹 **Video Meeting** | 1:1 WebRTC video call per project, with authenticated signaling |
 | 📊 **Analytics Dashboard** | Live charts (Recharts) summarizing projects, tasks, files, and messages |
-| 🐳 **Docker Support** | Fully containerized backend with a working `Dockerfile` |
+| 🛠️ **Admin Dashboard** | Platform-wide stats, users, and projects for admin accounts |
+| 🐳 **Docker Support** | Containerized backend running as a non-root user, with a `/health` check |
 | 🚀 **Live Deployment** | Backend + DB on Render, frontend on Vercel |
 
 ---
@@ -58,7 +60,7 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 - Docker (containerized backend)
 - Render (backend + managed PostgreSQL)
 - Vercel (frontend static hosting)
-- GitHub Actions–ready repo structure (CI/CD as a future extension)
+- No CI/CD pipeline yet
 
 ---
 
@@ -90,19 +92,28 @@ NexusCode/
 │   ├── ai.py                  # Gemini integration (code gen, bug detection, docs)
 │   ├── files.py               # Cloudinary upload logic
 │   ├── github_oauth.py       # GitHub OAuth flow + repo API calls
-│   ├── websocket_manager.py # Chat connection manager
+│   ├── websocket_manager.py # Chat + video-meeting connection managers
 │   ├── Dockerfile
+│   ├── .env.example
 │   └── requirements.txt
 └── frontend/
     ├── src/
+    │   ├── api/client.js          # apiFetch wrapper (auth header, errors, 401 → login)
+    │   ├── auth/                  # AuthProvider + useAuth (logged-in user)
+    │   ├── components/ProtectedRoute.jsx
     │   ├── pages/
-    │   │   ├── Login.jsx
+    │   │   ├── Login.jsx          # Sign in + create account
     │   │   ├── Projects.jsx
     │   │   ├── Board.jsx          # Kanban + Files + Chat
     │   │   ├── CodeEditor.jsx     # Monaco + AI + GitHub push
     │   │   ├── AIAssistant.jsx
-    │   │   └── Dashboard.jsx
+    │   │   ├── Dashboard.jsx
+    │   │   ├── AdminDashboard.jsx
+    │   │   ├── VideoMeeting.jsx
+    │   │   └── NotFound.jsx
     │   └── App.jsx                 # Routing
+    ├── vercel.json                 # SPA rewrites + security headers
+    ├── .env.example
     └── package.json
 ```
 
@@ -125,17 +136,15 @@ venv\Scripts\activate        # Windows
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in `backend/`:
+Copy `backend/.env.example` to `backend/.env` and fill it in. The server refuses to start without these:
 
 ```env
-GEMINI_API_KEY=your_key_here
-CLOUDINARY_CLOUD_NAME=your_value
-CLOUDINARY_API_KEY=your_value
-CLOUDINARY_API_SECRET=your_value
-GITHUB_CLIENT_ID=your_value
-GITHUB_CLIENT_SECRET=your_value
-GITHUB_REDIRECT_URI=http://localhost:8000/auth/github/callback
+JWT_SECRET=          # python -c "import secrets; print(secrets.token_urlsafe(64))"
+FRONTEND_URL=http://localhost:5173
+DB_PASSWORD=         # or set DATABASE_URL instead of the DB_* variables
 ```
+
+The rest (`GEMINI_API_KEY`, `CLOUDINARY_*`, `GITHUB_CLIENT_ID/SECRET`, `GITHUB_REDIRECT_URI`) are needed for the AI, file upload and GitHub features. See `.env.example` for every key.
 
 Run the server:
 
@@ -152,11 +161,13 @@ cd frontend
 npm install
 ```
 
-Create a `.env` file in `frontend/`:
+Copy `frontend/.env.example` to `frontend/.env`:
 
 ```env
 VITE_API_URL=http://127.0.0.1:8000
 ```
+
+On Vercel, set `VITE_API_URL` under Project Settings → Environment Variables instead.
 
 Run the dev server:
 
@@ -182,17 +193,19 @@ docker run -p 8000:8000 --env-file .env -e DB_HOST=host.docker.internal nexuscod
 - **One code file per project** (for now) — kept the editor scope focused; multi-file support is a natural extension.
 - **Cloudinary over local disk** — production-realistic file storage that survives redeploys.
 - **Cascading deletes** — deleting a project cleans up its tasks, files, messages, and code file automatically via SQLAlchemy relationships.
-- **Environment-variable-driven config** — database credentials and API URLs are never hardcoded, so the same codebase runs locally, in Docker, and in production without code changes.
+- **Environment-variable-driven config** — secrets, database credentials and the frontend URL come only from environment variables, with no hardcoded fallbacks, so the same codebase runs locally, in Docker, and in production without code changes. (Earlier commits did contain hardcoded values; those have been removed and should be treated as rotated.)
 
 ---
 
 ## 🚧 Known Limitations / Future Improvements
 
-- GitHub OAuth currently associates the connected account with a fixed test user rather than tracking the initiating user via OAuth `state` — a production version would fix this.
-- WebSocket chat does not currently enforce JWT authentication on the connection itself.
+- No team collaboration yet: projects can't be shared, so chat and meetings are only reachable by the project owner.
+- Video meetings are 1:1 and use public STUN only (no TURN server), so calls can fail on strict networks.
+- No database migrations yet (tables are created on startup); schema changes need manual SQL.
+- No automated tests or CI/CD pipeline yet.
 - Single code file per project (no multi-file project support yet).
 - No light theme toggle yet (dark theme only).
-- Stretch goals not yet implemented: video meetings (WebRTC), notifications, admin dashboard, CI/CD pipeline.
+- Not yet implemented: notifications, password reset.
 
 ---
 
