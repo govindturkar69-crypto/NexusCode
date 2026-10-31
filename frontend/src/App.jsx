@@ -7,6 +7,7 @@ import CodeEditor from "./pages/CodeEditor";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import VideoMeeting from "./pages/VideoMeeting";
+import NotFound from "./pages/NotFound";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/projects/:projectId/meeting" element={<VideoMeeting />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   );
