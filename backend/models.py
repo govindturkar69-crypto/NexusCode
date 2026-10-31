@@ -2,13 +2,6 @@ from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from database import Base
 
-class TodoModel(Base):
-    __tablename__ = "todos"
-
-    id = Column(Integer, primary_key=True, index=True)
-    task = Column(String, nullable=False)
-    done = Column(Boolean, default=False)
-
 class UserModel(Base):
     __tablename__ = "users"
 

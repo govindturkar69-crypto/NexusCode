@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from database import engine, get_db, Base, SessionLocal
-from models import TodoModel, UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel
+from models import UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel
 from auth import hash_password, verify_password, create_access_token, decode_access_token, create_oauth_state, verify_oauth_state
 from ai import generate_code, detect_bugs, generate_docs, AIQuotaExceededError, AIServiceBusyError
 from files import upload_file_to_cloudinary
@@ -66,13 +66,6 @@ def get_current_admin(current_user: UserModel = Depends(get_current_user)):
     return current_user
 
 # Pydantic models — these define the shape of data going in/out of the API
-class Todo(BaseModel):
-    task: str
-    done: bool = False
-
-class TodoUpdate(BaseModel):
-    done: bool
-
 class UserCreate(BaseModel):
     username: str
     password: str
@@ -109,38 +102,6 @@ class PushToGithubRequest(BaseModel):
 @app.get("/")
 def read_root():
     return {"message": "Hello! Your FastAPI server is running."}
-
-@app.get("/todos")
-def get_todos(db: Session = Depends(get_db)):
-    todos = db.query(TodoModel).all()
-    return {"todos": todos}
-
-@app.post("/todos")
-def add_todo(todo: Todo, db: Session = Depends(get_db)):
-    new_todo = TodoModel(task=todo.task, done=todo.done)
-    db.add(new_todo)
-    db.commit()
-    db.refresh(new_todo)
-    return {"message": "Todo added", "todo": new_todo}
-
-@app.delete("/todos/{todo_id}")
-def delete_todo(todo_id: int, db: Session = Depends(get_db)):
-    todo = db.query(TodoModel).filter(TodoModel.id == todo_id).first()
-    if not todo:
-        return {"error": "Todo not found"}
-    db.delete(todo)
-    db.commit()
-    return {"message": "Todo removed"}
-
-@app.put("/todos/{todo_id}")
-def update_todo(todo_id: int, update: TodoUpdate, db: Session = Depends(get_db)):
-    todo = db.query(TodoModel).filter(TodoModel.id == todo_id).first()
-    if not todo:
-        return {"error": "Todo not found"}
-    todo.done = update.done
-    db.commit()
-    db.refresh(todo)
-    return {"message": "Todo updated", "todo": todo}
 
 @app.post("/signup")
 def signup(user: UserCreate, db: Session = Depends(get_db)):
