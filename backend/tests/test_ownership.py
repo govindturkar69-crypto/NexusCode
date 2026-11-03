@@ -5,7 +5,6 @@ doesn't own that project, and must refuse anonymous callers.
 import io
 
 import pytest
-
 from conftest import auth, set_github_token
 
 

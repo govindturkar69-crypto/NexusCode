@@ -1,5 +1,5 @@
+
 from fastapi import WebSocket
-from typing import Dict, List
 
 
 class _RoomManager:
@@ -7,7 +7,7 @@ class _RoomManager:
 
     def __init__(self):
         # Maps project_id -> list of currently connected WebSocket clients
-        self.active_connections: Dict[int, List[WebSocket]] = {}
+        self.active_connections: dict[int, list[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, project_id: int):
         await websocket.accept()

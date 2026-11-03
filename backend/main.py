@@ -6,24 +6,59 @@ from typing import Literal, get_args
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel, Field, field_validator
+from pydantic_core import PydanticCustomError
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field, field_validator
-from pydantic_core import PydanticCustomError
 
-from database import engine, get_db, Base, SessionLocal
-from models import UserModel, ProjectModel, TaskModel, FileModel, MessageModel, CodeFileModel, TASK_STATUSES
-from auth import hash_password, verify_password, create_access_token, decode_access_token, create_oauth_state, verify_oauth_state
-from ai import generate_code, detect_bugs, generate_docs, AIQuotaExceededError, AIServiceBusyError
+from ai import (
+    AIQuotaExceededError,
+    AIServiceBusyError,
+    detect_bugs,
+    generate_code,
+    generate_docs,
+)
+from auth import (
+    create_access_token,
+    create_oauth_state,
+    decode_access_token,
+    hash_password,
+    verify_oauth_state,
+    verify_password,
+)
+from database import Base, SessionLocal, engine, get_db
 from files import upload_file_to_cloudinary
+from github_oauth import (
+    GitHubAPIError,
+    create_github_repo,
+    exchange_code_for_token,
+    get_github_authorize_url,
+    push_file_to_repo,
+)
+from models import (
+    TASK_STATUSES,
+    CodeFileModel,
+    FileModel,
+    MessageModel,
+    ProjectModel,
+    TaskModel,
+    UserModel,
+)
 from websocket_manager import manager, video_manager
-from github_oauth import get_github_authorize_url, exchange_code_for_token, create_github_repo, push_file_to_repo, GitHubAPIError
 
 load_dotenv()
 
@@ -162,7 +197,7 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
     except IntegrityError:
         # Two sign-ups for the same name at the same moment: the unique index wins
         db.rollback()
-        raise HTTPException(status_code=409, detail="Username already taken")
+        raise HTTPException(status_code=409, detail="Username already taken") from None
     db.refresh(new_user)
     return {"message": "User created successfully", "username": new_user.username}
 
@@ -283,7 +318,7 @@ def ai_generate_code(request: CodeGenRequest, current_user: UserModel = Depends(
         result = generate_code(request.prompt)
         return {"result": result}
     except (AIQuotaExceededError, AIServiceBusyError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 @app.post("/ai/detect-bugs")
 def ai_detect_bugs(request: CodeReviewRequest, current_user: UserModel = Depends(get_current_user)):
@@ -291,7 +326,7 @@ def ai_detect_bugs(request: CodeReviewRequest, current_user: UserModel = Depends
         result = detect_bugs(request.code)
         return {"result": result}
     except (AIQuotaExceededError, AIServiceBusyError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 @app.post("/ai/generate-docs")
 def ai_generate_docs(request: CodeReviewRequest, current_user: UserModel = Depends(get_current_user)):
@@ -299,7 +334,7 @@ def ai_generate_docs(request: CodeReviewRequest, current_user: UserModel = Depen
         result = generate_docs(request.code)
         return {"result": result}
     except (AIQuotaExceededError, AIServiceBusyError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 @app.post("/projects/{project_id}/files")
 async def upload_file(project_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
@@ -526,12 +561,12 @@ def push_to_github(project_id: int, request: PushToGithubRequest, db: Session = 
     try:
         repo_result = create_github_repo(current_user.github_token, request.repo_name, request.private)
     except GitHubAPIError as e:
-        raise _github_http_error(e, "Could not create the repository")
+        raise _github_http_error(e, "Could not create the repository") from e
 
     try:
         push_file_to_repo(current_user.github_token, repo_result["full_name"], filename, code_file.content or "")
     except GitHubAPIError as e:
-        raise _github_http_error(e, f"Repository {repo_result['full_name']} was created, but pushing {filename} failed")
+        raise _github_http_error(e, f"Repository {repo_result['full_name']} was created, but pushing {filename} failed") from e
 
     return {
         "message": "Pushed to GitHub successfully",

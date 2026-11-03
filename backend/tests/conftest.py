@@ -35,8 +35,8 @@ from database import Base, SessionLocal, engine  # noqa: E402
 
 # Real bcrypt, but at the minimum cost so the suite stays fast
 auth_module.pwd_context.update(bcrypt__rounds=4)
-from models import UserModel  # noqa: E402
 import websocket_manager  # noqa: E402
+from models import UserModel  # noqa: E402
 
 DEFAULT_PASSWORD = "correct-horse-1"
 

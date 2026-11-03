@@ -1,9 +1,9 @@
 import io
 
 import pytest
+from conftest import auth
 from sqlalchemy.exc import IntegrityError
 
-from conftest import auth
 from database import SessionLocal
 from models import TaskModel
 

@@ -1,0 +1,14 @@
+target-version = "py312"
+extend-exclude = ["venv", "alembic/versions"]
+
+[lint]
+# pycodestyle errors/warnings, pyflakes, bugbear, import sorting, pyupgrade
+select = ["E", "W", "F", "B", "I", "UP"]
+ignore = [
+    "E501",  # line length: long route signatures; not worth reflowing everything
+    "B008",  # FastAPI's Depends()/File() in default arguments is the intended pattern
+]
+
+[lint.per-file-ignores]
+# conftest sets env vars before importing the app on purpose
+"tests/conftest.py" = ["E402"]

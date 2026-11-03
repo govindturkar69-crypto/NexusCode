@@ -1,5 +1,6 @@
 import os
 import time
+
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors
@@ -24,7 +25,7 @@ class AIServiceBusyError(Exception):
 
 def _generate_with_retry(prompt: str, max_retries: int = 3) -> str:
     last_error = None
-    for attempt in range(max_retries):
+    for _attempt in range(max_retries):
         try:
             response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
             return response.text

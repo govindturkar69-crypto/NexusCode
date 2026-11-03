@@ -1,8 +1,8 @@
 import pytest
+from conftest import auth
 from starlette.websockets import WebSocketDisconnect
 
 import websocket_manager
-from conftest import auth
 
 
 @pytest.fixture

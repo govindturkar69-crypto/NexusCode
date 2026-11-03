@@ -1,7 +1,7 @@
 import pytest
+from conftest import DEFAULT_PASSWORD, auth
 
 from auth import create_access_token, create_oauth_state
-from conftest import DEFAULT_PASSWORD, auth
 
 
 def test_signup_then_login_and_me(client, make_user):

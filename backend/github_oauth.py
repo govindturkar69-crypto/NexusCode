@@ -1,6 +1,7 @@
 import base64
 import os
 from urllib.parse import urlencode
+
 import httpx
 from dotenv import load_dotenv
 
