@@ -11,3 +11,8 @@ frontend/dist/
 # Editor/OS files
 .vscode/
 .DS_Store
+# Test artifacts
+.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+frontend/coverage/
