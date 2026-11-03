@@ -1,20 +1,32 @@
 import hashlib
+import logging
 import threading
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+import jwt
+from jwt import PyJWTError as JWTError
+from pwdlib import PasswordHash
+from pwdlib.exceptions import UnknownHashError
+from pwdlib.hashers.bcrypt import BcryptHasher
 
 from app.core.config import settings
 
-# This object knows how to hash and verify passwords using bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt, cost 12: the same algorithm and cost passlib used, so every existing
+# $2b$12$ hash still verifies (see tests/test_legacy_auth.py)
+password_hasher = PasswordHash((BcryptHasher(rounds=12),))
 
 # Required setting with no default (see app/core/config.py): a missing secret
 # stops the server instead of falling back to a value in the source code.
 SECRET_KEY = settings.jwt_secret
+if len(SECRET_KEY.encode()) < 32:
+    # RFC 7518: HS256 keys should be at least 32 bytes. Not fatal, so a
+    # deployment with an older short secret keeps running.
+    logging.getLogger("nexuscode").warning(
+        "JWT_SECRET is shorter than 32 bytes; generate a longer one with "
+        "python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+    )
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # tokens expire after 1 hour
@@ -22,10 +34,15 @@ OAUTH_STATE_EXPIRE_MINUTES = 10
 OAUTH_STATE_TYPE = "github_oauth_state"
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return password_hasher.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return password_hasher.verify(plain_password, hashed_password)
+    except (ValueError, UnknownHashError):
+        # bcrypt 5 refuses passwords over 72 bytes (sign-up never allows them),
+        # and an unknown hash format can't match: both are simply a wrong login
+        return False
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()

@@ -22,7 +22,7 @@ if _test_db_url and urlparse(_test_db_url).hostname not in ("localhost", "127.0.
 
 _tmp_dir = tempfile.mkdtemp(prefix="nexuscode_tests_")
 os.environ["DATABASE_URL"] = _test_db_url or f"sqlite:///{_tmp_dir}/test.db"
-os.environ["JWT_SECRET"] = "test-only-jwt-secret"
+os.environ["JWT_SECRET"] = "test-only-jwt-secret-padded-to-48-bytes-xxxxxxx"
 os.environ["FRONTEND_URL"] = "http://frontend.test"
 os.environ["GEMINI_API_KEY"] = "test-gemini-key"
 os.environ["CLOUDINARY_CLOUD_NAME"] = "test-cloud"
@@ -37,6 +37,8 @@ import pytest  # noqa: E402
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from pwdlib import PasswordHash  # noqa: E402
+from pwdlib.hashers.bcrypt import BcryptHasher  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from app.core import security as auth_module  # noqa: E402
@@ -50,7 +52,7 @@ from app.services import realtime as websocket_manager  # noqa: E402
 from app.services import storage  # noqa: E402
 
 # Real bcrypt, but at the minimum cost so the suite stays fast
-auth_module.pwd_context.update(bcrypt__rounds=4)
+auth_module.password_hasher = PasswordHash((BcryptHasher(rounds=4),))
 
 DEFAULT_PASSWORD = "correct-horse-1"
 

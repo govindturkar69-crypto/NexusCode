@@ -1,0 +1,15 @@
+# Store text files with LF everywhere and check them out with LF too, so
+# Docker/Linux tooling sees the same bytes on every OS.
+* text=auto eol=lf
+
+# Never touch binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.woff binary
+*.woff2 binary
