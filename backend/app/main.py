@@ -6,6 +6,8 @@ scripts/migrate.py before starting the app; see the Dockerfile.
 """
 import logging
 import re
+import time
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,11 +17,16 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.observability import configure_logging, init_sentry
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.routers import admin, ai, analytics, auth, chat, files, github, projects, tasks
 from app.services.storage import MAX_UPLOAD_BYTES
 
+configure_logging(settings.log_level, settings.log_format)
+SENTRY_ENABLED = init_sentry(settings.sentry_dsn, settings.sentry_environment, settings.sentry_traces_sample_rate)
+
 logger = logging.getLogger("nexuscode")
+access_logger = logging.getLogger("nexuscode.access")
 
 app = FastAPI(title="NexusCode API")
 app.state.limiter = limiter
@@ -52,7 +59,38 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+
+
+# Registered last, so it is the outermost middleware and sees every response
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """One structured log line per request, tagged with a request id that is
+    also returned as X-Request-ID (and attached to Sentry events). Query
+    strings are never logged, so tickets and codes don't end up in logs."""
+    incoming = request.headers.get("x-request-id", "")
+    request_id = incoming if REQUEST_ID_PATTERN.fullmatch(incoming) else uuid.uuid4().hex
+    if SENTRY_ENABLED:
+        import sentry_sdk
+
+        sentry_sdk.set_tag("request_id", request_id)
+
+    context = {"request_id": request_id, "method": request.method, "path": request.url.path}
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        access_logger.exception("Unhandled error", extra={**context, "status": 500})
+        raise
+    duration_ms = round((time.perf_counter() - start) * 1000, 1)
+    response.headers["X-Request-ID"] = request_id
+    # Health checks run every 30 s; keep them out of the normal log level
+    level = logging.DEBUG if request.url.path == "/health" else logging.INFO
+    access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})
+    return response
 
 for module in (auth, projects, tasks, files, chat, ai, github, analytics, admin):
     app.include_router(module.router)

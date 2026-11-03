@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # Required: Fernet key(s) for encrypting stored GitHub tokens (app/core/crypto.py)
     github_token_enc_key: str = Field(min_length=1)
 
+    # Observability (app/core/observability.py)
+    log_level: str = "INFO"
+    log_format: str = "json"  # or "text" for local development
+    sentry_dsn: str | None = None  # Sentry is off unless this is set
+    sentry_environment: str = "production"
+    sentry_traces_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+
     @field_validator("frontend_url")
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:
