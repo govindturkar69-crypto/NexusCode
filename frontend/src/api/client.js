@@ -95,6 +95,21 @@ export async function apiFetch(path, { method = "GET", body, form, auth = true, 
   return data;
 }
 
+/**
+ * Loads every page of a paginated list endpoint ({ [key]: [...], total }).
+ * Uses the backend's maximum page size, so most lists take one request.
+ */
+export async function apiFetchAll(path, key, { pageSize = 200, signal } = {}) {
+  const items = []
+  const separator = path.includes('?') ? '&' : '?'
+  for (let offset = 0; ; offset += pageSize) {
+    const data = await apiFetch(`${path}${separator}limit=${pageSize}&offset=${offset}`, { signal })
+    const page = data?.[key] ?? []
+    items.push(...page)
+    if (page.length === 0 || items.length >= (data?.total ?? 0)) return items
+  }
+}
+
 // WebSocket URL for a backend path, with the token as ?token= (browsers can't
 // set headers on WebSocket connections).
 export function wsUrl(path) {

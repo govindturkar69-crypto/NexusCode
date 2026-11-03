@@ -2,7 +2,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
@@ -23,15 +23,21 @@ SIGNAL_TYPES = {"offer", "answer", "ice-candidate"}
 
 
 @router.get("/projects/{project_id}/messages", response_model=MessageListResponse)
-def get_project_messages(project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
-    # Oldest first; the auto-increment id follows insertion order
-    messages = (
-        db.query(MessageModel)
-        .filter(MessageModel.project_id == project.id)
-        .order_by(MessageModel.id.asc())
-        .all()
-    )
-    return {"messages": messages}
+def get_project_messages(
+    limit: int = Query(50, ge=1, le=200, description="Messages per page (max 200)"),
+    before: int | None = Query(None, description="Only messages older than this id (the previous page's next_cursor)"),
+    project: ProjectModel = Depends(get_owned_project),
+    db: Session = Depends(get_db),
+):
+    """Newest first. The id is the cursor: it is unique and follows insertion order."""
+    query = db.query(MessageModel).filter(MessageModel.project_id == project.id)
+    if before is not None:
+        query = query.filter(MessageModel.id < before)
+    # Fetch one extra row to know whether an older page exists
+    rows = query.order_by(MessageModel.id.desc()).limit(limit + 1).all()
+    messages = rows[:limit]
+    next_cursor = messages[-1].id if len(rows) > limit else None
+    return {"messages": messages, "next_cursor": next_cursor}
 
 
 def _ws_user_for_project(token: str | None, project_id: int) -> str | None:

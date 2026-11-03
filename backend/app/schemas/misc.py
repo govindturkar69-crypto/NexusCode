@@ -1,6 +1,8 @@
 """Schemas for AI, GitHub, analytics and admin routes."""
 from pydantic import BaseModel, Field
 
+from app.schemas.common import Page
+
 
 class CodeGenRequest(BaseModel):
     prompt: str
@@ -50,7 +52,7 @@ class AdminUserOut(BaseModel):
     project_count: int
 
 
-class AdminUsersResponse(BaseModel):
+class AdminUsersResponse(Page):
     users: list[AdminUserOut]
 
 
@@ -61,7 +63,7 @@ class AdminProjectOut(BaseModel):
     task_count: int
 
 
-class AdminProjectsResponse(BaseModel):
+class AdminProjectsResponse(Page):
     projects: list[AdminProjectOut]
 
 

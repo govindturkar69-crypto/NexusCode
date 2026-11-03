@@ -134,10 +134,10 @@ def test_chat_messages_record_the_sender_id(client, alice, pid):
         assert message.user_id == db.query(UserModel.id).filter(UserModel.username == "alice").scalar()
 
 
-def test_messages_are_oldest_first(client, alice, pid):
+def test_messages_are_newest_first(client, alice, pid):
     with client.websocket_connect(f"/ws/projects/{pid}/chat?token={alice}") as ws:
         for text in ("one", "two", "three"):
             ws.send_json({"content": text})
             ws.receive_json()
     messages = client.get(f"/projects/{pid}/messages", headers=auth(alice)).json()["messages"]
-    assert [m["content"] for m in messages] == ["one", "two", "three"]
+    assert [m["content"] for m in messages] == ["three", "two", "one"]

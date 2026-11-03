@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { apiFetch } from "../api/client";
+import { apiFetch, apiFetchAll } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 
 const GITHUB_MESSAGES = {
@@ -22,8 +22,8 @@ function Projects() {
   const [error, setError] = useState("");
 
   const fetchProjects = useCallback(() => {
-    return apiFetch("/projects")
-      .then((data) => setProjects(data.projects ?? []))
+    return apiFetchAll("/projects", "projects")
+      .then(setProjects)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);

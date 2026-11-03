@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -18,22 +19,29 @@ router = APIRouter(tags=["analytics"])
 
 @router.get("/analytics", response_model=AnalyticsOut)
 def get_analytics(db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
-    project_ids = [p.id for p in db.query(ProjectModel).filter(ProjectModel.owner_id == current_user.id).all()]
+    """Counts are computed in the database (COUNT / GROUP BY), not by loading rows."""
+    owned = ProjectModel.owner_id == current_user.id
 
-    if not project_ids:
-        return {
-            "total_projects": 0,
-            "total_tasks": 0,
-            "tasks_by_status": {status: 0 for status in TASK_STATUSES},
-            "total_files": 0,
-            "total_messages": 0,
-        }
+    total_projects = db.query(func.count(ProjectModel.id)).filter(owned).scalar()
 
-    tasks = db.query(TaskModel).filter(TaskModel.project_id.in_(project_ids)).all()
+    status_counts = dict(
+        db.query(TaskModel.status, func.count(TaskModel.id))
+        .join(ProjectModel, TaskModel.project_id == ProjectModel.id)
+        .filter(owned)
+        .group_by(TaskModel.status)
+        .all()
+    )
+    tasks_by_status = {status: status_counts.get(status, 0) for status in TASK_STATUSES}
+
+    total_files = db.query(func.count(FileModel.id)).join(ProjectModel, FileModel.project_id == ProjectModel.id).filter(owned).scalar()
+    total_messages = (
+        db.query(func.count(MessageModel.id)).join(ProjectModel, MessageModel.project_id == ProjectModel.id).filter(owned).scalar()
+    )
+
     return {
-        "total_projects": len(project_ids),
-        "total_tasks": len(tasks),
-        "tasks_by_status": {status: len([t for t in tasks if t.status == status]) for status in TASK_STATUSES},
-        "total_files": db.query(FileModel).filter(FileModel.project_id.in_(project_ids)).count(),
-        "total_messages": db.query(MessageModel).filter(MessageModel.project_id.in_(project_ids)).count(),
+        "total_projects": total_projects,
+        "total_tasks": sum(tasks_by_status.values()),
+        "tasks_by_status": tasks_by_status,
+        "total_files": total_files,
+        "total_messages": total_messages,
     }

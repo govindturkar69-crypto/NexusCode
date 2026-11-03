@@ -3,7 +3,7 @@ Shared FastAPI dependencies. Every ownership check lives here, so a route
 can't forget one: depend on get_owned_project / get_owned_task /
 get_owned_file instead of querying by id.
 """
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -75,3 +75,23 @@ def get_owned_file(
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
     return file
+
+
+class Pagination:
+    """?limit=&offset= for list endpoints (default 50, max 200)."""
+
+    def __init__(
+        self,
+        limit: int = Query(50, ge=1, le=200, description="Items per page (max 200)"),
+        offset: int = Query(0, ge=0, description="Items to skip"),
+    ):
+        self.limit = limit
+        self.offset = offset
+
+    def apply(self, query):
+        """Returns (items, total) for a SQLAlchemy query."""
+        total = query.order_by(None).count()
+        return query.limit(self.limit).offset(self.offset).all(), total
+
+    def envelope(self, key: str, items, total: int) -> dict:
+        return {key: items, "total": total, "limit": self.limit, "offset": self.offset}

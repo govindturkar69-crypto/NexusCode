@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { apiFetch, ApiError, clearToken, getToken, hasValidToken, setToken, wsUrl } from './client'
+import { apiFetch, apiFetchAll, ApiError, clearToken, getToken, hasValidToken, setToken, wsUrl } from './client'
 import { fakeJwt, inOneHour, stubFetch } from '../test/helpers'
 
 describe('token helpers', () => {
@@ -115,6 +115,33 @@ describe('apiFetch', () => {
     stubFetch([401, {}])
     await apiFetch('/me').catch(() => {})
     expect(replace).not.toHaveBeenCalled()
+  })
+})
+
+describe('apiFetchAll', () => {
+  it('walks every page until the total is reached', async () => {
+    const fetchMock = stubFetch(
+      [200, { tasks: [1, 2], total: 5, limit: 2, offset: 0 }],
+      [200, { tasks: [3, 4], total: 5, limit: 2, offset: 2 }],
+      [200, { tasks: [5], total: 5, limit: 2, offset: 4 }],
+    )
+    await expect(apiFetchAll('/projects/1/tasks', 'tasks', { pageSize: 2 })).resolves.toEqual([1, 2, 3, 4, 5])
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://api.test/projects/1/tasks?limit=2&offset=0',
+      'http://api.test/projects/1/tasks?limit=2&offset=2',
+      'http://api.test/projects/1/tasks?limit=2&offset=4',
+    ])
+  })
+
+  it('uses one request for small lists and appends to existing query strings', async () => {
+    const fetchMock = stubFetch([200, { users: [{ id: 1 }], total: 1 }])
+    await expect(apiFetchAll('/admin/users?x=1', 'users')).resolves.toEqual([{ id: 1 }])
+    expect(fetchMock.mock.calls[0][0]).toBe('http://api.test/admin/users?x=1&limit=200&offset=0')
+  })
+
+  it('stops on an empty page even if total is stale', async () => {
+    stubFetch([200, { files: [1], total: 9 }], [200, { files: [], total: 9 }])
+    await expect(apiFetchAll('/f', 'files', { pageSize: 1 })).resolves.toEqual([1])
   })
 })
 

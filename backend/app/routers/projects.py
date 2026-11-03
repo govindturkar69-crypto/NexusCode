@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, get_owned_project
+from app.core.deps import Pagination, get_current_user, get_owned_project
 from app.models import CodeFileModel, ProjectModel, UserModel
 from app.schemas.project import (
     CodeFileResponse,
@@ -28,9 +28,9 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db), curren
 
 
 @router.get("/projects", response_model=ProjectListResponse)
-def get_my_projects(db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
-    projects = db.query(ProjectModel).filter(ProjectModel.owner_id == current_user.id).order_by(ProjectModel.id).all()
-    return {"projects": projects}
+def get_my_projects(page: Pagination = Depends(), db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    query = db.query(ProjectModel).filter(ProjectModel.owner_id == current_user.id).order_by(ProjectModel.id)
+    return page.envelope("projects", *page.apply(query))
 
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)

@@ -4,7 +4,7 @@ from typing import Literal, get_args
 from pydantic import BaseModel
 
 from app.models import TASK_STATUSES
-from app.schemas.common import ORMModel
+from app.schemas.common import ORMModel, Page
 
 
 class ProjectCreate(BaseModel):
@@ -29,7 +29,7 @@ class ProjectCreatedResponse(ProjectResponse):
     message: str
 
 
-class ProjectListResponse(BaseModel):
+class ProjectListResponse(Page):
     projects: list[ProjectOut]
 
 
@@ -63,7 +63,7 @@ class TaskResponse(BaseModel):
     task: TaskOut
 
 
-class TaskListResponse(BaseModel):
+class TaskListResponse(Page):
     tasks: list[TaskOut]
 
 
@@ -80,7 +80,7 @@ class FileResponse(BaseModel):
     file: FileOut
 
 
-class FileListResponse(BaseModel):
+class FileListResponse(Page):
     files: list[FileOut]
 
 
@@ -94,7 +94,11 @@ class MessageOut(ORMModel):
 
 
 class MessageListResponse(BaseModel):
+    """Newest first. Pass next_cursor as ?before= to get the next (older) page;
+    it is null when there is nothing older."""
+
     messages: list[MessageOut]
+    next_cursor: int | None
 
 
 class CodeFileUpdate(BaseModel):

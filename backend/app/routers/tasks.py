@@ -3,7 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_owned_project, get_owned_task
+from app.core.deps import Pagination, get_owned_project, get_owned_task
 from app.models import ProjectModel, TaskModel
 from app.schemas.project import TaskCreate, TaskListResponse, TaskResponse, TaskUpdate
 
@@ -27,14 +27,9 @@ def create_task(task: TaskCreate, project: ProjectModel = Depends(get_owned_proj
 
 
 @router.get("/projects/{project_id}/tasks", response_model=TaskListResponse)
-def get_project_tasks(project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
-    tasks = (
-        db.query(TaskModel)
-        .filter(TaskModel.project_id == project.id)
-        .order_by(TaskModel.position, TaskModel.id)
-        .all()
-    )
-    return {"tasks": tasks}
+def get_project_tasks(page: Pagination = Depends(), project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+    query = db.query(TaskModel).filter(TaskModel.project_id == project.id).order_by(TaskModel.position, TaskModel.id)
+    return page.envelope("tasks", *page.apply(query))
 
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse)

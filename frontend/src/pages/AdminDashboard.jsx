@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../api/client";
+import { apiFetch, apiFetchAll } from "../api/client";
 
 function AdminDashboard() {
   const [stats, setStats] = useState(null);
@@ -12,13 +12,13 @@ function AdminDashboard() {
   useEffect(() => {
     Promise.all([
       apiFetch("/admin/stats"),
-      apiFetch("/admin/users"),
-      apiFetch("/admin/projects"),
+      apiFetchAll("/admin/users", "users"),
+      apiFetchAll("/admin/projects", "projects"),
     ])
-      .then(([statsData, usersData, projectsData]) => {
+      .then(([statsData, allUsers, allProjects]) => {
         setStats(statsData);
-        setUsers(usersData.users ?? []);
-        setProjects(projectsData.projects ?? []);
+        setUsers(allUsers);
+        setProjects(allProjects);
       })
       .catch((err) => setError(err.message));
   }, []);

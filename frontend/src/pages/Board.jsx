@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { apiFetch, wsUrl } from "../api/client";
+import { apiFetch, apiFetchAll, wsUrl } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 
 // Matches the server-side limit
@@ -15,6 +15,9 @@ function Board() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [messages, setMessages] = useState([]);
+  // Cursor for "Load older messages"; null once the oldest message is loaded
+  const [olderCursor, setOlderCursor] = useState(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState("");
   const [error, setError] = useState("");
@@ -22,24 +25,40 @@ function Board() {
   const { user } = useAuth();
 
   const fetchTasks = useCallback(() => {
-    return apiFetch(`/projects/${projectId}/tasks`)
-      .then((data) => setTasks(data.tasks ?? []))
+    return apiFetchAll(`/projects/${projectId}/tasks`, "tasks")
+      .then(setTasks)
       .catch((err) => setError(err.message));
   }, [projectId]);
 
   const fetchFiles = useCallback(() => {
-    return apiFetch(`/projects/${projectId}/files`)
-      .then((data) => setFiles(data.files ?? []))
+    return apiFetchAll(`/projects/${projectId}/files`, "files")
+      .then(setFiles)
       .catch((err) => setError(err.message));
   }, [projectId]);
 
   useEffect(() => {
     fetchTasks();
     fetchFiles();
+    // The API returns newest first; the chat box shows the oldest at the top
     apiFetch(`/projects/${projectId}/messages`)
-      .then((data) => setMessages(data.messages ?? []))
+      .then((data) => {
+        setMessages([...(data.messages ?? [])].reverse());
+        setOlderCursor(data.next_cursor ?? null);
+      })
       .catch((err) => setError(err.message));
   }, [projectId, fetchTasks, fetchFiles]);
+
+  function loadOlderMessages() {
+    if (olderCursor === null) return;
+    setLoadingOlder(true);
+    apiFetch(`/projects/${projectId}/messages?before=${olderCursor}`)
+      .then((data) => {
+        setMessages((prev) => [...[...(data.messages ?? [])].reverse(), ...prev]);
+        setOlderCursor(data.next_cursor ?? null);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoadingOlder(false));
+  }
 
   useEffect(() => {
     const socket = new WebSocket(wsUrl(`/ws/projects/${projectId}/chat`));
@@ -278,6 +297,11 @@ function Board() {
 
             <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1.25rem", flex: 1, display: "flex", flexDirection: "column" }}>
               <div style={chatBoxStyle}>
+                {olderCursor !== null && (
+                  <button onClick={loadOlderMessages} disabled={loadingOlder} style={{ ...backButtonStyle, marginBottom: "0.75rem" }}>
+                    {loadingOlder ? "Loading..." : "↑ Load older messages"}
+                  </button>
+                )}
                 {messages.length === 0 && (
                   <p style={{ color: "#8B949E", fontSize: "13px" }}>No messages yet. Say hello!</p>
                 )}
