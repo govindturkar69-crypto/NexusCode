@@ -81,7 +81,7 @@ def test_expired_token_is_rejected(client, make_user, monkeypatch):
 
 def test_oauth_state_cannot_be_used_as_login_token(client, make_user):
     make_user("alice")
-    assert client.get("/me", headers=auth(create_oauth_state(1))).status_code == 401
+    assert client.get("/me", headers=auth(create_oauth_state(1, "nonce-hash"))).status_code == 401
 
 
 def test_health_reports_database_ok(client):

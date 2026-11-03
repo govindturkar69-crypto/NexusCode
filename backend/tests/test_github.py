@@ -2,16 +2,24 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from conftest import auth, get_github_token, set_github_token
+from sqlalchemy import text
 
+from app.core.database import engine
+from app.routers import github as github_router
 from app.services import github as github_oauth
 
+ALICE_NONCE = "alice-tab-nonce-0123456789"
+BOB_NONCE = "bob-tab-nonce-9876543210abc"
 
-def _state_for(client, token):
-    url = client.get("/auth/github/login", headers=auth(token)).json()["url"]
-    query = parse_qs(urlparse(url).query)
+
+def _start(client, token, nonce):
+    r = client.post("/auth/github/start", json={"nonce": nonce}, headers=auth(token))
+    assert r.status_code == 200, r.text
+    query = parse_qs(urlparse(r.json()["url"]).query)
     assert query["scope"] == ["repo"]
     assert query["client_id"] == ["test-client-id"]
     assert query["redirect_uri"] == ["http://api.test/auth/github/callback"]
+    assert nonce not in query["state"][0]  # only its hash travels
     return query["state"][0]
 
 
@@ -21,17 +29,76 @@ def _callback(client, **params):
     return r.headers["location"]
 
 
-def test_github_login_requires_auth(client):
-    assert client.get("/auth/github/login").status_code == 401
+def _pending_from(location):
+    assert location.startswith("http://frontend.test/projects#")
+    return parse_qs(urlparse(location).fragment)["github_pending"][0]
 
 
-def test_callback_links_token_to_initiating_user(client, make_user, fake_token_exchange):
+def _complete(client, token, pending, nonce):
+    return client.post("/auth/github/complete", json={"pending": pending, "nonce": nonce}, headers=auth(token))
+
+
+def _link(client, token, nonce, code="c1"):
+    pending = _pending_from(_callback(client, code=code, state=_start(client, token, nonce)))
+    return _complete(client, token, pending, nonce)
+
+
+def test_start_requires_auth_and_a_real_nonce(client, make_user):
+    assert client.post("/auth/github/start", json={"nonce": ALICE_NONCE}).status_code == 401
+    alice = make_user("alice")
+    assert client.post("/auth/github/start", json={"nonce": "short"}, headers=auth(alice)).status_code == 422
+
+
+def test_old_single_step_login_route_is_gone(client, make_user):
+    alice = make_user("alice")
+    assert client.get("/auth/github/login", headers=auth(alice)).status_code == 404
+
+
+def test_full_flow_links_token_to_initiating_user(client, make_user, fake_token_exchange):
     alice = make_user("alice")
     make_user("bob")
-    state = _state_for(client, alice)
-    assert _callback(client, code="c1", state=state) == "http://frontend.test/projects?github=connected"
+    location = _callback(client, code="c1", state=_start(client, alice, ALICE_NONCE))
+    # Nothing is saved until the initiating tab confirms
+    assert get_github_token("alice") is None
+    assert "gho_fake_token" not in location  # the token travels encrypted
+
+    r = _complete(client, alice, _pending_from(location), ALICE_NONCE)
+    assert r.status_code == 200 and r.json() == {"connected": True}
     assert get_github_token("alice") == "gho_fake_token"
     assert get_github_token("bob") is None
+
+
+def test_login_csrf_victim_cannot_be_linked_to_attacker(client, make_user, fake_token_exchange):
+    """Attacker starts a flow and sends the GitHub link to a victim. The victim
+    authorizes, so the callback carries the victim's code with the attacker's state."""
+    attacker = make_user("attacker")
+    victim = make_user("victim")
+    attacker_state = _start(client, attacker, ALICE_NONCE)
+    fake_token_exchange["token"] = "gho_VICTIM_token"
+    pending = _pending_from(_callback(client, code="victim-code", state=attacker_state))
+
+    # The victim's browser completes with the victim's own session and tab nonce
+    assert _complete(client, victim, pending, BOB_NONCE).status_code == 400
+    # Even with the attacker's nonce, the victim's session is the wrong user
+    assert _complete(client, victim, pending, ALICE_NONCE).status_code == 400
+    assert get_github_token("victim") is None
+    assert get_github_token("attacker") is None
+
+
+def test_wrong_nonce_from_same_user_is_rejected(client, make_user, fake_token_exchange):
+    alice = make_user("alice")
+    pending = _pending_from(_callback(client, code="c", state=_start(client, alice, ALICE_NONCE)))
+    assert _complete(client, alice, pending, BOB_NONCE).status_code == 400
+    assert get_github_token("alice") is None
+
+
+def test_tampered_or_expired_pending_is_rejected(client, make_user, fake_token_exchange, monkeypatch):
+    alice = make_user("alice")
+    pending = _pending_from(_callback(client, code="c", state=_start(client, alice, ALICE_NONCE)))
+    assert _complete(client, alice, pending[:-4] + "AAAA", ALICE_NONCE).status_code == 400
+    monkeypatch.setattr(github_router, "PENDING_MAX_AGE_SECONDS", -1)
+    assert _complete(client, alice, pending, ALICE_NONCE).status_code == 400
+    assert get_github_token("alice") is None
 
 
 @pytest.mark.parametrize("params", [
@@ -42,7 +109,6 @@ def test_callback_links_token_to_initiating_user(client, make_user, fake_token_e
 def test_callback_rejects_bad_input(client, make_user, fake_token_exchange, params):
     make_user("alice")
     assert _callback(client, **params).endswith("github=error")
-    assert get_github_token("alice") is None
 
 
 def test_callback_rejects_login_token_as_state(client, make_user, fake_token_exchange):
@@ -54,8 +120,17 @@ def test_failed_exchange_keeps_existing_token(client, make_user, fake_token_exch
     alice = make_user("alice")
     set_github_token("alice", "gho_existing")
     fake_token_exchange["token"] = None
-    assert _callback(client, code="c", state=_state_for(client, alice)).endswith("github=error")
+    assert _callback(client, code="c", state=_start(client, alice, ALICE_NONCE)).endswith("github=error")
     assert get_github_token("alice") == "gho_existing"
+
+
+def test_tokens_are_encrypted_at_rest(client, make_user, fake_token_exchange):
+    alice = make_user("alice")
+    assert _link(client, alice, ALICE_NONCE).status_code == 200
+    with engine.connect() as conn:
+        stored = conn.execute(text("SELECT github_token FROM users WHERE username = 'alice'")).scalar()
+    assert stored.startswith("enc:v1:") and "gho_fake_token" not in stored
+    assert get_github_token("alice") == "gho_fake_token"
 
 
 def test_exchange_code_handles_network_errors(monkeypatch):

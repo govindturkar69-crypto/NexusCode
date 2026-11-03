@@ -9,8 +9,24 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import relationship
+from sqlalchemy.types import TypeDecorator
 
+from app.core.crypto import decrypt_secret, encrypt_secret
 from app.core.database import Base
+
+
+class EncryptedString(TypeDecorator):
+    """A string column that is Fernet-encrypted at rest (see app/core/crypto.py).
+    Python code reads and writes plaintext; the database only sees ciphertext."""
+
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return None if value is None else encrypt_secret(value)
+
+    def process_result_value(self, value, dialect):
+        return None if value is None else decrypt_secret(value)
 
 
 class TimestampMixin:
@@ -26,7 +42,8 @@ class UserModel(TimestampMixin, Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    github_token = Column(String, nullable=True)
+    # Encrypted at rest; existing plaintext rows are encrypted by migration 0004
+    github_token = Column(EncryptedString, nullable=True)
     is_admin = Column(Boolean, default=False)
 
     projects = relationship("ProjectModel", back_populates="owner")

@@ -1,3 +1,21 @@
+"""
+GitHub account linking and push-to-GitHub.
+
+Linking is bound to the browser tab that started it, so a victim can't be
+tricked into linking their GitHub account to an attacker's NexusCode account:
+
+1. POST /auth/github/start (bearer token + a random nonce the tab keeps in
+   sessionStorage) -> GitHub authorize URL whose signed `state` holds the
+   user id and the nonce's hash.
+2. GitHub -> GET /auth/github/callback. The code is exchanged, but the token
+   is NOT saved yet: the browser is sent to the frontend with an encrypted,
+   10-minute "pending" blob in the URL fragment (never sent to servers).
+3. The frontend posts the blob and its nonce to POST /auth/github/complete
+   with its own bearer token. The token is saved only if the blob's user is
+   the logged-in user and the nonce matches.
+"""
+import hmac
+import json
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,12 +23,16 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.crypto import seal, unseal
 from app.core.database import get_db
 from app.core.deps import get_current_user, get_owned_project
-from app.core.security import create_oauth_state, verify_oauth_state
+from app.core.security import create_oauth_state, hash_oauth_nonce, verify_oauth_state
 from app.models import CodeFileModel, ProjectModel, UserModel
 from app.schemas.misc import (
     GitHubAuthorizeUrl,
+    GitHubComplete,
+    GitHubCompleteResponse,
+    GitHubStart,
     PushToGithubRequest,
     PushToGithubResponse,
 )
@@ -19,39 +41,51 @@ from app.services import github
 router = APIRouter(tags=["github"])
 
 LANGUAGE_EXTENSIONS = {"python": "py", "javascript": "js", "java": "java", "cpp": "cpp", "html": "html"}
+PENDING_MAX_AGE_SECONDS = 10 * 60
+LINK_FAILED = "GitHub connection could not be verified. Please try connecting again."
 
 
-def _github_result_redirect(result: str) -> RedirectResponse:
-    """Sends the browser back to the projects page with ?github=connected|error."""
-    return RedirectResponse(url=f"{settings.frontend_url}/projects?{urlencode({'github': result})}")
+def _github_error_redirect() -> RedirectResponse:
+    return RedirectResponse(url=f"{settings.frontend_url}/projects?{urlencode({'github': 'error'})}")
 
 
-@router.get("/auth/github/login", response_model=GitHubAuthorizeUrl)
-def github_login(current_user: UserModel = Depends(get_current_user)):
-    state = create_oauth_state(current_user.id)
+@router.post("/auth/github/start", response_model=GitHubAuthorizeUrl)
+def github_start(body: GitHubStart, current_user: UserModel = Depends(get_current_user)):
+    state = create_oauth_state(current_user.id, hash_oauth_nonce(body.nonce))
     return {"url": github.get_github_authorize_url(state)}
 
 
 @router.get("/auth/github/callback")
-def github_callback(code: str | None = None, state: str | None = None, db: Session = Depends(get_db)):
-    # The signed state tells us which user started the flow. Without a valid
-    # one we can't safely attach a token to anybody.
-    user_id = verify_oauth_state(state) if state else None
-    if not code or user_id is None:
-        return _github_result_redirect("error")
-
-    user = db.query(UserModel).filter(UserModel.id == user_id).first()
-    if user is None:
-        return _github_result_redirect("error")
+def github_callback(code: str | None = None, state: str | None = None):
+    verified = verify_oauth_state(state) if state else None
+    if not code or verified is None:
+        return _github_error_redirect()
+    user_id, nonce_hash = verified
 
     access_token = github.exchange_code_for_token(code)
     if not access_token:
-        # Keep any token the user already had
-        return _github_result_redirect("error")
+        # Nothing is saved, so any token the user already had is kept
+        return _github_error_redirect()
 
-    user.github_token = access_token
+    pending = seal(json.dumps({"uid": user_id, "nh": nonce_hash, "tok": access_token}).encode())
+    # Fragment, not query string: it stays in the browser (no server logs, no Referer)
+    return RedirectResponse(url=f"{settings.frontend_url}/projects#{urlencode({'github_pending': pending})}")
+
+
+@router.post("/auth/github/complete", response_model=GitHubCompleteResponse)
+def github_complete(body: GitHubComplete, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    raw = unseal(body.pending, PENDING_MAX_AGE_SECONDS)
+    if raw is None:
+        raise HTTPException(status_code=400, detail=LINK_FAILED)
+    pending = json.loads(raw)
+    same_user = pending.get("uid") == current_user.id
+    same_tab = hmac.compare_digest(pending.get("nh", ""), hash_oauth_nonce(body.nonce))
+    if not (same_user and same_tab):
+        raise HTTPException(status_code=400, detail=LINK_FAILED)
+
+    current_user.github_token = pending["tok"]
     db.commit()
-    return _github_result_redirect("connected")
+    return {"connected": True}
 
 
 def _github_http_error(error: github.GitHubAPIError, context: str) -> HTTPException:

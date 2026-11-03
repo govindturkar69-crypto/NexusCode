@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch, apiFetchAll } from "../api/client";
+import { completeGithubLink, startGithubLink, takePendingLink } from "../api/github";
 import { useAuth } from "../auth/useAuth";
 
 const GITHUB_MESSAGES = {
@@ -32,6 +33,16 @@ function Projects() {
     fetchProjects();
   }, [fetchProjects]);
 
+  // Coming back from GitHub: finish linking (takePendingLink clears the URL
+  // fragment synchronously, so React StrictMode's second run finds nothing).
+  useEffect(() => {
+    const pending = takePendingLink();
+    if (!pending) return;
+    completeGithubLink(pending)
+      .then(() => navigate("/projects?github=connected", { replace: true }))
+      .catch(() => navigate("/projects?github=error", { replace: true }));
+  }, [navigate]);
+
   function createProject() {
     if (!name.trim()) return;
     setError("");
@@ -59,11 +70,7 @@ function Projects() {
 
   function connectGithub() {
     setError("");
-    apiFetch("/auth/github/login")
-      .then((data) => {
-        window.location.href = data.url;
-      })
-      .catch((err) => setError(err.message));
+    startGithubLink().catch((err) => setError(err.message));
   }
 
   return (

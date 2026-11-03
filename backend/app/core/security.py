@@ -1,4 +1,4 @@
-import secrets
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
@@ -40,27 +40,35 @@ def decode_access_token(token: str):
     except JWTError:
         return None
 
-def create_oauth_state(user_id: int) -> str:
+def hash_oauth_nonce(nonce: str) -> str:
+    return hashlib.sha256(nonce.encode()).hexdigest()
+
+
+def create_oauth_state(user_id: int, nonce_hash: str) -> str:
     """
-    Signed, short-lived OAuth `state` that records which user started the
-    GitHub flow. It has no "sub", so it can never be used as a login token.
+    Signed, short-lived OAuth `state`: which user started the GitHub flow, and
+    the hash of a nonce that only the initiating browser tab knows. It has no
+    "sub", so it can never be used as a login token.
     """
     expire = datetime.now(UTC) + timedelta(minutes=OAUTH_STATE_EXPIRE_MINUTES)
     payload = {
         "typ": OAUTH_STATE_TYPE,
         "uid": user_id,
-        "nonce": secrets.token_urlsafe(16),
+        "nh": nonce_hash,
         "exp": expire,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-def verify_oauth_state(state: str):
-    """Returns the user id stored in a valid state, or None."""
+
+def verify_oauth_state(state: str) -> tuple[int, str] | None:
+    """Returns (user_id, nonce_hash) from a valid state, or None."""
     try:
         payload = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         return None
     if payload.get("typ") != OAUTH_STATE_TYPE:
         return None
-    user_id = payload.get("uid")
-    return user_id if isinstance(user_id, int) else None
+    user_id, nonce_hash = payload.get("uid"), payload.get("nh")
+    if not isinstance(user_id, int) or not isinstance(nonce_hash, str):
+        return None
+    return user_id, nonce_hash

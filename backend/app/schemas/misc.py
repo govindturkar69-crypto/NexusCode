@@ -23,6 +23,20 @@ class GitHubAuthorizeUrl(BaseModel):
     url: str
 
 
+class GitHubStart(BaseModel):
+    # Random value the browser tab keeps in sessionStorage; only its hash goes into `state`
+    nonce: str = Field(min_length=16, max_length=128)
+
+
+class GitHubComplete(BaseModel):
+    pending: str = Field(min_length=1, max_length=4096)
+    nonce: str = Field(min_length=16, max_length=128)
+
+
+class GitHubCompleteResponse(BaseModel):
+    connected: bool
+
+
 class PushToGithubRequest(BaseModel):
     repo_name: str = Field(pattern=r"^[A-Za-z0-9._-]{1,100}$")
     private: bool = True

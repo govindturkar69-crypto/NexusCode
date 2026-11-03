@@ -31,6 +31,7 @@ os.environ["CLOUDINARY_API_SECRET"] = "test-secret"
 os.environ["GITHUB_CLIENT_ID"] = "test-client-id"
 os.environ["GITHUB_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GITHUB_REDIRECT_URI"] = "http://api.test/auth/github/callback"
+os.environ["GITHUB_TOKEN_ENC_KEY"] = "8ZK7f1e0bW0n5x3oZr5yC3w0e8u9pQvB2s4D6f8H0jY="  # test-only Fernet key
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

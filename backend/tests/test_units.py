@@ -124,6 +124,27 @@ def test_settings_strip_frontend_trailing_slash():
     assert config.cors_origins[0] == "https://app.example"
 
 
+def test_secret_encryption_supports_key_rotation():
+    from cryptography.fernet import Fernet
+
+    from app.core import crypto
+
+    old_key, new_key = Fernet.generate_key().decode(), Fernet.generate_key().decode()
+    old_only = crypto.build_fernet(old_key)
+    rotated = crypto.build_fernet(f"{new_key},{old_key}")
+    encrypted_with_old = old_only.encrypt(b"gho_secret")
+    assert rotated.decrypt(encrypted_with_old) == b"gho_secret"  # old rows still readable
+    with pytest.raises(Exception):  # noqa: B017
+        crypto.build_fernet(new_key).decrypt(encrypted_with_old)
+
+
+def test_decrypt_secret_passes_legacy_plaintext_through():
+    from app.core import crypto
+
+    assert crypto.decrypt_secret("gho_legacy") == "gho_legacy"
+    assert crypto.decrypt_secret(crypto.encrypt_secret("gho_new")) == "gho_new"
+
+
 PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 16
 
 

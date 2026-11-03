@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     github_client_id: str | None = None
     github_client_secret: str | None = None
     github_redirect_uri: str | None = None
+    # Required: Fernet key(s) for encrypting stored GitHub tokens (app/core/crypto.py)
+    github_token_enc_key: str = Field(min_length=1)
 
     @field_validator("frontend_url")
     @classmethod
@@ -61,7 +63,8 @@ def get_settings() -> Settings:
             raise RuntimeError(
                 f"Missing required environment variable(s): {', '.join(missing)}. "
                 "JWT_SECRET: python -c \"import secrets; print(secrets.token_urlsafe(64))\"; "
-                "FRONTEND_URL: e.g. http://localhost:5173"
+                "FRONTEND_URL: e.g. http://localhost:5173; "
+                "GITHUB_TOKEN_ENC_KEY: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
             ) from None
         raise
 

@@ -172,6 +172,29 @@ def test_check_constraint_survives_0002(scratch_engine):
             conn.execute(text("INSERT INTO tasks (title, status, project_id) VALUES ('bad', 'bogus', 1)"))
 
 
+def test_0004_encrypts_existing_plaintext_tokens_and_downgrade_restores(scratch_engine):
+    from app.core.crypto import decrypt_secret
+
+    _upgrade(scratch_engine, "0003_file_metadata")
+    with scratch_engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO users (id, username, hashed_password, github_token) VALUES "
+            "(1, 'a', 'h', 'gho_plain_a'), (2, 'b', 'h', NULL)"
+        ))
+    _upgrade(scratch_engine, "0004_encrypt_github_tokens")
+    with scratch_engine.connect() as conn:
+        stored = dict(conn.execute(text("SELECT id, github_token FROM users")).all())
+    assert stored[1].startswith("enc:v1:") and decrypt_secret(stored[1]) == "gho_plain_a"
+    assert stored[2] is None
+
+    config = alembic_config()
+    with scratch_engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0003_file_metadata")
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT github_token FROM users WHERE id = 1")).scalar() == "gho_plain_a"
+
+
 def test_baseline_downgrade_needs_explicit_flag(scratch_engine):
     _upgrade(scratch_engine, "0001_baseline")
     config = alembic_config()
