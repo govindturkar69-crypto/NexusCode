@@ -12,8 +12,8 @@ from alembic.runtime.migration import MigrationContext
 from conftest import BACKEND_DIR, alembic_config
 from sqlalchemy import create_engine, inspect, text
 
-import models  # noqa: F401
-from database import Base, engine
+import app.models  # noqa: F401
+from app.core.database import Base, engine
 
 sys.path.insert(0, str(BACKEND_DIR / "scripts"))
 import check_baseline  # noqa: E402

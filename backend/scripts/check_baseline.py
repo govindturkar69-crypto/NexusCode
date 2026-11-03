@@ -89,7 +89,7 @@ def check(connection) -> list[str]:
 
 
 if __name__ == "__main__":
-    from database import engine
+    from app.core.database import engine
 
     with engine.connect() as conn:
         found = check(conn)

@@ -38,11 +38,14 @@ from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-import auth as auth_module  # noqa: E402
-import main  # noqa: E402
-import websocket_manager  # noqa: E402
-from database import Base, SessionLocal, engine  # noqa: E402
-from models import UserModel  # noqa: E402
+from app.core import security as auth_module  # noqa: E402
+from app.core.database import Base, SessionLocal, engine  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import UserModel  # noqa: E402
+from app.services import ai as ai_service  # noqa: E402
+from app.services import github as github_service  # noqa: E402
+from app.services import realtime as websocket_manager  # noqa: E402
+from app.services import storage  # noqa: E402
 
 # Real bcrypt, but at the minimum cost so the suite stays fast
 auth_module.pwd_context.update(bcrypt__rounds=4)
@@ -85,7 +88,7 @@ def fresh_database(migrated_database):
 
 @pytest.fixture
 def client():
-    with TestClient(main.app) as test_client:
+    with TestClient(app) as test_client:
         yield test_client
 
 
@@ -118,7 +121,7 @@ def project_of(client):
 
     def _create(token, name="Project"):
         r = client.post("/projects", json={"name": name}, headers=auth(token))
-        assert r.status_code in (200, 201), r.text
+        assert r.status_code == 201, r.text
         return r.json()["project"]["id"]
 
     return _create
@@ -145,7 +148,7 @@ def fake_cloudinary(monkeypatch):
         uploads.append((filename, len(file_bytes)))
         return f"https://res.cloudinary.test/{filename}"
 
-    monkeypatch.setattr(main, "upload_file_to_cloudinary", fake_upload)
+    monkeypatch.setattr(storage, "upload_file_to_cloudinary", fake_upload)
     return uploads
 
 
@@ -181,7 +184,7 @@ def fake_github_http(monkeypatch):
 def fake_token_exchange(monkeypatch):
     """Controls what GitHub's code->token exchange returns."""
     result = {"token": "gho_fake_token"}
-    monkeypatch.setattr(main, "exchange_code_for_token", lambda code: result["token"])
+    monkeypatch.setattr(github_service, "exchange_code_for_token", lambda code: result["token"])
     return result
 
 
@@ -196,5 +199,5 @@ def fake_ai(monkeypatch):
         return fake
 
     for name in ("generate_code", "detect_bugs", "generate_docs"):
-        monkeypatch.setattr(main, name, make(name))
+        monkeypatch.setattr(ai_service, name, make(name))
     return calls

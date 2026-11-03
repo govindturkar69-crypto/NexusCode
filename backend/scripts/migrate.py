@@ -55,6 +55,6 @@ def run(engine) -> int:
 
 
 if __name__ == "__main__":
-    from database import engine
+    from app.core.database import engine
 
     sys.exit(run(engine))

@@ -4,8 +4,8 @@ import pytest
 from conftest import auth
 from sqlalchemy.exc import IntegrityError
 
-from database import SessionLocal
-from models import TaskModel
+from app.core.database import SessionLocal
+from app.models import TaskModel
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def test_task_lifecycle(client, alice, pid):
     for status in ("in_progress", "done", "todo"):
         r = client.put(f"/tasks/{task['id']}", json={"status": status}, headers=auth(alice))
         assert r.status_code == 200 and r.json()["task"]["status"] == status
-    assert client.delete(f"/tasks/{task['id']}", headers=auth(alice)).status_code in (200, 204)
+    assert client.delete(f"/tasks/{task['id']}", headers=auth(alice)).status_code == 204
     assert client.get(f"/projects/{pid}/tasks", headers=auth(alice)).json()["tasks"] == []
 
 
@@ -53,7 +53,7 @@ def test_file_upload_list_delete(client, alice, pid, fake_cloudinary):
         files={"file": ("report.pdf", io.BytesIO(b"%PDF-1.4 data"), "application/pdf")},
         headers=auth(alice),
     )
-    assert r.status_code in (200, 201), r.text
+    assert r.status_code == 201, r.text
     file = r.json()["file"]
     assert file["filename"] == "report.pdf"
     assert file["url"].startswith("https://")
@@ -62,7 +62,7 @@ def test_file_upload_list_delete(client, alice, pid, fake_cloudinary):
     files = client.get(f"/projects/{pid}/files", headers=auth(alice)).json()["files"]
     assert [f["filename"] for f in files] == ["report.pdf"]
 
-    assert client.delete(f"/files/{file['id']}", headers=auth(alice)).status_code in (200, 204)
+    assert client.delete(f"/files/{file['id']}", headers=auth(alice)).status_code == 204
     assert client.get(f"/projects/{pid}/files", headers=auth(alice)).json()["files"] == []
     assert client.delete(f"/files/{file['id']}", headers=auth(alice)).status_code == 404
 
@@ -86,7 +86,7 @@ def test_project_create_get_delete(client, alice):
     project = r.json()["project"]
     assert project["name"] == "P" and project["description"] == "d"
     assert client.get(f"/projects/{project['id']}", headers=auth(alice)).json()["project"]["name"] == "P"
-    assert client.delete(f"/projects/{project['id']}", headers=auth(alice)).status_code in (200, 204)
+    assert client.delete(f"/projects/{project['id']}", headers=auth(alice)).status_code == 204
     assert client.delete(f"/projects/{project['id']}", headers=auth(alice)).status_code == 404
 
 
@@ -99,8 +99,8 @@ def test_ai_routes_require_auth_and_call_service(client, alice, fake_ai):
 
 
 def test_ai_quota_and_busy_errors_are_503(client, alice, monkeypatch):
-    import main
-    from ai import AIQuotaExceededError, AIServiceBusyError
+    from app.services import ai as ai_service
+    from app.services.ai import AIQuotaExceededError, AIServiceBusyError
 
     def quota(_):
         raise AIQuotaExceededError("quota reached")
@@ -108,8 +108,8 @@ def test_ai_quota_and_busy_errors_are_503(client, alice, monkeypatch):
     def busy(_):
         raise AIServiceBusyError("busy")
 
-    monkeypatch.setattr(main, "generate_code", quota)
-    monkeypatch.setattr(main, "detect_bugs", busy)
+    monkeypatch.setattr(ai_service, "generate_code", quota)
+    monkeypatch.setattr(ai_service, "detect_bugs", busy)
     r = client.post("/ai/generate-code", json={"prompt": "p"}, headers=auth(alice))
     assert r.status_code == 503 and r.json()["detail"] == "quota reached"
     assert client.post("/ai/detect-bugs", json={"code": "c"}, headers=auth(alice)).status_code == 503
@@ -124,7 +124,7 @@ def test_new_tasks_go_to_the_end_and_have_timestamps(client, alice, pid):
 
 
 def test_chat_messages_record_the_sender_id(client, alice, pid):
-    from models import MessageModel, UserModel
+    from app.models import MessageModel, UserModel
 
     with client.websocket_connect(f"/ws/projects/{pid}/chat?token={alice}") as ws:
         ws.send_json({"content": "hi"})

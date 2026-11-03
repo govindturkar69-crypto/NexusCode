@@ -2,7 +2,7 @@ import pytest
 from conftest import auth
 from starlette.websockets import WebSocketDisconnect
 
-import websocket_manager
+from app.services import realtime as websocket_manager
 
 
 @pytest.fixture

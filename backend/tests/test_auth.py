@@ -1,7 +1,7 @@
 import pytest
 from conftest import DEFAULT_PASSWORD, auth
 
-from auth import create_access_token, create_oauth_state
+from app.core.security import create_access_token, create_oauth_state
 
 
 def test_signup_then_login_and_me(client, make_user):
@@ -72,7 +72,7 @@ def test_token_for_deleted_or_unknown_user_is_rejected(client):
 
 
 def test_expired_token_is_rejected(client, make_user, monkeypatch):
-    import auth as auth_module
+    from app.core import security as auth_module
     make_user("alice")
     monkeypatch.setattr(auth_module, "ACCESS_TOKEN_EXPIRE_MINUTES", -1)
     expired = auth_module.create_access_token({"sub": "alice"})

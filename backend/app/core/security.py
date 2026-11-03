@@ -1,25 +1,17 @@
-import os
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from dotenv import load_dotenv
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-load_dotenv()
+from app.core.config import settings
 
 # This object knows how to hash and verify passwords using bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# The signing secret must come from the environment. There is deliberately no
-# default: a missing secret should stop the server, not silently fall back to
-# a value anyone could read in the source code.
-SECRET_KEY = os.getenv("JWT_SECRET")
-if not SECRET_KEY:
-    raise RuntimeError(
-        "JWT_SECRET environment variable is not set. Generate one with: "
-        "python -c \"import secrets; print(secrets.token_urlsafe(64))\""
-    )
+# Required setting with no default (see app/core/config.py): a missing secret
+# stops the server instead of falling back to a value in the source code.
+SECRET_KEY = settings.jwt_secret
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # tokens expire after 1 hour

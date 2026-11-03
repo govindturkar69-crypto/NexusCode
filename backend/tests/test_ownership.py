@@ -121,7 +121,7 @@ def test_admin_sees_platform_data(client, world, make_user):
 
 def test_owner_can_delete_project_and_children_go_with_it(client, world):
     alice, pid = world["alice"], world["pid"]
-    assert client.delete(f"/projects/{pid}", headers=auth(alice)).status_code in (200, 204)
+    assert client.delete(f"/projects/{pid}", headers=auth(alice)).status_code == 204
     assert client.get(f"/projects/{pid}", headers=auth(alice)).status_code == 404
     stats = client.get("/analytics", headers=auth(alice)).json()
     assert stats["total_tasks"] == 0 and stats["total_files"] == 0 and stats["total_messages"] == 0

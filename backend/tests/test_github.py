@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from conftest import auth, get_github_token, set_github_token
 
-import github_oauth
+from app.services import github as github_oauth
 
 
 def _state_for(client, token):
