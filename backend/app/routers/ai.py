@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.deps import get_current_user
+from app.core.rate_limit import AI_LIMIT, limiter, user_or_ip
 from app.models import UserModel
 from app.schemas.misc import AIResult, CodeGenRequest, CodeReviewRequest
 from app.services import ai
@@ -16,15 +17,18 @@ def _run(fn, text: str) -> dict:
 
 
 @router.post("/generate-code", response_model=AIResult)
-def ai_generate_code(request: CodeGenRequest, current_user: UserModel = Depends(get_current_user)):
-    return _run(ai.generate_code, request.prompt)
+@limiter.limit(AI_LIMIT, key_func=user_or_ip)
+def ai_generate_code(request: Request, body: CodeGenRequest, current_user: UserModel = Depends(get_current_user)):
+    return _run(ai.generate_code, body.prompt)
 
 
 @router.post("/detect-bugs", response_model=AIResult)
-def ai_detect_bugs(request: CodeReviewRequest, current_user: UserModel = Depends(get_current_user)):
-    return _run(ai.detect_bugs, request.code)
+@limiter.limit(AI_LIMIT, key_func=user_or_ip)
+def ai_detect_bugs(request: Request, body: CodeReviewRequest, current_user: UserModel = Depends(get_current_user)):
+    return _run(ai.detect_bugs, body.code)
 
 
 @router.post("/generate-docs", response_model=AIResult)
-def ai_generate_docs(request: CodeReviewRequest, current_user: UserModel = Depends(get_current_user)):
-    return _run(ai.generate_docs, request.code)
+@limiter.limit(AI_LIMIT, key_func=user_or_ip)
+def ai_generate_docs(request: Request, body: CodeReviewRequest, current_user: UserModel = Depends(get_current_user)):
+    return _run(ai.generate_docs, body.code)

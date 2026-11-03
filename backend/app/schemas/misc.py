@@ -3,13 +3,16 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common import Page
 
+# Caps what a single request can send to the AI provider
+MAX_AI_INPUT_CHARS = 20_000
+
 
 class CodeGenRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(max_length=MAX_AI_INPUT_CHARS)
 
 
 class CodeReviewRequest(BaseModel):
-    code: str
+    code: str = Field(max_length=MAX_AI_INPUT_CHARS)
 
 
 class AIResult(BaseModel):

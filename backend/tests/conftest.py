@@ -40,6 +40,7 @@ from sqlalchemy import text  # noqa: E402
 
 from app.core import security as auth_module  # noqa: E402
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
+from app.core.rate_limit import limiter  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import UserModel  # noqa: E402
 from app.services import ai as ai_service  # noqa: E402
@@ -83,7 +84,19 @@ def fresh_database(migrated_database):
             conn.execute(table.delete())
     websocket_manager.manager.active_connections.clear()
     websocket_manager.video_manager.active_connections.clear()
+    # Rate limits are off unless a test opts in with the `rate_limits` fixture
+    limiter.reset()
+    limiter.enabled = False
     yield
+
+
+@pytest.fixture
+def rate_limits():
+    limiter.reset()
+    limiter.enabled = True
+    yield limiter
+    limiter.enabled = False
+    limiter.reset()
 
 
 @pytest.fixture

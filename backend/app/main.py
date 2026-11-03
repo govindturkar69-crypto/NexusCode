@@ -10,16 +10,20 @@ import re
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.routers import admin, ai, analytics, auth, chat, files, github, projects, tasks
 from app.services.storage import MAX_UPLOAD_BYTES
 
 logger = logging.getLogger("nexuscode")
 
 app = FastAPI(title="NexusCode API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 UPLOAD_PATH = re.compile(r"^/projects/\d+/files$")
 # Multipart framing adds a little on top of the file itself
