@@ -141,8 +141,11 @@ Copy `backend/.env.example` to `backend/.env` and fill it in. The server refuses
 ```env
 JWT_SECRET=          # python -c "import secrets; print(secrets.token_urlsafe(64))"
 FRONTEND_URL=http://localhost:5173
+GITHUB_TOKEN_ENC_KEY=  # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 DB_PASSWORD=         # or set DATABASE_URL instead of the DB_* variables
 ```
+
+Keep `GITHUB_TOKEN_ENC_KEY` safe and stable: stored GitHub tokens can't be read without it (users would just have to reconnect GitHub).
 
 The rest (`GEMINI_API_KEY`, `CLOUDINARY_*`, `GITHUB_CLIENT_ID/SECRET`, `GITHUB_REDIRECT_URI`) are needed for the AI, file upload and GitHub features. See `.env.example` for every key.
 
@@ -183,6 +186,35 @@ App available at `http://localhost:5173`.
 cd backend
 docker build -t nexuscode-backend .
 docker run -p 8000:8000 --env-file .env -e DB_HOST=host.docker.internal nexuscode-backend
+```
+
+The container runs `scripts/migrate.py` before starting the API, so the schema is always up to date.
+
+### Database migrations (Alembic)
+
+Tables are created and changed only through Alembic migrations in `backend/alembic/versions`.
+
+```bash
+cd backend
+python scripts/migrate.py                          # upgrade to the latest schema (safe to run any time)
+alembic revision --autogenerate -m "describe it"   # after changing models.py; review the generated file
+alembic current                                    # show the database's revision
+```
+
+`scripts/migrate.py` refuses to run on a database that has tables but was never stamped (created before Alembic), so nothing gets recreated. To adopt such a database, once:
+
+```bash
+python scripts/check_baseline.py   # read-only: confirms the schema matches 0001_baseline
+alembic stamp 0001_baseline        # records the revision; changes no tables
+python scripts/migrate.py          # applies every migration after the baseline
+```
+
+### Tests
+
+```bash
+cd backend && pip install -r requirements-dev.txt && pytest       # SQLite by default
+TEST_DATABASE_URL=postgresql://postgres:test@localhost:5432/test pytest   # throwaway local Postgres (it gets wiped)
+cd frontend && npm test
 ```
 
 ---

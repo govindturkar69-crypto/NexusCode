@@ -61,7 +61,7 @@ function redirectToLogin() {
  * - throws ApiError on any non-2xx response
  * - on 401 for an authenticated call: clears the token and goes to /login
  */
-export async function apiFetch(path, { method = "GET", body, form, auth = true, signal } = {}) {
+export async function apiFetch(path, { method = "GET", body, form, auth = true, signal, keepalive } = {}) {
   const headers = {};
   const token = getToken();
   if (auth && token) headers.Authorization = `Bearer ${token}`;
@@ -76,7 +76,8 @@ export async function apiFetch(path, { method = "GET", body, form, auth = true, 
 
   let res;
   try {
-    res = await fetch(`${API_URL}${path}`, { method, headers, body: payload, signal });
+    // keepalive lets a request finish while the page is being left (editor autosave)
+    res = await fetch(`${API_URL}${path}`, { method, headers, body: payload, signal, keepalive });
   } catch (err) {
     if (err.name === "AbortError") throw err;
     throw new ApiError("Can't reach the server. Check your connection and try again.", 0);
@@ -95,9 +96,32 @@ export async function apiFetch(path, { method = "GET", body, form, auth = true, 
   return data;
 }
 
-// WebSocket URL for a backend path, with the token as ?token= (browsers can't
-// set headers on WebSocket connections).
-export function wsUrl(path) {
+/**
+ * Loads every page of a paginated list endpoint ({ [key]: [...], total }).
+ * Uses the backend's maximum page size, so most lists take one request.
+ */
+export async function apiFetchAll(path, key, { pageSize = 200, signal } = {}) {
+  const items = []
+  const separator = path.includes('?') ? '&' : '?'
+  for (let offset = 0; ; offset += pageSize) {
+    const data = await apiFetch(`${path}${separator}limit=${pageSize}&offset=${offset}`, { signal })
+    const page = data?.[key] ?? []
+    items.push(...page)
+    if (page.length === 0 || items.length >= (data?.total ?? 0)) return items
+  }
+}
+
+// WebSocket URL for a backend path. Browsers can't set headers on WebSocket
+// connections, so a short-lived single-use ticket goes in the query string
+// instead of the login token.
+export function wsUrl(path, ticket) {
   const base = API_URL.replace(/^http/, "ws");
-  return `${base}${path}?token=${encodeURIComponent(getToken() ?? "")}`;
+  return `${base}${path}?ticket=${encodeURIComponent(ticket)}`;
+}
+
+// Fetches a fresh ticket (valid 30 s, one connection) and returns the socket URL.
+// Call it right before each connect or reconnect.
+export async function socketUrl(path, projectId) {
+  const { ticket } = await apiFetch("/ws-ticket", { method: "POST", body: { project_id: Number(projectId) } });
+  return wsUrl(path, ticket);
 }

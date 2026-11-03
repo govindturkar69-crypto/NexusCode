@@ -1,14 +1,13 @@
 import base64
-import os
 from urllib.parse import urlencode
+
 import httpx
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.core.config import settings
 
-GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
-GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
-GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI")
+GITHUB_CLIENT_ID = settings.github_client_id
+GITHUB_CLIENT_SECRET = settings.github_client_secret
+GITHUB_REDIRECT_URI = settings.github_redirect_uri
 GITHUB_TIMEOUT_SECONDS = 15
 
 

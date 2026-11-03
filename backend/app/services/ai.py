@@ -1,13 +1,11 @@
-import os
 import time
-from dotenv import load_dotenv
+
 from google import genai
 from google.genai import errors
 
-load_dotenv()
+from app.core.config import settings
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=settings.gemini_api_key)
 
 MODEL_NAME = "gemini-2.5-flash"
 
@@ -24,7 +22,7 @@ class AIServiceBusyError(Exception):
 
 def _generate_with_retry(prompt: str, max_retries: int = 3) -> str:
     last_error = None
-    for attempt in range(max_retries):
+    for _attempt in range(max_retries):
         try:
             response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
             return response.text

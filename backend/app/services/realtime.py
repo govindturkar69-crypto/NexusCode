@@ -1,5 +1,5 @@
+
 from fastapi import WebSocket
-from typing import Dict, List
 
 
 class _RoomManager:
@@ -7,7 +7,7 @@ class _RoomManager:
 
     def __init__(self):
         # Maps project_id -> list of currently connected WebSocket clients
-        self.active_connections: Dict[int, List[WebSocket]] = {}
+        self.active_connections: dict[int, list[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, project_id: int):
         await websocket.accept()
@@ -42,6 +42,18 @@ class ConnectionManager(_RoomManager):
 
 # --- VIDEO MEETING (WebRTC SIGNALING) MANAGER ---
 class VideoMeetingManager(_RoomManager):
+    def join_if_room(self, websocket: WebSocket, project_id: int, max_peers: int) -> int | None:
+        """Adds an already-accepted socket to the room unless it is full.
+        Returns how many peers were already there, or None if full. No await
+        between the check and the add, so two joiners can't both squeeze in."""
+        room = self.active_connections.setdefault(project_id, [])
+        if len(room) >= max_peers:
+            if not room:
+                del self.active_connections[project_id]
+            return None
+        room.append(websocket)
+        return len(room) - 1
+
     async def broadcast_to_peer(self, project_id: int, sender_ws: WebSocket, message: dict):
         """Sends WebRTC signals (offer, answer, candidates) only to the OTHER peer"""
         await self._send_all(project_id, message, skip=sender_ws)

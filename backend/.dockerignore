@@ -11,3 +11,9 @@ __pycache__/
 .git/
 Dockerfile
 .dockerignore
+# Dev/test only
+tests/
+.coveragerc
+pytest.ini
+ruff.toml
+requirements-dev.txt

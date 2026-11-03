@@ -1,29 +1,40 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { apiFetch } from "../api/client";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { apiFetch, apiFetchAll } from "../api/client";
+import { completeGithubLink, startGithubLink, takePendingLink } from "../api/github";
 import { useAuth } from "../auth/useAuth";
+import Alert from "../components/ui/Alert";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import ConfirmDialog from "../components/ui/ConfirmDialog";
+import Input from "../components/ui/Input";
+import Page from "../components/ui/Page";
+import PageHeader from "../components/ui/PageHeader";
 
 const GITHUB_MESSAGES = {
-  connected: { text: "GitHub account connected.", color: "#7EE787" },
-  error: { text: "Couldn't connect your GitHub account. Please try again.", color: "#F85149" },
+  connected: { text: "GitHub account connected.", tone: "success" },
+  error: { text: "Couldn't connect your GitHub account. Please try again.", tone: "error" },
 };
 
 function Projects() {
   const [projects, setProjects] = useState([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [toDelete, setToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
   const [searchParams] = useSearchParams();
-  // Set by the backend when it redirects back here after GitHub OAuth
+  // Set after GitHub linking finishes (see the effect below)
   const githubMessage = GITHUB_MESSAGES[searchParams.get("github")];
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const fetchProjects = useCallback(() => {
-    return apiFetch("/projects")
-      .then((data) => setProjects(data.projects ?? []))
+    return apiFetchAll("/projects", "projects")
+      .then(setProjects)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -32,24 +43,43 @@ function Projects() {
     fetchProjects();
   }, [fetchProjects]);
 
-  function createProject() {
+  // Coming back from GitHub: finish linking (takePendingLink clears the URL
+  // fragment synchronously, so React StrictMode's second run finds nothing).
+  useEffect(() => {
+    const pending = takePendingLink();
+    if (!pending) return;
+    completeGithubLink(pending)
+      .then(() => navigate("/projects?github=connected", { replace: true }))
+      .catch(() => navigate("/projects?github=error", { replace: true }));
+  }, [navigate]);
+
+  function createProject(event) {
+    event.preventDefault();
     if (!name.trim()) return;
     setError("");
-    apiFetch("/projects", { method: "POST", body: { name, description } })
+    setCreating(true);
+    apiFetch("/projects", { method: "POST", body: { name: name.trim(), description: description.trim() || null } })
       .then(() => {
         setName("");
         setDescription("");
         return fetchProjects();
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setCreating(false));
   }
 
-  function deleteProject(e, projectId) {
-    e.stopPropagation();
-    setError("");
-    apiFetch(`/projects/${projectId}`, { method: "DELETE" })
-      .then(() => fetchProjects())
-      .catch((err) => setError(err.message));
+  function confirmDelete() {
+    setDeleting(true);
+    apiFetch(`/projects/${toDelete.id}`, { method: "DELETE" })
+      .then(() => {
+        setToDelete(null);
+        return fetchProjects();
+      })
+      .catch((err) => {
+        setToDelete(null);
+        setError(err.message);
+      })
+      .finally(() => setDeleting(false));
   }
 
   function logout() {
@@ -59,160 +89,89 @@ function Projects() {
 
   function connectGithub() {
     setError("");
-    apiFetch("/auth/github/login")
-      .then((data) => {
-        window.location.href = data.url;
-      })
-      .catch((err) => setError(err.message));
+    startGithubLink().catch((err) => setError(err.message));
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0D1117", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "700px", margin: "0 auto", padding: "3rem 1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
-          <div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "13px", color: "#58A6FF", marginBottom: "0.3rem" }}>
-              $ {user ? `${user.username}-workspace` : "your-workspace"}
-            </div>
-            <h1 style={{ fontFamily: "'JetBrains Mono', monospace", color: "#E6EDF3", fontSize: "24px", margin: 0, fontWeight: 600 }}>
-              My Projects
-            </h1>
-          </div>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            {isAdmin && (
-              <button onClick={() => navigate("/admin")} style={{ ...ghostButtonStyle, color: "#F85149", borderColor: "#F85149" }}>
-                🛠️ Admin
-              </button>
-            )}
-            <button onClick={() => navigate("/dashboard")} style={ghostButtonStyle}>📊 Dashboard</button>
-            <button onClick={() => navigate("/ai")} style={aiButtonStyle}>✨ AI Assistant</button>
-            <button onClick={connectGithub} style={ghostButtonStyle}>🐙 Connect GitHub</button>
-            <button onClick={logout} style={ghostButtonStyle}>Log out</button>
-          </div>
-        </div>
+    <Page width={760}>
+      <PageHeader
+        eyebrow={user ? `${user.username}-workspace` : "your-workspace"}
+        title="My Projects"
+        actions={
+          <>
+            {isAdmin && <Button variant="danger" onClick={() => navigate("/admin")}>🛠️ Admin</Button>}
+            <Button variant="ghost" onClick={() => navigate("/dashboard")}>📊 Dashboard</Button>
+            <Button onClick={() => navigate("/ai")}>✨ AI Assistant</Button>
+            <Button variant="ghost" onClick={connectGithub}>🐙 Connect GitHub</Button>
+            <Button variant="ghost" onClick={logout}>Log out</Button>
+          </>
+        }
+      />
 
-        {githubMessage && (
-          <div role="status" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#161B22", border: `1px solid ${githubMessage.color}`, borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "1.5rem" }}>
-            <span style={{ color: githubMessage.color, fontSize: "13px" }}>{githubMessage.text}</span>
-            <button onClick={() => navigate("/projects", { replace: true })} aria-label="Dismiss" style={{ ...ghostButtonStyle, padding: "2px 8px" }}>✕</button>
-          </div>
-        )}
+      {githubMessage && (
+        <Alert tone={githubMessage.tone} onDismiss={() => navigate("/projects", { replace: true })}>
+          {githubMessage.text}
+        </Alert>
+      )}
 
-        <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1.25rem", marginBottom: "2rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-          <input
-            type="text"
-            placeholder="Project name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{ ...inputStyle, flex: "1 1 180px" }}
-          />
-          <input
-            type="text"
-            placeholder="Description (optional)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            style={{ ...inputStyle, flex: "2 1 220px" }}
-          />
-          <button onClick={createProject} style={primaryButtonStyle}>+ New Project</button>
-        </div>
+      <Card as="form" onSubmit={createProject} className="row" style={{ marginBottom: "2rem", alignItems: "flex-end" }}>
+        <Input label="Project name" hideLabel placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} className="grow" />
+        <Input label="Description (optional)" hideLabel placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} className="grow" />
+        <Button type="submit" disabled={creating || !name.trim()}>{creating ? "Creating..." : "+ New Project"}</Button>
+      </Card>
 
-        {error && (
-          <p role="alert" style={{ color: "#F85149", fontSize: "13px", marginBottom: "1rem" }}>{error}</p>
-        )}
+      <Alert>{error}</Alert>
 
-        {loading && <p style={{ color: "#8B949E", fontSize: "14px" }}>Loading projects...</p>}
+      {loading && <p role="status" className="muted">Loading projects...</p>}
 
-        {!loading && !error && projects.length === 0 && (
-          <p style={{ color: "#8B949E", fontSize: "14px" }}>No projects yet — create your first one above.</p>
-        )}
+      {!loading && !error && projects.length === 0 && (
+        <Card>
+          <p className="muted">No projects yet. Create your first one above to get a Kanban board, chat, file storage and a code editor.</p>
+        </Card>
+      )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              onClick={() => navigate(`/projects/${project.id}`)}
-              style={cardStyle}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <strong style={{ color: "#E6EDF3", fontSize: "15px" }}>{project.name}</strong>
-                  {project.description && (
-                    <p style={{ margin: "4px 0 0", color: "#8B949E", fontSize: "13px" }}>{project.description}</p>
-                  )}
+      <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {projects.map((project) => (
+          <li key={project.id}>
+            {/* The name is a real link for keyboard/screen readers; clicking
+                anywhere else on the card is a mouse shortcut to the same place. */}
+            <div className="card card--interactive" onClick={() => navigate(`/projects/${project.id}`)}>
+              <div className="row row--between" style={{ alignItems: "flex-start" }}>
+                <div className="grow">
+                  <Link to={`/projects/${project.id}`} className="project-link" onClick={(e) => e.stopPropagation()}>
+                    {project.name}
+                  </Link>
+                  {project.description && <p className="muted small" style={{ marginTop: "4px" }}>{project.description}</p>}
                 </div>
-                <button onClick={(e) => deleteProject(e, project.id)} style={deleteButtonStyle}>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  aria-label={`Delete project ${project.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setToDelete(project);
+                  }}
+                >
                   Delete
-                </button>
+                </Button>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
+          </li>
+        ))}
+      </ul>
+
+      {toDelete && (
+        <ConfirmDialog
+          title={`Delete "${toDelete.name}"?`}
+          message="This permanently deletes the project with its tasks, files, chat history and code."
+          confirmLabel="Delete project"
+          busy={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setToDelete(null)}
+        />
+      )}
+    </Page>
   );
 }
-
-const inputStyle = {
-  padding: "9px 12px",
-  background: "#0D1117",
-  border: "1px solid #30363D",
-  borderRadius: "6px",
-  color: "#E6EDF3",
-  fontSize: "14px",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const primaryButtonStyle = {
-  padding: "9px 16px",
-  background: "#58A6FF",
-  color: "#0D1117",
-  border: "none",
-  borderRadius: "6px",
-  fontSize: "14px",
-  fontWeight: 600,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
-
-const ghostButtonStyle = {
-  padding: "8px 14px",
-  background: "transparent",
-  color: "#8B949E",
-  border: "1px solid #30363D",
-  borderRadius: "6px",
-  fontSize: "13px",
-  cursor: "pointer",
-};
-
-const aiButtonStyle = {
-  padding: "8px 14px",
-  background: "#58A6FF",
-  color: "#0D1117",
-  border: "none",
-  borderRadius: "6px",
-  fontSize: "13px",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const cardStyle = {
-  background: "#161B22",
-  border: "1px solid #30363D",
-  borderRadius: "10px",
-  padding: "1rem 1.25rem",
-  cursor: "pointer",
-  transition: "border-color 0.15s",
-};
-
-const deleteButtonStyle = {
-  padding: "4px 10px",
-  background: "transparent",
-  color: "#F85149",
-  border: "1px solid #F85149",
-  borderRadius: "4px",
-  cursor: "pointer",
-  fontSize: "12px",
-};
 
 export default Projects;

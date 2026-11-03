@@ -1,0 +1,92 @@
+"""Schemas for AI, GitHub, analytics and admin routes."""
+from pydantic import BaseModel, Field
+
+from app.schemas.common import Page
+
+# Caps what a single request can send to the AI provider
+MAX_AI_INPUT_CHARS = 20_000
+
+
+class CodeGenRequest(BaseModel):
+    prompt: str = Field(max_length=MAX_AI_INPUT_CHARS)
+
+
+class CodeReviewRequest(BaseModel):
+    code: str = Field(max_length=MAX_AI_INPUT_CHARS)
+
+
+class AIResult(BaseModel):
+    result: str
+
+
+class GitHubAuthorizeUrl(BaseModel):
+    url: str
+
+
+class GitHubStart(BaseModel):
+    # Random value the browser tab keeps in sessionStorage; only its hash goes into `state`
+    nonce: str = Field(min_length=16, max_length=128)
+
+
+class GitHubComplete(BaseModel):
+    pending: str = Field(min_length=1, max_length=4096)
+    nonce: str = Field(min_length=16, max_length=128)
+
+
+class GitHubCompleteResponse(BaseModel):
+    connected: bool
+
+
+class PushToGithubRequest(BaseModel):
+    repo_name: str = Field(pattern=r"^[A-Za-z0-9._-]{1,100}$")
+    private: bool = True
+
+
+class PushToGithubResponse(BaseModel):
+    message: str
+    repo_url: str | None
+    private: bool
+
+
+class TasksByStatus(BaseModel):
+    todo: int
+    in_progress: int
+    done: int
+
+
+class AnalyticsOut(BaseModel):
+    total_projects: int
+    total_tasks: int
+    tasks_by_status: TasksByStatus
+    total_files: int
+    total_messages: int
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    username: str
+    is_admin: bool
+    project_count: int
+
+
+class AdminUsersResponse(Page):
+    users: list[AdminUserOut]
+
+
+class AdminProjectOut(BaseModel):
+    id: int
+    name: str
+    owner_username: str
+    task_count: int
+
+
+class AdminProjectsResponse(Page):
+    projects: list[AdminProjectOut]
+
+
+class PlatformStats(BaseModel):
+    total_users: int
+    total_projects: int
+    total_tasks: int
+    total_files: int
+    total_messages: int

@@ -1,45 +1,56 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
+import BackLink from "../components/ui/BackLink";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import Input from "../components/ui/Input";
+import Page from "../components/ui/Page";
+import PageHeader from "../components/ui/PageHeader";
+
+// Matches the backend cap (app/schemas/misc.py)
+const MAX_INPUT_CHARS = 20000;
+
+const TABS = {
+  generate: {
+    label: "Generate Code",
+    endpoint: "generate-code",
+    bodyKey: "prompt",
+    inputLabel: "What should the code do?",
+    placeholder: "e.g. a function that reverses a linked list in Python",
+  },
+  bugs: {
+    label: "Detect Bugs",
+    endpoint: "detect-bugs",
+    bodyKey: "code",
+    inputLabel: "Code to check",
+    placeholder: "Paste your code here to check for bugs...",
+  },
+  docs: {
+    label: "Generate Docs",
+    endpoint: "generate-docs",
+    bodyKey: "code",
+    inputLabel: "Code to document",
+    placeholder: "Paste your code here to generate documentation...",
+  },
+};
 
 function AIAssistant() {
   const [activeTab, setActiveTab] = useState("generate");
   const [input, setInput] = useState("");
   const [result, setResult] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const config = TABS[activeTab];
 
-  const tabConfig = {
-    generate: {
-      label: "Generate Code",
-      endpoint: "generate-code",
-      bodyKey: "prompt",
-      placeholder: "e.g. a function that reverses a linked list in Python",
-    },
-    bugs: {
-      label: "Detect Bugs",
-      endpoint: "detect-bugs",
-      bodyKey: "code",
-      placeholder: "Paste your code here to check for bugs...",
-    },
-    docs: {
-      label: "Generate Docs",
-      endpoint: "generate-docs",
-      bodyKey: "code",
-      placeholder: "Paste your code here to generate documentation...",
-    },
-  };
-
-  function handleSubmit() {
+  function handleSubmit(event) {
+    event.preventDefault();
     if (!input.trim()) return;
     setLoading(true);
     setResult("");
-
-    const config = tabConfig[activeTab];
-
+    setError("");
     apiFetch(`/ai/${config.endpoint}`, { method: "POST", body: { [config.bodyKey]: input } })
       .then((data) => setResult(data.result ?? ""))
-      .catch((err) => setResult(err.message || "Something went wrong. The AI service may be busy — try again."))
+      .catch((err) => setError(err.message || "Something went wrong. The AI service may be busy — try again."))
       .finally(() => setLoading(false));
   }
 
@@ -47,119 +58,56 @@ function AIAssistant() {
     setActiveTab(tab);
     setInput("");
     setResult("");
+    setError("");
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0D1117", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "800px", margin: "0 auto", padding: "3rem 1.5rem" }}>
-        <button onClick={() => navigate("/projects")} style={backButtonStyle}>← All projects</button>
+    <Page width={800}>
+      <BackLink to="/projects">All projects</BackLink>
+      <PageHeader eyebrow="ai-assistant" title="AI Assistant" />
 
-        <div style={{ marginTop: "0.5rem", marginBottom: "2rem" }}>
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "13px", color: "#58A6FF", marginBottom: "0.3rem" }}>
-            $ ai-assistant
-          </div>
-          <h1 style={{ fontFamily: "'JetBrains Mono', monospace", color: "#E6EDF3", fontSize: "24px", margin: 0, fontWeight: 600 }}>
-            AI Assistant
-          </h1>
-        </div>
+      <div role="tablist" aria-label="AI tools" className="row" style={{ marginBottom: "1.5rem" }}>
+        {Object.entries(TABS).map(([key, tab]) => (
+          <Button
+            key={key}
+            role="tab"
+            id={`ai-tab-${key}`}
+            aria-selected={activeTab === key}
+            aria-controls="ai-panel"
+            variant={activeTab === key ? "primary" : "ghost"}
+            onClick={() => switchTab(key)}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
 
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem" }}>
-          {Object.keys(tabConfig).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => switchTab(tab)}
-              style={activeTab === tab ? activeTabStyle : tabStyle}
-            >
-              {tabConfig[tab].label}
-            </button>
-          ))}
-        </div>
-
-        <textarea
+      <form id="ai-panel" role="tabpanel" aria-labelledby={`ai-tab-${activeTab}`} onSubmit={handleSubmit} className="stack">
+        <Input
+          multiline
+          rows={8}
+          label={config.inputLabel}
+          placeholder={config.placeholder}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={tabConfig[activeTab].placeholder}
-          rows={6}
-          style={textareaStyle}
+          maxLength={MAX_INPUT_CHARS}
+          hint={`${input.length.toLocaleString()} / ${MAX_INPUT_CHARS.toLocaleString()} characters`}
         />
+        <div>
+          <Button type="submit" disabled={loading || !input.trim()}>{loading ? "Thinking..." : "Run"}</Button>
+        </div>
+      </form>
 
-        <button onClick={handleSubmit} disabled={loading} style={submitButtonStyle}>
-          {loading ? "Thinking..." : "Run"}
-        </button>
-
+      <div aria-live="polite" style={{ marginTop: "1.5rem" }}>
+        {error && <p role="alert" className="small text-danger">{error}</p>}
         {result && (
-          <div style={resultBoxStyle}>
-            <pre style={{ margin: 0, whiteSpace: "pre-wrap", color: "#E6EDF3", fontSize: "13px", fontFamily: "'JetBrains Mono', monospace" }}>
-              {result}
-            </pre>
-          </div>
+          <Card style={{ maxHeight: "500px", overflowY: "auto" }}>
+            <pre className="mono small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{result}</pre>
+          </Card>
         )}
       </div>
-    </div>
+    </Page>
   );
 }
-
-const backButtonStyle = {
-  padding: "0",
-  background: "transparent",
-  color: "#58A6FF",
-  border: "none",
-  fontSize: "13px",
-  cursor: "pointer",
-};
-
-const tabStyle = {
-  padding: "8px 16px",
-  background: "transparent",
-  color: "#8B949E",
-  border: "1px solid #30363D",
-  borderRadius: "6px",
-  fontSize: "13px",
-  cursor: "pointer",
-};
-
-const activeTabStyle = {
-  ...tabStyle,
-  background: "#58A6FF",
-  color: "#0D1117",
-  borderColor: "#58A6FF",
-  fontWeight: 600,
-};
-
-const textareaStyle = {
-  width: "100%",
-  padding: "12px",
-  background: "#161B22",
-  border: "1px solid #30363D",
-  borderRadius: "8px",
-  color: "#E6EDF3",
-  fontSize: "14px",
-  fontFamily: "'JetBrains Mono', monospace",
-  outline: "none",
-  boxSizing: "border-box",
-  resize: "vertical",
-  marginBottom: "1rem",
-};
-
-const submitButtonStyle = {
-  padding: "10px 20px",
-  background: "#58A6FF",
-  color: "#0D1117",
-  border: "none",
-  borderRadius: "6px",
-  fontSize: "14px",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const resultBoxStyle = {
-  marginTop: "1.5rem",
-  background: "#161B22",
-  border: "1px solid #30363D",
-  borderRadius: "8px",
-  padding: "1.25rem",
-  maxHeight: "500px",
-  overflowY: "auto",
-};
 
 export default AIAssistant;

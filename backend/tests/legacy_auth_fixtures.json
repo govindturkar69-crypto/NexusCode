@@ -1,0 +1,31 @@
+{
+  "secret": "legacy-fixture-secret",
+  "hashes": [
+    {
+      "password": "correct-horse-1",
+      "hash": "$2b$12$x0uEYX0m39MEqUFA31.HLOBa733A1TlJy0s4EneCDoINr5oWbzwga"
+    },
+    {
+      "password": "pässwörd-ünïcödé",
+      "hash": "$2b$12$ejKEk9gmVq3cSCnr0QgmrOyIJEemeWat8gRvgwtF7aGJeV//X4oXy"
+    },
+    {
+      "password": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "hash": "$2b$12$bHM4wBcLwngHK6tzwebM.e4oKc2YDl3u.ou0m6NnJ.aZBVCMiXd3i"
+    },
+    {
+      "password": "€€€€€€€€€€€€€€€€€€€€€€€€",
+      "hash": "$2b$12$mbB2qxqbBDE1Lrotkg/23.bKCg8IdjmGLVe.dmxIMBXmreHtoBflG"
+    },
+    {
+      "password": "12345678",
+      "hash": "$2b$12$n5l0KOWoQwxRXP7EKWJQOOeRcIlB53fOQmtA64UGCEujMLi9ajQIa"
+    }
+  ],
+  "tokens": {
+    "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6NDA3MDkwODgwMH0.4iseUOXZaxeTyLgICC7MKJPI6VrExtQ5NAbqWHMOodo",
+    "oauth_state": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJnaXRodWJfb2F1dGhfc3RhdGUiLCJ1aWQiOjcsIm5oIjoiYWJjIiwiZXhwIjo0MDcwOTA4ODAwfQ.t3D2FkpQw-C4IcoAHClZ_KIB9W3qG7VL-l_zCJeCdiE",
+    "ws_ticket": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJ3c190aWNrZXQiLCJ1c3IiOiJhbGljZSIsInBpZCI6MywianRpIjoiZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmYiLCJleHAiOjQwNzA5MDg4MDB9.Mv6Ahj0rY7G-YEzgFotHJ2ITL64PxsbNURMsIplckN0",
+    "expired_access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTU3NzgzNjgwMH0.gKVSJrlMHM77YB3YsVnkrx42oTctJzBJCFuYJ-riPd8"
+  }
+}
