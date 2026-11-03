@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { apiFetch } from "../api/client";
+// Self-hosted Monaco (no CDN); must run before <Editor> mounts
+import "../editor/monacoSetup";
 
 // Same rule the backend enforces
 const REPO_NAME_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
