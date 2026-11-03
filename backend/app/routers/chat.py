@@ -27,6 +27,7 @@ router = APIRouter(tags=["chat"])
 MAX_CHAT_MESSAGE_LENGTH = 2000
 MAX_SIGNAL_FRAME_BYTES = 64 * 1024  # SDP offers are a few KB; this is generous
 SIGNAL_TYPES = {"offer", "answer", "ice-candidate"}
+MAX_MEETING_PEERS = 2  # the meeting UI is a 1:1 call
 
 
 @router.get("/projects/{project_id}/messages", response_model=MessageListResponse)
@@ -139,8 +140,19 @@ async def meeting_websocket(websocket: WebSocket, project_id: int):
         return
 
     # Separate room from chat, so signaling never shows up in the chat box
-    await video_manager.connect(websocket, project_id)
+    await websocket.accept()
+    already_there = video_manager.join_if_room(websocket, project_id, MAX_MEETING_PEERS)
+    if already_there is None:
+        await websocket.send_json({"type": "room-full"})
+        await websocket.close(code=1013)  # "try again later"
+        return
+
     try:
+        # Exactly one side makes the WebRTC offer: the newcomer, towards the
+        # peer already waiting. The waiting peer just learns someone joined.
+        await websocket.send_json({"type": "role", "initiator": already_there > 0})
+        if already_there:
+            await video_manager.broadcast_to_peer(project_id, websocket, {"type": "peer-joined"})
         while True:
             raw = await websocket.receive_text()
             if len(raw.encode()) > MAX_SIGNAL_FRAME_BYTES:
@@ -158,3 +170,5 @@ async def meeting_websocket(websocket: WebSocket, project_id: int):
         logger.exception("Meeting socket error (project %s, user %s)", project_id, username)
     finally:
         video_manager.disconnect(websocket, project_id)
+        # Lets the remaining peer reset and wait for the next one to join
+        await video_manager.broadcast_to_peer(project_id, websocket, {"type": "peer-left"})
