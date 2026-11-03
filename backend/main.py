@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field, field_validator
 from pydantic_core import PydanticCustomError
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -263,10 +263,13 @@ def create_task(project_id: int, task: TaskCreate, db: Session = Depends(get_db)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # New tasks go to the end of the board
+    last_position = db.query(func.max(TaskModel.position)).filter(TaskModel.project_id == project_id).scalar()
     new_task = TaskModel(
         title=task.title,
         description=task.description,
-        project_id=project_id
+        project_id=project_id,
+        position=(last_position or 0) + 1,
     )
     db.add(new_task)
     db.commit()
@@ -282,7 +285,12 @@ def get_project_tasks(project_id: int, db: Session = Depends(get_db), current_us
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    tasks = db.query(TaskModel).filter(TaskModel.project_id == project_id).all()
+    tasks = (
+        db.query(TaskModel)
+        .filter(TaskModel.project_id == project_id)
+        .order_by(TaskModel.position, TaskModel.id)
+        .all()
+    )
     return {"tasks": tasks}
 
 @app.put("/tasks/{task_id}")
@@ -429,7 +437,8 @@ async def _authorize_websocket(websocket: WebSocket, project_id: int) -> str | N
 
 def _save_chat_message(project_id: int, username: str, content: str) -> dict:
     with SessionLocal() as db:
-        message = MessageModel(content=content, username=username, project_id=project_id)
+        user_id = db.query(UserModel.id).filter(UserModel.username == username).scalar()
+        message = MessageModel(content=content, username=username, user_id=user_id, project_id=project_id)
         db.add(message)
         db.commit()
         db.refresh(message)

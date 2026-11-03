@@ -115,6 +115,25 @@ def test_ai_quota_and_busy_errors_are_503(client, alice, monkeypatch):
     assert client.post("/ai/detect-bugs", json={"code": "c"}, headers=auth(alice)).status_code == 503
 
 
+def test_new_tasks_go_to_the_end_and_have_timestamps(client, alice, pid):
+    ids = [client.post(f"/projects/{pid}/tasks", json={"title": t}, headers=auth(alice)).json()["task"]["id"] for t in "abc"]
+    tasks = client.get(f"/projects/{pid}/tasks", headers=auth(alice)).json()["tasks"]
+    assert [t["id"] for t in tasks] == ids
+    assert [t["position"] for t in tasks] == [1, 2, 3]
+    assert all(t["created_at"] and t["updated_at"] for t in tasks)
+
+
+def test_chat_messages_record_the_sender_id(client, alice, pid):
+    from models import MessageModel, UserModel
+
+    with client.websocket_connect(f"/ws/projects/{pid}/chat?token={alice}") as ws:
+        ws.send_json({"content": "hi"})
+        ws.receive_json()
+    with SessionLocal() as db:
+        message = db.query(MessageModel).one()
+        assert message.user_id == db.query(UserModel.id).filter(UserModel.username == "alice").scalar()
+
+
 def test_messages_are_oldest_first(client, alice, pid):
     with client.websocket_connect(f"/ws/projects/{pid}/chat?token={alice}") as ws:
         for text in ("one", "two", "three"):

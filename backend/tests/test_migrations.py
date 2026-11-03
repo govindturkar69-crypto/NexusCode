@@ -113,6 +113,65 @@ def test_check_baseline_detects_missing_status_constraint(scratch_engine):
         assert any("CHECK constraint is missing" in p for p in check_baseline.check(conn))
 
 
+def _seed_baseline_data(eng):
+    """Rows as they exist in production before 0002."""
+    with eng.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password, is_admin) VALUES (1, 'alice', 'h', false), (2, 'bob', 'h', false)"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (10, 'p', 1)"))
+        conn.execute(text("INSERT INTO tasks (id, title, status, project_id) VALUES (5, 'first', 'todo', 10), (3, 'second', 'done', 10)"))
+        conn.execute(text("INSERT INTO files (id, filename, url, project_id) VALUES (7, 'a.pdf', 'https://x/a.pdf', 10)"))
+        conn.execute(text(
+            "INSERT INTO messages (id, content, username, project_id) VALUES "
+            "(1, 'hi', 'alice', 10), (2, 'yo', 'bob', 10), (3, 'old', 'renamed_user', 10)"
+        ))
+        conn.execute(text("INSERT INTO code_files (id, content, language, project_id) VALUES (1, 'x', 'python', 10)"))
+
+
+def test_0002_backfills_existing_rows(scratch_engine):
+    _upgrade(scratch_engine, "0001_baseline")
+    _seed_baseline_data(scratch_engine)
+    _upgrade(scratch_engine, "0002_schema_improvements")
+
+    with scratch_engine.connect() as conn:
+        users = dict(conn.execute(text("SELECT content, user_id FROM messages")).all())
+        assert users == {"hi": 1, "yo": 2, "old": None}  # unknown username stays NULL
+        assert dict(conn.execute(text("SELECT id, position FROM tasks")).all()) == {5: 5, 3: 3}
+        assert conn.execute(text("SELECT public_id FROM files")).scalar() is None
+        for table in ("users", "projects", "tasks", "files", "messages", "code_files"):
+            missing = conn.execute(text(f"SELECT count(*) FROM {table} WHERE created_at IS NULL OR updated_at IS NULL")).scalar()
+            assert missing == 0, table
+        indexes = {ix["name"] for t in ("projects", "tasks", "files", "messages") for ix in inspect(conn).get_indexes(t)}
+        assert {"ix_projects_owner_id", "ix_tasks_project_id", "ix_files_project_id", "ix_messages_project_id", "ix_messages_user_id"} <= indexes
+
+
+def test_0002_downgrade_keeps_data(scratch_engine):
+    _upgrade(scratch_engine, "0001_baseline")
+    _seed_baseline_data(scratch_engine)
+    _upgrade(scratch_engine)
+    config = alembic_config()
+    with scratch_engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0001_baseline")
+    with scratch_engine.connect() as conn:
+        assert "position" not in {c["name"] for c in inspect(conn).get_columns("tasks")}
+        assert conn.execute(text("SELECT count(*) FROM messages")).scalar() == 3
+        assert conn.execute(text("SELECT count(*) FROM tasks")).scalar() == 2
+        # The baseline CHECK constraint survived the round trip
+        with pytest.raises(Exception):  # noqa: B017 - IntegrityError type differs per driver
+            with conn.begin():
+                conn.execute(text("INSERT INTO tasks (title, status, project_id) VALUES ('bad', 'bogus', 10)"))
+
+
+def test_check_constraint_survives_0002(scratch_engine):
+    _upgrade(scratch_engine)
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'a', 'h')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (1, 'p', 1)"))
+    with pytest.raises(Exception):  # noqa: B017
+        with scratch_engine.begin() as conn:
+            conn.execute(text("INSERT INTO tasks (title, status, project_id) VALUES ('bad', 'bogus', 1)"))
+
+
 def test_baseline_downgrade_needs_explicit_flag(scratch_engine):
     _upgrade(scratch_engine, "0001_baseline")
     config = alembic_config()
