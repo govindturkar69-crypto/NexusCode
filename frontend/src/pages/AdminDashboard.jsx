@@ -1,20 +1,19 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { apiFetch, apiFetchAll } from "../api/client";
+import Alert from "../components/ui/Alert";
+import BackLink from "../components/ui/BackLink";
+import Card from "../components/ui/Card";
+import Page from "../components/ui/Page";
+import PageHeader from "../components/ui/PageHeader";
 
 function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [error, setError] = useState("");
-  const navigate = useNavigate();
 
   useEffect(() => {
-    Promise.all([
-      apiFetch("/admin/stats"),
-      apiFetchAll("/admin/users", "users"),
-      apiFetchAll("/admin/projects", "projects"),
-    ])
+    Promise.all([apiFetch("/admin/stats"), apiFetchAll("/admin/users", "users"), apiFetchAll("/admin/projects", "projects")])
       .then(([statsData, allUsers, allProjects]) => {
         setStats(statsData);
         setUsers(allUsers);
@@ -25,20 +24,18 @@ function AdminDashboard() {
 
   if (error) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0D1117", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <p style={{ color: "#F85149", fontSize: "16px", marginBottom: "1rem" }}>🚫 {error}</p>
-          <button onClick={() => navigate("/projects")} style={backButtonStyle}>← Back to projects</button>
-        </div>
-      </div>
+      <Page width={600}>
+        <Alert>🚫 {error}</Alert>
+        <BackLink to="/projects">Back to projects</BackLink>
+      </Page>
     );
   }
 
   if (!stats) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0D1117", color: "#8B949E", padding: "3rem" }}>
-        Loading...
-      </div>
+      <Page>
+        <p role="status" className="muted">Loading...</p>
+      </Page>
     );
   }
 
@@ -51,91 +48,56 @@ function AdminDashboard() {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0D1117", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "3rem 1.5rem" }}>
-        <button onClick={() => navigate("/projects")} style={backButtonStyle}>← All projects</button>
+    <Page width={1000}>
+      <BackLink to="/projects">All projects</BackLink>
+      <PageHeader eyebrow="admin --platform-wide" title="Admin Dashboard" tone="danger" />
 
-        <div style={{ margin: "1rem 0 2rem" }}>
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "13px", color: "#F85149", marginBottom: "0.3rem" }}>
-            $ admin --platform-wide
-          </div>
-          <h1 style={{ fontFamily: "'JetBrains Mono', monospace", color: "#E6EDF3", fontSize: "24px", margin: 0, fontWeight: 600 }}>
-            Admin Dashboard
-          </h1>
-        </div>
+      <div className="grid-auto" style={{ "--min-col": "150px", marginBottom: "2.5rem" }}>
+        {statCards.map((stat) => (
+          <Card key={stat.label} className="stat">
+            <div className="stat__value text-danger">{stat.value}</div>
+            <div className="stat__label">{stat.label}</div>
+          </Card>
+        ))}
+      </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "1rem", marginBottom: "2.5rem" }}>
-          {statCards.map((stat) => (
-            <div key={stat.label} style={statCardStyle}>
-              <div style={{ color: "#F85149", fontSize: "24px", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
-                {stat.value}
-              </div>
-              <div style={{ color: "#8B949E", fontSize: "12px", marginTop: "0.3rem" }}>{stat.label}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: "1.5rem" }}>
-          <div style={{ flex: 1 }}>
-            <h3 style={{ color: "#E6EDF3", fontSize: "15px", fontWeight: 600, marginBottom: "1rem" }}>
-              👥 All Users
-            </h3>
-            <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1rem" }}>
+      <div className="split">
+        <section>
+          <h2 className="section-title">👥 All Users ({users.length})</h2>
+          <Card>
+            {users.length === 0 && <p className="muted small">No users.</p>}
+            <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0, "--gap": "0.5rem" }}>
               {users.map((u) => (
-                <div key={u.id} style={rowStyle}>
-                  <span style={{ color: "#E6EDF3", fontSize: "13px" }}>
-                    {u.username} {u.is_admin && <span style={{ color: "#F85149" }}>(admin)</span>}
+                <li key={u.id} className="row row--between small">
+                  <span>
+                    {u.username} {u.is_admin && <span className="text-danger">(admin)</span>}
                   </span>
-                  <span style={{ color: "#8B949E", fontSize: "12px" }}>{u.project_count} projects</span>
-                </div>
+                  <span className="muted small">{u.project_count} projects</span>
+                </li>
               ))}
-            </div>
-          </div>
+            </ul>
+          </Card>
+        </section>
 
-          <div style={{ flex: 1 }}>
-            <h3 style={{ color: "#E6EDF3", fontSize: "15px", fontWeight: 600, marginBottom: "1rem" }}>
-              📁 All Projects
-            </h3>
-            <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1rem" }}>
+        <section>
+          <h2 className="section-title">📁 All Projects ({projects.length})</h2>
+          <Card>
+            {projects.length === 0 && <p className="muted small">No projects.</p>}
+            <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0, "--gap": "0.5rem" }}>
               {projects.map((p) => (
-                <div key={p.id} style={rowStyle}>
-                  <span style={{ color: "#E6EDF3", fontSize: "13px" }}>{p.name}</span>
-                  <span style={{ color: "#8B949E", fontSize: "12px" }}>
+                <li key={p.id} className="row row--between small">
+                  <span>{p.name}</span>
+                  <span className="muted small">
                     {p.owner_username} · {p.task_count} tasks
                   </span>
-                </div>
+                </li>
               ))}
-            </div>
-          </div>
-        </div>
+            </ul>
+          </Card>
+        </section>
       </div>
-    </div>
+    </Page>
   );
 }
-
-const backButtonStyle = {
-  padding: "0",
-  background: "transparent",
-  color: "#58A6FF",
-  border: "none",
-  fontSize: "13px",
-  cursor: "pointer",
-};
-
-const statCardStyle = {
-  background: "#161B22",
-  border: "1px solid #30363D",
-  borderRadius: "10px",
-  padding: "1rem",
-  textAlign: "center",
-};
-
-const rowStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "8px 0",
-  borderBottom: "1px solid #21262D",
-};
 
 export default AdminDashboard;

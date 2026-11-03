@@ -19,9 +19,9 @@ const protect = (element) => <ProtectedRoute>{element}</ProtectedRoute>;
 
 function PageLoading() {
   return (
-    <div role="status" style={{ minHeight: "100vh", background: "#0D1117", color: "#8B949E", padding: "3rem", fontSize: "14px" }}>
-      Loading...
-    </div>
+    <main className="page">
+      <p role="status" className="muted" style={{ padding: "3rem" }}>Loading...</p>
+    </main>
   );
 }
 

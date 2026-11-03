@@ -1,20 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { apiFetch, apiFetchAll, socketUrl } from "../api/client";
 import { useAuth } from "../auth/useAuth";
+import Alert from "../components/ui/Alert";
+import BackLink from "../components/ui/BackLink";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import ConfirmDialog from "../components/ui/ConfirmDialog";
+import Input from "../components/ui/Input";
+import Page from "../components/ui/Page";
+import PageHeader from "../components/ui/PageHeader";
 
 // Matches the server-side limit
 const MAX_CHAT_MESSAGE_LENGTH = 2000;
 // Mirrors the backend allowlist (app/services/storage.py); the server still validates
 const UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.zip,.txt,.md,.csv,.json,.log,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.css,.sql,.yml,.yaml,.toml,.ini";
 
+const COLUMNS = [
+  { status: "todo", title: "To Do", dot: "var(--color-text-muted)" },
+  { status: "in_progress", title: "In Progress", dot: "var(--color-accent)" },
+  { status: "done", title: "Done", dot: "var(--color-success)" },
+];
+
 function Board() {
   const { projectId } = useParams();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [tasks, setTasks] = useState([]);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
   const [title, setTitle] = useState("");
   const [files, setFiles] = useState([]);
+  const [filesLoaded, setFilesLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [messages, setMessages] = useState([]);
   // Cursor for "Load older messages"; null once the oldest message is loaded
@@ -23,19 +39,22 @@ function Board() {
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState("");
   const [error, setError] = useState("");
+  const [toDelete, setToDelete] = useState(null); // { kind: "task" | "file", id, name }
+  const [deleting, setDeleting] = useState(false);
   const ws = useRef(null);
-  const { user } = useAuth();
 
   const fetchTasks = useCallback(() => {
     return apiFetchAll(`/projects/${projectId}/tasks`, "tasks")
       .then(setTasks)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setTasksLoaded(true));
   }, [projectId]);
 
   const fetchFiles = useCallback(() => {
     return apiFetchAll(`/projects/${projectId}/files`, "files")
       .then(setFiles)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setFilesLoaded(true));
   }, [projectId]);
 
   useEffect(() => {
@@ -99,10 +118,11 @@ function Board() {
     };
   }, [projectId]);
 
-  function createTask() {
+  function createTask(event) {
+    event.preventDefault();
     if (!title.trim()) return;
     setError("");
-    apiFetch(`/projects/${projectId}/tasks`, { method: "POST", body: { title } })
+    apiFetch(`/projects/${projectId}/tasks`, { method: "POST", body: { title: title.trim() } })
       .then(() => {
         setTitle("");
         return fetchTasks();
@@ -115,13 +135,6 @@ function Board() {
     apiFetch(`/tasks/${taskId}`, { method: "PUT", body: { status: newStatus } })
       .catch((err) => setError(err.message))
       .finally(() => fetchTasks());
-  }
-
-  function deleteTask(taskId) {
-    setError("");
-    apiFetch(`/tasks/${taskId}`, { method: "DELETE" })
-      .then(() => fetchTasks())
-      .catch((err) => setError(err.message));
   }
 
   function uploadFile(e) {
@@ -140,20 +153,27 @@ function Board() {
       .finally(() => setUploading(false));
   }
 
-  function deleteFile(fileId) {
+  function confirmDelete() {
+    const { kind, id } = toDelete;
+    setDeleting(true);
     setError("");
-    apiFetch(`/files/${fileId}`, { method: "DELETE" })
-      .then(() => fetchFiles())
-      .catch((err) => setError(err.message));
+    apiFetch(kind === "task" ? `/tasks/${id}` : `/files/${id}`, { method: "DELETE" })
+      .then(() => (kind === "task" ? fetchTasks() : fetchFiles()))
+      .catch((err) => setError(err.message))
+      .finally(() => {
+        setDeleting(false);
+        setToDelete(null);
+      });
   }
 
-  function sendMessage() {
+  function sendMessage(event) {
+    event.preventDefault();
     if (!chatInput.trim()) return;
     if (ws.current?.readyState !== WebSocket.OPEN) {
       setChatError("Chat is not connected. Refresh the page to reconnect.");
       return;
     }
-    // The server attaches our username from the token
+    // The server attaches our username from the ticket
     ws.current.send(JSON.stringify({ content: chatInput }));
     setChatInput("");
   }
@@ -161,276 +181,161 @@ function Board() {
   function handleDragEnd(result) {
     const { destination, draggableId } = result;
     if (!destination) return;
-
     const newStatus = destination.droppableId;
     if (newStatus === result.source.droppableId) return;
     updateTaskStatus(draggableId, newStatus);
-
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id.toString() === draggableId ? { ...t, status: newStatus } : t
-      )
-    );
+    setTasks((prev) => prev.map((t) => (t.id.toString() === draggableId ? { ...t, status: newStatus } : t)));
   }
 
-  const columns = {
-    todo: tasks.filter((t) => t.status === "todo"),
-    in_progress: tasks.filter((t) => t.status === "in_progress"),
-    done: tasks.filter((t) => t.status === "done"),
-  };
-
-  const columnMeta = {
-    todo: { title: "To Do", accent: "#8B949E" },
-    in_progress: { title: "In Progress", accent: "#58A6FF" },
-    done: { title: "Done", accent: "#7EE787" },
-  };
-
   return (
-    <div style={{ minHeight: "100vh", background: "#0D1117", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "3rem 1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center" }}>
-              <button onClick={() => navigate("/projects")} style={backButtonStyle}>← All projects</button>
-              <button onClick={() => navigate(`/projects/${projectId}/editor`)} style={{ ...backButtonStyle, marginLeft: "1rem" }}>
-                💻 Open Code Editor
-              </button>
-              <button onClick={() => navigate(`/projects/${projectId}/meeting`)} style={{ ...backButtonStyle, marginLeft: "1rem" }}>
-                📹 Start Meeting
-              </button>
-            </div>
-            <h1 style={{ fontFamily: "'JetBrains Mono', monospace", color: "#E6EDF3", fontSize: "24px", margin: "0.5rem 0 0", fontWeight: 600 }}>
-              Project Board
-            </h1>
-          </div>
-        </div>
+    <Page width={1100}>
+      <div className="row">
+        <BackLink to="/projects">All projects</BackLink>
+        <Link className="btn btn--link" to={`/projects/${projectId}/editor`}>💻 Open Code Editor</Link>
+        <Link className="btn btn--link" to={`/projects/${projectId}/meeting`}>📹 Start Meeting</Link>
+      </div>
+      <PageHeader eyebrow={`board --project ${projectId}`} title="Project Board" />
 
-        {error && (
-          <p role="alert" style={{ color: "#F85149", fontSize: "13px", marginBottom: "1rem" }}>{error}</p>
-        )}
+      <Alert onDismiss={() => setError("")}>{error}</Alert>
 
-        <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1.25rem", marginBottom: "2rem", display: "flex", gap: "0.75rem" }}>
-          <input
-            type="text"
-            placeholder="New task title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            style={{ ...inputStyle, flex: 1 }}
-          />
-          <button onClick={createTask} style={primaryButtonStyle}>+ Add Task</button>
-        </div>
+      <Card as="form" onSubmit={createTask} className="row" style={{ marginBottom: "2rem" }}>
+        <Input label="New task title" hideLabel placeholder="New task title" value={title} onChange={(e) => setTitle(e.target.value)} className="grow" />
+        <Button type="submit" disabled={!title.trim()}>+ Add Task</Button>
+      </Card>
 
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div style={{ display: "flex", gap: "1rem" }}>
-            {Object.keys(columns).map((status) => (
+      {!tasksLoaded && <p role="status" className="muted">Loading tasks...</p>}
+
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <div className="kanban">
+          {COLUMNS.map(({ status, title: columnTitle, dot }) => {
+            const columnTasks = tasks.filter((t) => t.status === status);
+            return (
               <Droppable droppableId={status} key={status}>
                 {(provided) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    style={{
-                      flex: 1,
-                      background: "#161B22",
-                      border: "1px solid #30363D",
-                      borderRadius: "10px",
-                      padding: "1rem",
-                      minHeight: "400px",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "1rem" }}>
-                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: columnMeta[status].accent }} />
-                      <h3 style={{ color: "#E6EDF3", fontSize: "14px", margin: 0, fontWeight: 600 }}>
-                        {columnMeta[status].title}
-                      </h3>
-                      <span style={{ color: "#8B949E", fontSize: "12px" }}>{columns[status].length}</span>
+                  <section ref={provided.innerRef} {...provided.droppableProps} className="card kanban__column" aria-label={`${columnTitle} column`}>
+                    <div className="row" style={{ "--gap": "8px", marginBottom: "1rem" }}>
+                      <span className="kanban__dot" style={{ background: dot }} />
+                      <h2 className="small" style={{ margin: 0, fontWeight: 600 }}>{columnTitle}</h2>
+                      <span className="muted small">{columnTasks.length}</span>
                     </div>
-
-                    {columns[status].map((task, index) => (
+                    {tasksLoaded && columnTasks.length === 0 && <p className="hint">Drop tasks here</p>}
+                    {columnTasks.map((task, index) => (
                       <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
-                        {(provided) => (
+                        {(dragProvided) => (
                           <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            style={{
-                              background: "#0D1117",
-                              border: "1px solid #30363D",
-                              borderRadius: "8px",
-                              padding: "0.75rem",
-                              marginBottom: "0.5rem",
-                              ...provided.draggableProps.style,
-                            }}
+                            ref={dragProvided.innerRef}
+                            {...dragProvided.draggableProps}
+                            {...dragProvided.dragHandleProps}
+                            className="card card--inset"
+                            style={{ marginBottom: "0.5rem", ...dragProvided.draggableProps.style }}
                           >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ color: "#E6EDF3", fontSize: "13px" }}>{task.title}</span>
-                              <button onClick={() => deleteTask(task.id)} style={deleteButtonStyle}>✕</button>
+                            <div className="row row--between">
+                              <span className="small">{task.title}</span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Delete task ${task.title}`}
+                                onClick={() => setToDelete({ kind: "task", id: task.id, name: task.title })}
+                              >
+                                ✕
+                              </Button>
                             </div>
                           </div>
                         )}
                       </Draggable>
                     ))}
                     {provided.placeholder}
-                  </div>
+                  </section>
                 )}
               </Droppable>
-            ))}
-          </div>
-        </DragDropContext>
-
-        <div style={{ marginTop: "2.5rem", display: "flex", gap: "1.5rem", alignItems: "stretch" }}>
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <h3 style={{ color: "#E6EDF3", fontSize: "16px", fontWeight: 600, marginBottom: "1rem" }}>
-              📁 Files
-            </h3>
-
-            <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1.25rem", flex: 1 }}>
-              <label style={uploadLabelStyle}>
-                {uploading ? "Uploading..." : "+ Upload a file"}
-                <input type="file" accept={UPLOAD_ACCEPT} onChange={uploadFile} disabled={uploading} style={{ display: "none" }} />
-              </label>
-              <p style={{ color: "#8B949E", fontSize: "12px", margin: "0.5rem 0 0" }}>
-                Images, PDFs, ZIPs and text/code files, up to 10 MB.
-              </p>
-
-              {files.length === 0 && (
-                <p style={{ color: "#8B949E", fontSize: "13px", marginTop: "1rem" }}>No files uploaded yet.</p>
-              )}
-
-              <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {files.map((file) => (
-                  <div key={file.id} style={fileRowStyle}>
-                    <a href={file.url} target="_blank" rel="noreferrer" style={fileLinkStyle}>
-                      {file.filename}
-                    </a>
-                    <button onClick={() => deleteFile(file.id)} style={deleteButtonStyle}>✕</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <h3 style={{ color: "#E6EDF3", fontSize: "16px", fontWeight: 600, marginBottom: "1rem" }}>
-              💬 Chat
-            </h3>
-
-            <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1.25rem", flex: 1, display: "flex", flexDirection: "column" }}>
-              <div style={chatBoxStyle}>
-                {olderCursor !== null && (
-                  <button onClick={loadOlderMessages} disabled={loadingOlder} style={{ ...backButtonStyle, marginBottom: "0.75rem" }}>
-                    {loadingOlder ? "Loading..." : "↑ Load older messages"}
-                  </button>
-                )}
-                {messages.length === 0 && (
-                  <p style={{ color: "#8B949E", fontSize: "13px" }}>No messages yet. Say hello!</p>
-                )}
-                {messages.map((msg, idx) => (
-                  <div key={msg.id || idx} style={{ marginBottom: "0.5rem" }}>
-                    <span style={{ color: msg.username === user?.username ? "#7EE787" : "#58A6FF", fontSize: "12px", fontWeight: 600 }}>
-                      {msg.username === user?.username ? `${msg.username} (you)` : msg.username}:{" "}
-                    </span>
-                    <span style={{ color: "#E6EDF3", fontSize: "13px" }}>{msg.content}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-                <input
-                  type="text"
-                  placeholder="Type a message..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                  maxLength={MAX_CHAT_MESSAGE_LENGTH}
-                  style={{ ...inputStyle, flex: 1 }}
-                />
-                <button onClick={sendMessage} style={primaryButtonStyle}>Send</button>
-              </div>
-              {chatError && (
-                <p role="alert" style={{ color: "#F85149", fontSize: "12px", margin: "0.5rem 0 0" }}>{chatError}</p>
-              )}
-            </div>
-          </div>
+            );
+          })}
         </div>
+      </DragDropContext>
+      <p className="hint">Tip: tasks can be moved with the keyboard too: focus a task, press Space, use the arrow keys, then Space again.</p>
+
+      <div className="split" style={{ marginTop: "2.5rem" }}>
+        <section className="stack">
+          <h2 className="section-title">📁 Files</h2>
+          <Card className="grow">
+            <label className="btn btn--primary">
+              {uploading ? "Uploading..." : "+ Upload a file"}
+              <input type="file" accept={UPLOAD_ACCEPT} onChange={uploadFile} disabled={uploading} className="visually-hidden" />
+            </label>
+            <p className="hint">Images, PDFs, ZIPs and text/code files, up to 10 MB.</p>
+
+            {!filesLoaded && <p role="status" className="muted small" style={{ marginTop: "1rem" }}>Loading files...</p>}
+            {filesLoaded && files.length === 0 && <p className="muted small" style={{ marginTop: "1rem" }}>No files uploaded yet.</p>}
+
+            <ul className="stack" style={{ marginTop: "1rem", listStyle: "none", padding: 0, "--gap": "0.5rem" }}>
+              {files.map((file) => (
+                <li key={file.id} className="card card--inset row row--between">
+                  <a href={file.url} target="_blank" rel="noreferrer" className="btn btn--link">{file.filename}</a>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Delete file ${file.filename}`}
+                    onClick={() => setToDelete({ kind: "file", id: file.id, name: file.filename })}
+                  >
+                    ✕
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
+
+        <section className="stack">
+          <h2 className="section-title">💬 Chat</h2>
+          <Card className="grow stack">
+            <div className="chat-log" role="log" aria-live="polite" aria-label="Chat messages">
+              {olderCursor !== null && (
+                <Button variant="link" onClick={loadOlderMessages} disabled={loadingOlder}>
+                  {loadingOlder ? "Loading..." : "↑ Load older messages"}
+                </Button>
+              )}
+              {messages.length === 0 && <p className="muted small">No messages yet. Say hello!</p>}
+              {messages.map((msg, idx) => {
+                const mine = msg.username === user?.username;
+                return (
+                  <p key={msg.id || idx} className="small" style={{ marginBottom: "0.5rem" }}>
+                    <strong className={mine ? "text-success" : ""} style={mine ? undefined : { color: "var(--color-accent)" }}>
+                      {mine ? `${msg.username} (you)` : msg.username}:
+                    </strong>{" "}
+                    {msg.content}
+                  </p>
+                );
+              })}
+            </div>
+
+            <form onSubmit={sendMessage} className="row">
+              <Input
+                label="Message"
+                hideLabel
+                placeholder="Type a message..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                maxLength={MAX_CHAT_MESSAGE_LENGTH}
+                className="grow"
+              />
+              <Button type="submit">Send</Button>
+            </form>
+            {chatError && <p role="alert" className="small text-danger">{chatError}</p>}
+          </Card>
+        </section>
       </div>
-    </div>
+
+      {toDelete && (
+        <ConfirmDialog
+          title={toDelete.kind === "task" ? "Delete this task?" : "Delete this file?"}
+          message={`"${toDelete.name}" will be permanently deleted.`}
+          busy={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setToDelete(null)}
+        />
+      )}
+    </Page>
   );
 }
-
-const inputStyle = {
-  padding: "9px 12px",
-  background: "#0D1117",
-  border: "1px solid #30363D",
-  borderRadius: "6px",
-  color: "#E6EDF3",
-  fontSize: "14px",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const primaryButtonStyle = {
-  padding: "9px 16px",
-  background: "#58A6FF",
-  color: "#0D1117",
-  border: "none",
-  borderRadius: "6px",
-  fontSize: "14px",
-  fontWeight: 600,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
-
-const backButtonStyle = {
-  padding: "0",
-  background: "transparent",
-  color: "#58A6FF",
-  border: "none",
-  fontSize: "13px",
-  cursor: "pointer",
-};
-
-const deleteButtonStyle = {
-  padding: "2px 7px",
-  background: "transparent",
-  color: "#F85149",
-  border: "1px solid #30363D",
-  borderRadius: "4px",
-  cursor: "pointer",
-  fontSize: "11px",
-};
-
-const uploadLabelStyle = {
-  display: "inline-block",
-  padding: "8px 14px",
-  background: "#58A6FF",
-  color: "#0D1117",
-  borderRadius: "6px",
-  fontSize: "13px",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const fileRowStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  background: "#0D1117",
-  border: "1px solid #30363D",
-  borderRadius: "6px",
-  padding: "8px 12px",
-};
-
-const fileLinkStyle = {
-  color: "#58A6FF",
-  fontSize: "13px",
-  textDecoration: "none",
-};
-
-const chatBoxStyle = {
-  maxHeight: "200px",
-  overflowY: "auto",
-  minHeight: "100px",
-  flex: 1,
-};
 
 export default Board;

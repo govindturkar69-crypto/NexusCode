@@ -2,32 +2,17 @@ import { Link } from "react-router-dom";
 
 function NotFound() {
   return (
-    <div style={{ minHeight: "100vh", background: "#0D1117", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: "1rem" }}>
+    <main className="page page--centered">
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "13px", color: "#F85149", marginBottom: "0.4rem" }}>
-          $ 404 --not-found
-        </div>
-        <h1 style={{ fontFamily: "'JetBrains Mono', monospace", color: "#E6EDF3", fontSize: "24px", margin: 0, fontWeight: 600 }}>
-          Page not found
-        </h1>
-        <p style={{ color: "#8B949E", fontSize: "14px", margin: "0.5rem 0 1.5rem" }}>
-          The page you're looking for doesn't exist.
+        <div className="eyebrow eyebrow--danger">$ 404 --not-found</div>
+        <h1 className="page-title">Page not found</h1>
+        <p className="muted" style={{ margin: "0.5rem 0 1.5rem" }}>
+          The page you&apos;re looking for doesn&apos;t exist.
         </p>
-        <Link to="/projects" style={linkStyle}>Go to Projects</Link>
+        <Link to="/projects" className="btn btn--primary">Go to Projects</Link>
       </div>
-    </div>
+    </main>
   );
 }
-
-const linkStyle = {
-  display: "inline-block",
-  padding: "9px 16px",
-  background: "#58A6FF",
-  color: "#0D1117",
-  borderRadius: "6px",
-  fontSize: "14px",
-  fontWeight: 600,
-  textDecoration: "none",
-};
 
 export default NotFound;

@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { socketUrl } from "../api/client";
 import { createMeetingSession } from "../meeting/session";
+import BackLink from "../components/ui/BackLink";
+import Button from "../components/ui/Button";
+import Page from "../components/ui/Page";
+import PageHeader from "../components/ui/PageHeader";
 
 // Google's free STUN servers — help browsers find their public IP
 const ICE_SERVERS = {
@@ -99,80 +103,40 @@ function VideoMeeting() {
   const statusText = errorText ? `Error: ${errorText}` : STATUS_TEXT[status] ?? status;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0D1117", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "2rem 1.5rem" }}>
-        <button onClick={leave} style={backButtonStyle}>
-          ← Leave meeting
-        </button>
+    <Page width={1000}>
+      <BackLink to={`/projects/${projectId}`}>Leave meeting</BackLink>
+      <PageHeader eyebrow={`video-meeting --project ${projectId}`} title="Video Meeting" tone="success">
+        <p role="status" aria-live="polite" className={`small ${peerConnected ? "text-success" : errorText ? "text-danger" : "muted"}`} style={{ marginTop: "0.5rem" }}>
+          {statusText}
+        </p>
+      </PageHeader>
 
-        <div style={{ margin: "1rem 0 1.5rem" }}>
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "13px", color: "#7EE787", marginBottom: "0.3rem" }}>
-            $ video-meeting --project {projectId}
-          </div>
-          <h1 style={{ fontFamily: "'JetBrains Mono', monospace", color: "#E6EDF3", fontSize: "22px", margin: 0, fontWeight: 600 }}>
-            Video Meeting
-          </h1>
-          <p role="status" style={{ color: peerConnected ? "#7EE787" : errorText ? "#F85149" : "#8B949E", fontSize: "13px", marginTop: "0.5rem" }}>
-            {statusText}
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem" }}>
-          <div style={{ flex: 1, position: "relative" }}>
-            <p style={{ color: "#8B949E", fontSize: "12px", marginBottom: "0.5rem" }}>
-              You{!micOn && " (muted)"}{!cameraOn && " (camera off)"}
-            </p>
-            <video ref={localVideoRef} autoPlay muted playsInline style={videoStyle} />
-          </div>
-          <div style={{ flex: 1, position: "relative" }}>
-            <p style={{ color: "#8B949E", fontSize: "12px", marginBottom: "0.5rem" }}>
-              {peerConnected ? "Peer" : "Waiting for peer..."}
-            </p>
-            <video ref={remoteVideoRef} autoPlay playsInline style={{ ...videoStyle, opacity: peerConnected ? 1 : 0.3 }} />
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button onClick={toggleMic} aria-pressed={!micOn} style={controlButtonStyle}>
-            🎤 {micOn ? "Mute mic" : "Unmute mic"}
-          </button>
-          <button onClick={toggleCamera} aria-pressed={!cameraOn} style={controlButtonStyle}>
-            📹 {cameraOn ? "Turn camera off" : "Turn camera on"}
-          </button>
-          <button onClick={leave} style={{ ...controlButtonStyle, background: "#F85149", color: "white", border: "none" }}>
-            📵 Leave
-          </button>
-        </div>
+      <div className="split" style={{ marginBottom: "1.5rem" }}>
+        <figure style={{ margin: 0 }}>
+          <figcaption className="muted small" style={{ marginBottom: "0.5rem" }}>
+            You{!micOn && " (muted)"}{!cameraOn && " (camera off)"}
+          </figcaption>
+          <video ref={localVideoRef} autoPlay muted playsInline className="video" />
+        </figure>
+        <figure style={{ margin: 0 }}>
+          <figcaption className="muted small" style={{ marginBottom: "0.5rem" }}>
+            {peerConnected ? "Peer" : "Waiting for peer..."}
+          </figcaption>
+          <video ref={remoteVideoRef} autoPlay playsInline className="video" style={{ opacity: peerConnected ? 1 : 0.3 }} />
+        </figure>
       </div>
-    </div>
+
+      <div className="row">
+        <Button variant="ghost" onClick={toggleMic} aria-pressed={!micOn}>
+          🎤 {micOn ? "Mute mic" : "Unmute mic"}
+        </Button>
+        <Button variant="ghost" onClick={toggleCamera} aria-pressed={!cameraOn}>
+          📹 {cameraOn ? "Turn camera off" : "Turn camera on"}
+        </Button>
+        <Button variant="danger-solid" onClick={leave}>📵 Leave</Button>
+      </div>
+    </Page>
   );
 }
-
-const backButtonStyle = {
-  padding: "0",
-  background: "transparent",
-  color: "#58A6FF",
-  border: "none",
-  fontSize: "13px",
-  cursor: "pointer",
-};
-
-const videoStyle = {
-  width: "100%",
-  borderRadius: "10px",
-  background: "#161B22",
-  border: "1px solid #30363D",
-  minHeight: "300px",
-};
-
-const controlButtonStyle = {
-  padding: "10px 16px",
-  background: "#161B22",
-  color: "#E6EDF3",
-  border: "1px solid #30363D",
-  borderRadius: "6px",
-  fontSize: "13px",
-  cursor: "pointer",
-};
 
 export default VideoMeeting;

@@ -61,7 +61,7 @@ function redirectToLogin() {
  * - throws ApiError on any non-2xx response
  * - on 401 for an authenticated call: clears the token and goes to /login
  */
-export async function apiFetch(path, { method = "GET", body, form, auth = true, signal } = {}) {
+export async function apiFetch(path, { method = "GET", body, form, auth = true, signal, keepalive } = {}) {
   const headers = {};
   const token = getToken();
   if (auth && token) headers.Authorization = `Bearer ${token}`;
@@ -76,7 +76,8 @@ export async function apiFetch(path, { method = "GET", body, form, auth = true, 
 
   let res;
   try {
-    res = await fetch(`${API_URL}${path}`, { method, headers, body: payload, signal });
+    // keepalive lets a request finish while the page is being left (editor autosave)
+    res = await fetch(`${API_URL}${path}`, { method, headers, body: payload, signal, keepalive });
   } catch (err) {
     if (err.name === "AbortError") throw err;
     throw new ApiError("Can't reach the server. Check your connection and try again.", 0);

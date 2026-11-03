@@ -21,6 +21,25 @@ export function stubFetch(...responses) {
   return fetchMock
 }
 
+// Stubs fetch by "METHOD path" (path without the API base and query string),
+// so tests don't depend on which effect fires first. Values are
+// [status, body] or a list of them, consumed in order for that route.
+export function stubRoutes(routes) {
+  const queues = Object.fromEntries(
+    Object.entries(routes).map(([key, value]) => [key, Array.isArray(value[0]) ? [...value] : [value]])
+  )
+  const fetchMock = vi.fn((url, init = {}) => {
+    const path = new URL(url).pathname
+    const key = `${init.method ?? 'GET'} ${path}`
+    const queue = queues[key]
+    if (!queue || queue.length === 0) throw new Error(`Unexpected fetch: ${key}`)
+    const [status, body] = queue.length > 1 ? queue.shift() : queue[0]
+    return jsonResponse(status, body)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
 // A JWT-shaped token whose payload decodes in the browser (signature is not checked client-side)
 export function fakeJwt(payload) {
   const encode = (obj) => btoa(JSON.stringify(obj)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/useAuth";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
 
 // Same rules the backend enforces on /signup
 const USERNAME_PATTERN = /^[a-z0-9_]{3,30}$/;
@@ -77,175 +79,61 @@ function Login() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#0D1117",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: "'Inter', system-ui, sans-serif",
-        padding: "1rem",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "380px",
-          background: "#161B22",
-          border: "1px solid #30363D",
-          borderRadius: "12px",
-          padding: "2.5rem",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-        }}
-      >
+    <main className="page page--centered">
+      <div className="card" style={{ width: "100%", maxWidth: "380px", padding: "2.5rem", borderRadius: "var(--radius-xl)", boxShadow: "var(--shadow-lg)" }}>
         <div style={{ marginBottom: "2rem" }}>
-          <div
-            style={{
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-              fontSize: "13px",
-              color: "#58A6FF",
-              marginBottom: "0.4rem",
-              letterSpacing: "0.5px",
-            }}
-          >
-            {copy.prompt}
-          </div>
-          <h1
-            style={{
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-              fontSize: "26px",
-              color: "#E6EDF3",
-              margin: 0,
-              fontWeight: 600,
-              letterSpacing: "-0.5px",
-            }}
-          >
-            Nexus<span style={{ color: "#58A6FF" }}>Code</span>
+          <div className="eyebrow">{copy.prompt}</div>
+          <h1 className="page-title" style={{ fontSize: "26px", letterSpacing: "-0.5px" }}>
+            Nexus<span style={{ color: "var(--color-accent)" }}>Code</span>
           </h1>
-          <p style={{ color: "#8B949E", fontSize: "14px", marginTop: "0.5rem" }}>
-            {copy.subtitle}
-          </p>
+          <p className="muted" style={{ marginTop: "0.5rem" }}>{copy.subtitle}</p>
         </div>
 
-        <form onSubmit={handleSubmit} noValidate>
-          <div style={{ marginBottom: "1rem" }}>
-            <label htmlFor="login-username" style={labelStyle}>
-              Username
-            </label>
-            <input
-              id="login-username"
-              type="text"
-              placeholder="your_username"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              style={inputStyle}
-            />
-            {isSignup && (
-              <p style={hintStyle}>3-30 characters: lowercase letters, numbers and _</p>
-            )}
-          </div>
-
-          <div style={{ marginBottom: isSignup ? "1rem" : "1.5rem" }}>
-            <label htmlFor="login-password" style={labelStyle}>
-              Password
-            </label>
-            <input
-              id="login-password"
+        <form onSubmit={handleSubmit} noValidate className="stack" style={{ "--gap": "1rem" }}>
+          <Input
+            label="Username"
+            placeholder="your_username"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            hint={isSignup ? "3-30 characters: lowercase letters, numbers and _" : undefined}
+          />
+          <Input
+            label="Password"
+            type="password"
+            placeholder="••••••••"
+            autoComplete={isSignup ? "new-password" : "current-password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            hint={isSignup ? "At least 8 characters" : undefined}
+          />
+          {isSignup && (
+            <Input
+              label="Confirm password"
               type="password"
               placeholder="••••••••"
-              autoComplete={isSignup ? "new-password" : "current-password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={inputStyle}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
             />
-            {isSignup && <p style={hintStyle}>At least 8 characters</p>}
-          </div>
-
-          {isSignup && (
-            <div style={{ marginBottom: "1.5rem" }}>
-              <label htmlFor="login-confirm-password" style={labelStyle}>
-                Confirm password
-              </label>
-              <input
-                id="login-confirm-password"
-                type="password"
-                placeholder="••••••••"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
           )}
 
-          {error && (
-            <p role="alert" style={{ color: "#F85149", fontSize: "13px", marginBottom: "1rem" }}>
-              {error}
-            </p>
-          )}
+          {error && <p role="alert" className="small text-danger">{error}</p>}
 
-          <button type="submit" disabled={submitting} style={{ ...buttonStyle, opacity: submitting ? 0.7 : 1 }}>
+          <Button type="submit" block disabled={submitting}>
             {submitting ? copy.busy : copy.submit}
-          </button>
+          </Button>
         </form>
 
-        <p style={{ color: "#8B949E", fontSize: "13px", textAlign: "center", marginTop: "1.5rem", marginBottom: 0 }}>
+        <p className="muted small" style={{ textAlign: "center", marginTop: "1.5rem" }}>
           {isSignup ? "Already have an account? " : "New to NexusCode? "}
-          <button type="button" onClick={switchMode} style={linkButtonStyle}>
+          <Button variant="link" onClick={switchMode}>
             {isSignup ? "Sign in" : "Create an account"}
-          </button>
+          </Button>
         </p>
       </div>
-    </div>
+    </main>
   );
 }
-
-const labelStyle = {
-  display: "block",
-  color: "#8B949E",
-  fontSize: "13px",
-  marginBottom: "0.4rem",
-};
-
-const hintStyle = {
-  color: "#6E7681",
-  fontSize: "12px",
-  margin: "0.35rem 0 0",
-};
-
-const linkButtonStyle = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  color: "#58A6FF",
-  fontSize: "13px",
-  cursor: "pointer",
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  background: "#0D1117",
-  border: "1px solid #30363D",
-  borderRadius: "6px",
-  color: "#E6EDF3",
-  fontSize: "14px",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const buttonStyle = {
-  width: "100%",
-  padding: "10px",
-  background: "#58A6FF",
-  color: "#0D1117",
-  border: "none",
-  borderRadius: "6px",
-  fontSize: "14px",
-  fontWeight: 600,
-  cursor: "pointer",
-};
 
 export default Login;
