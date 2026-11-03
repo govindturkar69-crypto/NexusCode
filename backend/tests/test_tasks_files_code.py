@@ -57,7 +57,7 @@ def test_file_upload_list_delete(client, alice, pid, fake_cloudinary):
     file = r.json()["file"]
     assert file["filename"] == "report.pdf"
     assert file["url"].startswith("https://")
-    assert len(fake_cloudinary) == 1
+    assert len(fake_cloudinary["uploads"]) == 1
 
     files = client.get(f"/projects/{pid}/files", headers=auth(alice)).json()["files"]
     assert [f["filename"] for f in files] == ["report.pdf"]
@@ -70,7 +70,7 @@ def test_file_upload_list_delete(client, alice, pid, fake_cloudinary):
 def test_upload_to_missing_project_is_404(client, alice, fake_cloudinary):
     r = client.post("/projects/999/files", files={"file": ("a.txt", io.BytesIO(b"x"), "text/plain")}, headers=auth(alice))
     assert r.status_code == 404
-    assert fake_cloudinary == []
+    assert fake_cloudinary["uploads"] == []
 
 
 def test_code_file_created_on_first_read_and_saved(client, alice, pid):

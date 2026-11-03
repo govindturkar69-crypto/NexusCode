@@ -76,6 +76,10 @@ class FileModel(TimestampMixin, Base):
     # Cloudinary public_id, needed to delete the upload. NULL for files
     # uploaded before migration 0002.
     public_id = Column(String, nullable=True)
+    # Needed with public_id to delete from Cloudinary (migration 0003)
+    resource_type = Column(String, nullable=True)
+    content_type = Column(String, nullable=True)
+    size_bytes = Column(Integer, nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
 
     project = relationship("ProjectModel", back_populates="files")

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import Pagination, get_current_user, get_owned_project
 from app.models import CodeFileModel, ProjectModel, UserModel
+from app.routers.files import delete_project_assets
 from app.schemas.project import (
     CodeFileResponse,
     CodeFileSavedResponse,
@@ -40,6 +41,8 @@ def get_project(project: ProjectModel = Depends(get_owned_project)):
 
 @router.delete("/projects/{project_id}", status_code=204)
 def delete_project(project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+    # Rows go via ORM cascade; uploaded assets have to be removed from Cloudinary
+    delete_project_assets(project)
     db.delete(project)
     db.commit()
     return Response(status_code=204)

@@ -124,13 +124,43 @@ def test_settings_strip_frontend_trailing_slash():
     assert config.cors_origins[0] == "https://app.example"
 
 
-def test_cloudinary_upload_uses_auto_resource_type(monkeypatch):
-    captured = {}
+PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 16
 
-    def fake_upload(data, **options):
-        captured.update(options, data=data)
-        return {"secure_url": "https://res.cloudinary.test/x"}
 
-    monkeypatch.setattr(files.cloudinary.uploader, "upload", fake_upload)
-    assert files.upload_file_to_cloudinary(b"bytes", "x.txt") == "https://res.cloudinary.test/x"
-    assert captured["resource_type"] == "auto" and captured["data"] == b"bytes"
+@pytest.mark.parametrize("filename,content_type,data,expected", [
+    ("a.png", "image/png", PNG, ("image/png", "image")),
+    ("a.JPG", "image/jpeg", b"\xff\xd8\xff\xe0rest", ("image/jpeg", "image")),
+    ("doc.pdf", "application/pdf", b"%PDF-1.7 ...", ("application/pdf", "image")),
+    ("x.zip", "application/zip", b"PK\x03\x04rest", ("application/zip", "raw")),
+    ("notes.md", "text/markdown", b"# hi", ("text/markdown", "raw")),
+    ("main.py", "application/octet-stream", b"print(1)", ("text/plain", "raw")),  # browsers send this for .py
+    ("app.js", "text/javascript", b"let x", ("text/plain", "raw")),
+    ("data.csv", "text/csv; charset=utf-8", b"a,b", ("text/csv", "raw")),
+])
+def test_validate_upload_accepts(filename, content_type, data, expected):
+    assert files.validate_upload(filename, content_type, data) == expected
+
+
+@pytest.mark.parametrize("filename,content_type,data,status", [
+    ("a.svg", "image/svg+xml", b"<svg onload=alert(1)>", 415),
+    ("a.html", "text/html", b"<script>", 415),
+    ("fake.png", "image/png", b"<html><script>", 415),       # wrong magic bytes
+    ("a.png", "application/pdf", b"%PDF-1.4", 415),          # extension/type mismatch
+    ("a.exe", "application/octet-stream", b"MZ", 415),
+    ("bad.txt", "text/plain", b"\xff\xfe\xfa", 415),          # not UTF-8
+    ("empty.txt", "text/plain", b"", 400),
+    ("big.txt", "text/plain", b"x" * (10 * 1024 * 1024 + 1), 413),
+])
+def test_validate_upload_rejects(filename, content_type, data, status):
+    with pytest.raises(files.UploadRejected) as info:
+        files.validate_upload(filename, content_type, data)
+    assert info.value.status_code == status
+
+
+def test_delete_treats_not_found_as_success_and_raises_otherwise(monkeypatch):
+    results = iter([{"result": "ok"}, {"result": "not found"}, {"result": "error"}])
+    monkeypatch.setattr(files.cloudinary.uploader, "destroy", lambda *a, **k: next(results))
+    files.delete_project_file("projects/1/a", "image")
+    files.delete_project_file("projects/1/b", "raw")
+    with pytest.raises(RuntimeError):
+        files.delete_project_file("projects/1/c", "image")

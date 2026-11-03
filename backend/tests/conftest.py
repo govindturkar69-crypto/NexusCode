@@ -142,14 +142,27 @@ def get_github_token(username):
 
 @pytest.fixture
 def fake_cloudinary(monkeypatch):
-    uploads = []
+    """Fakes the Cloudinary SDK calls only, so our storage code still runs."""
+    state = {"uploads": [], "destroyed": [], "destroy_result": "ok", "fail_upload": False}
 
-    def fake_upload(file_bytes, filename):
-        uploads.append((filename, len(file_bytes)))
-        return f"https://res.cloudinary.test/{filename}"
+    def upload(data, **options):
+        if state["fail_upload"]:
+            raise ConnectionError("cloudinary is down")
+        state["uploads"].append({"size": len(data), **options})
+        public_id, resource_type = options["public_id"], options["resource_type"]
+        return {
+            "secure_url": f"https://res.cloudinary.test/{resource_type}/upload/{public_id}",
+            "public_id": public_id,
+            "resource_type": resource_type,
+        }
 
-    monkeypatch.setattr(storage, "upload_file_to_cloudinary", fake_upload)
-    return uploads
+    def destroy(public_id, **options):
+        state["destroyed"].append((public_id, options.get("resource_type")))
+        return {"result": state["destroy_result"]}
+
+    monkeypatch.setattr(storage.cloudinary.uploader, "upload", upload)
+    monkeypatch.setattr(storage.cloudinary.uploader, "destroy", destroy)
+    return state
 
 
 @pytest.fixture

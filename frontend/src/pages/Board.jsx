@@ -6,6 +6,8 @@ import { useAuth } from "../auth/useAuth";
 
 // Matches the server-side limit
 const MAX_CHAT_MESSAGE_LENGTH = 2000;
+// Mirrors the backend allowlist (app/services/storage.py); the server still validates
+const UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.zip,.txt,.md,.csv,.json,.log,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.css,.sql,.yml,.yaml,.toml,.ini";
 
 function Board() {
   const { projectId } = useParams();
@@ -270,8 +272,11 @@ function Board() {
             <div style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: "10px", padding: "1.25rem", flex: 1 }}>
               <label style={uploadLabelStyle}>
                 {uploading ? "Uploading..." : "+ Upload a file"}
-                <input type="file" onChange={uploadFile} disabled={uploading} style={{ display: "none" }} />
+                <input type="file" accept={UPLOAD_ACCEPT} onChange={uploadFile} disabled={uploading} style={{ display: "none" }} />
               </label>
+              <p style={{ color: "#8B949E", fontSize: "12px", margin: "0.5rem 0 0" }}>
+                Images, PDFs, ZIPs and text/code files, up to 10 MB.
+              </p>
 
               {files.length === 0 && (
                 <p style={{ color: "#8B949E", fontSize: "13px", marginTop: "1rem" }}>No files uploaded yet.</p>
