@@ -1,7 +1,7 @@
 import io
 
 import pytest
-from conftest import auth
+from conftest import auth, ws_path
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import SessionLocal
@@ -126,7 +126,7 @@ def test_new_tasks_go_to_the_end_and_have_timestamps(client, alice, pid):
 def test_chat_messages_record_the_sender_id(client, alice, pid):
     from app.models import MessageModel, UserModel
 
-    with client.websocket_connect(f"/ws/projects/{pid}/chat?token={alice}") as ws:
+    with client.websocket_connect(ws_path(client, alice, pid)) as ws:
         ws.send_json({"content": "hi"})
         ws.receive_json()
     with SessionLocal() as db:
@@ -135,7 +135,7 @@ def test_chat_messages_record_the_sender_id(client, alice, pid):
 
 
 def test_messages_are_newest_first(client, alice, pid):
-    with client.websocket_connect(f"/ws/projects/{pid}/chat?token={alice}") as ws:
+    with client.websocket_connect(ws_path(client, alice, pid)) as ws:
         for text in ("one", "two", "three"):
             ws.send_json({"content": text})
             ws.receive_json()

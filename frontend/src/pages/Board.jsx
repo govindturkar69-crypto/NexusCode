@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { apiFetch, apiFetchAll, wsUrl } from "../api/client";
+import { apiFetch, apiFetchAll, socketUrl } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 
 // Matches the server-side limit
@@ -63,25 +63,39 @@ function Board() {
   }
 
   useEffect(() => {
-    const socket = new WebSocket(wsUrl(`/ws/projects/${projectId}/chat`));
-    ws.current = socket;
+    let socket = null;
+    let cancelled = false;
 
-    socket.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      if (message.type === "error") {
-        setChatError(message.detail);
-        return;
-      }
-      setChatError("");
-      setMessages((prev) => [...prev, message]);
-    };
-    // The server refuses the socket if the token is missing/expired or the
-    // project isn't ours, which shows up here as a close.
-    socket.onclose = () => setChatError("Chat disconnected. Refresh the page to reconnect.");
+    // Get a single-use ticket, then connect (unless we unmounted meanwhile)
+    socketUrl(`/ws/projects/${projectId}/chat`, projectId)
+      .then((url) => {
+        if (cancelled) return;
+        socket = new WebSocket(url);
+        ws.current = socket;
+
+        socket.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === "error") {
+            setChatError(message.detail);
+            return;
+          }
+          setChatError("");
+          setMessages((prev) => [...prev, message]);
+        };
+        // The server refuses the socket if the ticket is invalid or the
+        // project isn't ours, which shows up here as a close.
+        socket.onclose = () => setChatError("Chat disconnected. Refresh the page to reconnect.");
+      })
+      .catch(() => {
+        if (!cancelled) setChatError("Couldn't connect to chat. Refresh the page to try again.");
+      });
 
     return () => {
-      socket.onclose = null;
-      socket.close();
+      cancelled = true;
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
     };
   }, [projectId]);
 

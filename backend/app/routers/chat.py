@@ -2,15 +2,22 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
-from app.core.deps import get_owned_project
-from app.core.security import decode_access_token
+from app.core.deps import get_current_user, get_owned_project
+from app.core.security import WS_TICKET_TTL_SECONDS, consume_ws_ticket, create_ws_ticket
 from app.models import MessageModel, ProjectModel, UserModel
-from app.schemas.project import MessageListResponse
+from app.schemas.project import MessageListResponse, WsTicketRequest, WsTicketResponse
 from app.services.realtime import manager, video_manager
 
 logger = logging.getLogger("nexuscode")
@@ -40,12 +47,13 @@ def get_project_messages(
     return {"messages": messages, "next_cursor": next_cursor}
 
 
-def _ws_user_for_project(token: str | None, project_id: int) -> str | None:
+def _ws_user_for_project(ticket: str | None, project_id: int) -> str | None:
     """
-    Returns the username behind `token` if that user may access the project,
-    otherwise None. Runs in a worker thread because it touches the database.
+    Returns the username behind a valid, unused ticket for this project, if
+    that user still owns the project; otherwise None. Runs in a worker thread
+    because it touches the database.
     """
-    username = decode_access_token(token) if token else None
+    username = consume_ws_ticket(ticket, project_id) if ticket else None
     if username is None:
         return None
     with SessionLocal() as db:
@@ -60,11 +68,23 @@ def _ws_user_for_project(token: str | None, project_id: int) -> str | None:
 
 
 async def _authorize_websocket(websocket: WebSocket, project_id: int) -> str | None:
-    """Checks ?token= before accept(); closes with 1008 (policy violation) if not allowed."""
-    username = await run_in_threadpool(_ws_user_for_project, websocket.query_params.get("token"), project_id)
+    """Checks ?ticket= before accept(); closes with 1008 (policy violation) if not allowed."""
+    username = await run_in_threadpool(_ws_user_for_project, websocket.query_params.get("ticket"), project_id)
     if username is None:
         await websocket.close(code=1008)
     return username
+
+
+@router.post("/ws-ticket", response_model=WsTicketResponse)
+def issue_ws_ticket(body: WsTicketRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    """Trade the login token for a 30-second, single-use ticket for one project's sockets."""
+    owns_project = db.query(ProjectModel.id).filter(
+        ProjectModel.id == body.project_id,
+        ProjectModel.owner_id == current_user.id,
+    ).first()
+    if owns_project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"ticket": create_ws_ticket(current_user.username, body.project_id), "expires_in": WS_TICKET_TTL_SECONDS}
 
 
 def _save_chat_message(project_id: int, username: str, content: str) -> dict:

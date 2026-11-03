@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { wsUrl } from "../api/client";
+import { socketUrl } from "../api/client";
 
 // Google's free STUN servers — help browsers find their public IP
 const ICE_SERVERS = {
@@ -41,7 +41,7 @@ function VideoMeeting() {
       setStatus("Camera ready. Waiting for someone to join...");
 
       // Step 2: connect to signaling server
-      const ws = new WebSocket(wsUrl(`/ws/projects/${projectId}/meeting`));
+      const ws = new WebSocket(await socketUrl(`/ws/projects/${projectId}/meeting`, projectId));
       wsRef.current = ws;
 
       ws.onopen = () => {

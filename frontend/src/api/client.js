@@ -110,9 +110,17 @@ export async function apiFetchAll(path, key, { pageSize = 200, signal } = {}) {
   }
 }
 
-// WebSocket URL for a backend path, with the token as ?token= (browsers can't
-// set headers on WebSocket connections).
-export function wsUrl(path) {
+// WebSocket URL for a backend path. Browsers can't set headers on WebSocket
+// connections, so a short-lived single-use ticket goes in the query string
+// instead of the login token.
+export function wsUrl(path, ticket) {
   const base = API_URL.replace(/^http/, "ws");
-  return `${base}${path}?token=${encodeURIComponent(getToken() ?? "")}`;
+  return `${base}${path}?ticket=${encodeURIComponent(ticket)}`;
+}
+
+// Fetches a fresh ticket (valid 30 s, one connection) and returns the socket URL.
+// Call it right before each connect or reconnect.
+export async function socketUrl(path, projectId) {
+  const { ticket } = await apiFetch("/ws-ticket", { method: "POST", body: { project_id: Number(projectId) } });
+  return wsUrl(path, ticket);
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { apiFetch, apiFetchAll, ApiError, clearToken, getToken, hasValidToken, setToken, wsUrl } from './client'
+import { apiFetch, apiFetchAll, ApiError, clearToken, getToken, hasValidToken, setToken, socketUrl, wsUrl } from './client'
 import { fakeJwt, inOneHour, stubFetch } from '../test/helpers'
 
 describe('token helpers', () => {
@@ -145,9 +145,21 @@ describe('apiFetchAll', () => {
   })
 })
 
-describe('wsUrl', () => {
-  it('switches the scheme and appends the encoded token', () => {
-    setToken('a.b+c')
-    expect(wsUrl('/ws/projects/1/chat')).toBe('ws://api.test/ws/projects/1/chat?token=a.b%2Bc')
+describe('wsUrl / socketUrl', () => {
+  it('switches the scheme and appends the encoded ticket, never the login token', () => {
+    setToken('login-token')
+    const url = wsUrl('/ws/projects/1/chat', 'a.b+c')
+    expect(url).toBe('ws://api.test/ws/projects/1/chat?ticket=a.b%2Bc')
+    expect(url).not.toContain('login-token')
+  })
+
+  it('socketUrl trades the login token for a ticket for that project', async () => {
+    setToken('login-token')
+    const fetchMock = stubFetch([200, { ticket: 'tkt', expires_in: 30 }])
+    await expect(socketUrl('/ws/projects/7/meeting', '7')).resolves.toBe('ws://api.test/ws/projects/7/meeting?ticket=tkt')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://api.test/ws-ticket')
+    expect(JSON.parse(init.body)).toEqual({ project_id: 7 })
+    expect(init.headers.Authorization).toBe('Bearer login-token')
   })
 })

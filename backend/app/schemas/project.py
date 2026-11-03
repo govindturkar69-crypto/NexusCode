@@ -101,6 +101,15 @@ class MessageListResponse(BaseModel):
     next_cursor: int | None
 
 
+class WsTicketRequest(BaseModel):
+    project_id: int
+
+
+class WsTicketResponse(BaseModel):
+    ticket: str
+    expires_in: int
+
+
 class CodeFileUpdate(BaseModel):
     content: str
     language: str = "python"

@@ -1,4 +1,7 @@
 import hashlib
+import threading
+import time
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
@@ -72,3 +75,60 @@ def verify_oauth_state(state: str) -> tuple[int, str] | None:
     if not isinstance(user_id, int) or not isinstance(nonce_hash, str):
         return None
     return user_id, nonce_hash
+
+
+# --- WebSocket tickets ---
+# Browsers can't send headers on WebSocket connections, so instead of putting
+# the long-lived login token in the URL, the client trades it for a ticket that
+# is valid for 30 seconds, for one project, and for one connection only.
+WS_TICKET_TYPE = "ws_ticket"
+WS_TICKET_TTL_SECONDS = 30
+
+
+class _UsedTickets:
+    """Remembers consumed ticket ids until they would have expired anyway.
+    In-process (one instance); several instances would need a shared store."""
+
+    def __init__(self):
+        self._used: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def consume(self, ticket_id: str, expires_at: float) -> bool:
+        now = time.time()
+        with self._lock:
+            for key in [k for k, exp in self._used.items() if exp < now]:
+                del self._used[key]
+            if ticket_id in self._used:
+                return False
+            self._used[ticket_id] = expires_at
+            return True
+
+    def clear(self):
+        with self._lock:
+            self._used.clear()
+
+
+used_ws_tickets = _UsedTickets()
+
+
+def create_ws_ticket(username: str, project_id: int) -> str:
+    expire = datetime.now(UTC) + timedelta(seconds=WS_TICKET_TTL_SECONDS)
+    payload = {"typ": WS_TICKET_TYPE, "usr": username, "pid": project_id, "jti": uuid.uuid4().hex, "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def consume_ws_ticket(ticket: str, project_id: int) -> str | None:
+    """Returns the username if the ticket is valid, unused and for this project.
+    A ticket works once; a second connection attempt with it is refused."""
+    try:
+        payload = jwt.decode(ticket, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("typ") != WS_TICKET_TYPE or payload.get("pid") != project_id:
+        return None
+    username, ticket_id = payload.get("usr"), payload.get("jti")
+    if not isinstance(username, str) or not isinstance(ticket_id, str):
+        return None
+    if not used_ws_tickets.consume(ticket_id, float(payload["exp"])):
+        return None
+    return username

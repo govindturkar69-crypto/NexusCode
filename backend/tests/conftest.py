@@ -87,6 +87,7 @@ def fresh_database(migrated_database):
     websocket_manager.video_manager.active_connections.clear()
     # Rate limits are off unless a test opts in with the `rate_limits` fixture
     limiter.reset()
+    auth_module.used_ws_tickets.clear()
     limiter.enabled = False
     yield
 
@@ -139,6 +140,13 @@ def project_of(client):
         return r.json()["project"]["id"]
 
     return _create
+
+
+def ws_path(client, token, project_id, kind="chat"):
+    """Socket path with a fresh single-use ticket, the way the frontend connects."""
+    r = client.post("/ws-ticket", json={"project_id": project_id}, headers=auth(token))
+    assert r.status_code == 200, r.text
+    return f"/ws/projects/{project_id}/{kind}?ticket={r.json()['ticket']}"
 
 
 def set_github_token(username, token):
