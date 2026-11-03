@@ -185,6 +185,35 @@ docker build -t nexuscode-backend .
 docker run -p 8000:8000 --env-file .env -e DB_HOST=host.docker.internal nexuscode-backend
 ```
 
+The container runs `scripts/migrate.py` before starting the API, so the schema is always up to date.
+
+### Database migrations (Alembic)
+
+Tables are created and changed only through Alembic migrations in `backend/alembic/versions`.
+
+```bash
+cd backend
+python scripts/migrate.py                          # upgrade to the latest schema (safe to run any time)
+alembic revision --autogenerate -m "describe it"   # after changing models.py; review the generated file
+alembic current                                    # show the database's revision
+```
+
+`scripts/migrate.py` refuses to run on a database that has tables but was never stamped (created before Alembic), so nothing gets recreated. To adopt such a database, once:
+
+```bash
+python scripts/check_baseline.py   # read-only: confirms the schema matches 0001_baseline
+alembic stamp 0001_baseline        # records the revision; changes no tables
+python scripts/migrate.py          # applies every migration after the baseline
+```
+
+### Tests
+
+```bash
+cd backend && pip install -r requirements-dev.txt && pytest       # SQLite by default
+TEST_DATABASE_URL=postgresql://postgres:test@localhost:5432/test pytest   # throwaway local Postgres (it gets wiped)
+cd frontend && npm test
+```
+
 ---
 
 ## 🔑 Key Design Decisions

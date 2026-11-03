@@ -33,5 +33,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
 
-# The command that runs when the container starts
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Bring the schema up to date (refuses to touch an un-stamped legacy DB),
+# then hand PID 1 over to uvicorn so it receives stop signals directly.
+CMD ["sh", "-c", "python scripts/migrate.py && exec uvicorn main:app --host 0.0.0.0 --port 8000"]

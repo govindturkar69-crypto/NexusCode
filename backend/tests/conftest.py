@@ -5,17 +5,23 @@ tests never read backend/.env or talk to real services.
 By default tests use a temporary SQLite file. Set TEST_DATABASE_URL to run
 them against a throwaway Postgres instead, e.g.
   TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres
+That database is WIPED (public schema dropped), so it must be on localhost.
 """
 import os
 import pathlib
 import sys
 import tempfile
+from urllib.parse import urlparse
 
 BACKEND_DIR = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
+_test_db_url = os.environ.get("TEST_DATABASE_URL")
+if _test_db_url and urlparse(_test_db_url).hostname not in ("localhost", "127.0.0.1", "::1"):
+    raise RuntimeError("TEST_DATABASE_URL must point at localhost: the test run wipes that database.")
+
 _tmp_dir = tempfile.mkdtemp(prefix="nexuscode_tests_")
-os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{_tmp_dir}/test.db"
+os.environ["DATABASE_URL"] = _test_db_url or f"sqlite:///{_tmp_dir}/test.db"
 os.environ["JWT_SECRET"] = "test-only-jwt-secret"
 os.environ["FRONTEND_URL"] = "http://frontend.test"
 os.environ["GEMINI_API_KEY"] = "test-gemini-key"
@@ -27,25 +33,51 @@ os.environ["GITHUB_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GITHUB_REDIRECT_URI"] = "http://api.test/auth/github/callback"
 
 import pytest  # noqa: E402
+from alembic import command  # noqa: E402
+from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 import auth as auth_module  # noqa: E402
 import main  # noqa: E402
+import websocket_manager  # noqa: E402
 from database import Base, SessionLocal, engine  # noqa: E402
+from models import UserModel  # noqa: E402
 
 # Real bcrypt, but at the minimum cost so the suite stays fast
 auth_module.pwd_context.update(bcrypt__rounds=4)
-import websocket_manager  # noqa: E402
-from models import UserModel  # noqa: E402
 
 DEFAULT_PASSWORD = "correct-horse-1"
 
 
+def alembic_config():
+    return Config(str(BACKEND_DIR / "alembic.ini"))
+
+
+def wipe_database(target_engine):
+    with target_engine.begin() as conn:
+        if conn.dialect.name == "postgresql":
+            conn.execute(text("DROP SCHEMA public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+        else:
+            Base.metadata.drop_all(conn)
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def migrated_database():
+    """Build the schema once per run with the real migrations (not create_all)."""
+    wipe_database(engine)
+    command.upgrade(alembic_config(), "head")
+    yield
+
+
 @pytest.fixture(autouse=True)
-def fresh_database():
+def fresh_database(migrated_database):
     """Every test starts with empty tables and no open sockets."""
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
     websocket_manager.manager.active_connections.clear()
     websocket_manager.video_manager.active_connections.clear()
     yield

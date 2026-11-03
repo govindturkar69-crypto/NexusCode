@@ -40,7 +40,7 @@ from auth import (
     verify_oauth_state,
     verify_password,
 )
-from database import Base, SessionLocal, engine, get_db
+from database import SessionLocal, get_db
 from files import upload_file_to_cloudinary
 from github_oauth import (
     GitHubAPIError,
@@ -72,8 +72,8 @@ if not FRONTEND_URL:
 
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
-# This creates all tables in Postgres, if they don't exist yet.
-Base.metadata.create_all(bind=engine)
+# Tables are managed by Alembic (alembic/versions). Deploys run
+# scripts/migrate.py before starting the app; see the Dockerfile.
 
 app = FastAPI()
 

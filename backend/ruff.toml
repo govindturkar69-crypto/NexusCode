@@ -12,3 +12,7 @@ ignore = [
 [lint.per-file-ignores]
 # conftest sets env vars before importing the app on purpose
 "tests/conftest.py" = ["E402"]
+
+[lint.isort]
+# backend/alembic/ holds migrations; the import means the installed package
+known-third-party = ["alembic"]
