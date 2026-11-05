@@ -1,6 +1,6 @@
 """Adding, changing and removing project members, and what that does to access."""
 import pytest
-from conftest import auth, ws_path
+from conftest import auth, open_socket
 from starlette.websockets import WebSocketDisconnect
 
 from app.core.database import SessionLocal
@@ -124,7 +124,7 @@ def test_owner_can_remove_member_and_access_ends(client, team):
 @pytest.mark.parametrize("kind", ["chat", "meeting"])
 def test_removal_closes_open_sockets_immediately(client, team, kind):
     pid = team["pid"]
-    with client.websocket_connect(ws_path(client, team["t"]["eddie"], pid, kind)) as ws:
+    with open_socket(client, team["t"]["eddie"], pid, kind) as ws:
         if kind == "meeting":
             assert ws.receive_json()["type"] == "role"
         assert client.delete(f"/projects/{pid}/members/{team['id']['eddie']}", headers=team["owner"]).status_code == 204
@@ -137,8 +137,8 @@ def test_removal_closes_open_sockets_immediately(client, team, kind):
 
 def test_removal_only_closes_that_users_sockets(client, team):
     pid = team["pid"]
-    with client.websocket_connect(ws_path(client, team["t"]["eddie"], pid)), \
-            client.websocket_connect(ws_path(client, team["t"]["olivia"], pid)) as owner_socket:
+    with open_socket(client, team["t"]["eddie"], pid), \
+            open_socket(client, team["t"]["olivia"], pid) as owner_socket:
         client.delete(f"/projects/{pid}/members/{team['id']['eddie']}", headers=team["owner"])
         owner_socket.send_json({"content": "still here"})
         assert owner_socket.receive_json()["content"] == "still here"

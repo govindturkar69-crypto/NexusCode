@@ -11,6 +11,7 @@ import os
 import pathlib
 import sys
 import tempfile
+from contextlib import contextmanager
 from urllib.parse import urlparse
 
 BACKEND_DIR = pathlib.Path(__file__).resolve().parents[1]
@@ -149,6 +150,29 @@ def ws_path(client, token, project_id, kind="chat"):
     r = client.post("/ws-ticket", json={"project_id": project_id}, headers=auth(token))
     assert r.status_code == 200, r.text
     return f"/ws/projects/{project_id}/{kind}?ticket={r.json()['ticket']}"
+
+
+class SocketWithoutPresence:
+    """A test socket whose receive_json skips presence frames, for tests that
+    are about something else. test_chat_features.py checks presence itself."""
+
+    def __init__(self, session):
+        self.session = session
+
+    def receive_json(self):
+        while True:
+            message = self.session.receive_json()
+            if message.get("type") != "presence":
+                return message
+
+    def __getattr__(self, name):
+        return getattr(self.session, name)
+
+
+@contextmanager
+def open_socket(client, token, project_id, kind="chat"):
+    with client.websocket_connect(ws_path(client, token, project_id, kind)) as session:
+        yield SocketWithoutPresence(session)
 
 
 def add_member(username, project_id, role):

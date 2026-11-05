@@ -99,6 +99,7 @@
 .mono { font-family: var(--font-mono); }
 .text-success { color: var(--color-success); }
 .text-danger { color: var(--color-danger); }
+.text-accent { color: var(--color-accent); }
 
 /* ---------- page header ---------- */
 .page-header { margin-bottom: var(--space-6); }
@@ -216,7 +217,16 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
   cursor: pointer;
 }
 .task-title:hover { text-decoration: underline; }
-.chat-log { max-height: 240px; min-height: 100px; overflow-y: auto; flex: 1; }
+.chat-log { max-height: 320px; min-height: 160px; overflow-y: auto; flex: 1; overflow-wrap: anywhere; }
+.chat-removed { margin-left: var(--space-1); font-size: 10px; }
+.presence-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-2);
+  border-radius: 50%;
+  background: var(--color-success);
+}
 
 /* ---------- media ---------- */
 .video { width: 100%; border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-border); min-height: 240px; }

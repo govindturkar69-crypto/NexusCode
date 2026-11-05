@@ -1,5 +1,5 @@
 import pytest
-from conftest import auth, ws_path
+from conftest import auth, open_socket, ws_path
 from starlette.websockets import WebSocketDisconnect
 
 from app.core import security
@@ -62,7 +62,7 @@ def test_ticket_refused_after_ownership_is_lost(client, setup):
 
 
 def test_chat_username_comes_from_ticket(client, setup):
-    with client.websocket_connect(ws_path(client, setup["alice"], setup["pid"])) as ws:
+    with open_socket(client, setup["alice"], setup["pid"]) as ws:
         ws.send_json({"username": "mallory", "content": "  hi  "})
         message = ws.receive_json()
     assert message["username"] == "alice"
@@ -70,7 +70,7 @@ def test_chat_username_comes_from_ticket(client, setup):
 
 
 def test_chat_ignores_bad_frames_and_enforces_length(client, setup):
-    with client.websocket_connect(ws_path(client, setup["alice"], setup["pid"])) as ws:
+    with open_socket(client, setup["alice"], setup["pid"]) as ws:
         ws.send_text("not json")
         ws.send_json(["not", "an", "object"])
         ws.send_json({"content": "   "})
@@ -82,7 +82,7 @@ def test_chat_ignores_bad_frames_and_enforces_length(client, setup):
 
 def test_chat_broadcasts_to_every_socket_in_the_project(client, setup):
     alice, pid = setup["alice"], setup["pid"]
-    with client.websocket_connect(ws_path(client, alice, pid)) as first, client.websocket_connect(ws_path(client, alice, pid)) as second:
+    with open_socket(client, alice, pid) as first, open_socket(client, alice, pid) as second:
         first.send_json({"content": "to everyone"})
         assert first.receive_json()["content"] == "to everyone"
         assert second.receive_json()["content"] == "to everyone"
@@ -97,24 +97,24 @@ def _drain_handshake(first, second):
 
 def test_meeting_tells_exactly_one_peer_to_offer(client, setup):
     pid, alice = setup["pid"], setup["alice"]
-    with client.websocket_connect(ws_path(client, alice, pid, "meeting")) as first:
+    with open_socket(client, alice, pid, "meeting") as first:
         assert first.receive_json() == {"type": "role", "initiator": False}  # nobody to call yet
-        with client.websocket_connect(ws_path(client, alice, pid, "meeting")) as second:
+        with open_socket(client, alice, pid, "meeting") as second:
             assert second.receive_json() == {"type": "role", "initiator": True}  # newcomer offers
             assert first.receive_json() == {"type": "peer-joined"}
         # second hung up: first is told so it can reset and wait
         assert first.receive_json() == {"type": "peer-left"}
-        with client.websocket_connect(ws_path(client, alice, pid, "meeting")) as rejoined:
+        with open_socket(client, alice, pid, "meeting") as rejoined:
             assert rejoined.receive_json() == {"type": "role", "initiator": True}
             assert first.receive_json() == {"type": "peer-joined"}
 
 
 def test_meeting_room_holds_two_peers(client, setup):
     pid, alice = setup["pid"], setup["alice"]
-    with client.websocket_connect(ws_path(client, alice, pid, "meeting")) as a, \
-            client.websocket_connect(ws_path(client, alice, pid, "meeting")) as b:
+    with open_socket(client, alice, pid, "meeting") as a, \
+            open_socket(client, alice, pid, "meeting") as b:
         _drain_handshake(a, b)
-        with client.websocket_connect(ws_path(client, alice, pid, "meeting")) as third:
+        with open_socket(client, alice, pid, "meeting") as third:
             assert third.receive_json() == {"type": "room-full"}
             with pytest.raises(WebSocketDisconnect) as closed:
                 third.receive_json()
@@ -124,9 +124,9 @@ def test_meeting_room_holds_two_peers(client, setup):
 
 def test_meeting_relays_only_signals_and_never_to_chat(client, setup):
     pid, alice = setup["pid"], setup["alice"]
-    with client.websocket_connect(ws_path(client, alice, pid)) as chat, \
-            client.websocket_connect(ws_path(client, alice, pid, "meeting")) as peer_a, \
-            client.websocket_connect(ws_path(client, alice, pid, "meeting")) as peer_b:
+    with open_socket(client, alice, pid) as chat, \
+            open_socket(client, alice, pid, "meeting") as peer_a, \
+            open_socket(client, alice, pid, "meeting") as peer_b:
         _drain_handshake(peer_a, peer_b)
         peer_a.send_json({"type": "not-a-signal"})
         peer_a.send_text("{bad json")
@@ -142,8 +142,8 @@ def test_meeting_relays_only_signals_and_never_to_chat(client, setup):
 
 def test_meeting_drops_oversized_frames(client, setup):
     pid, alice = setup["pid"], setup["alice"]
-    with client.websocket_connect(ws_path(client, alice, pid, "meeting")) as peer_a, \
-            client.websocket_connect(ws_path(client, alice, pid, "meeting")) as peer_b:
+    with open_socket(client, alice, pid, "meeting") as peer_a, \
+            open_socket(client, alice, pid, "meeting") as peer_b:
         _drain_handshake(peer_a, peer_b)
         peer_a.send_json({"type": "offer", "sdp": "x" * (70 * 1024)})
         peer_a.send_json({"type": "answer", "sdp": "small"})
@@ -152,7 +152,7 @@ def test_meeting_drops_oversized_frames(client, setup):
 
 def test_chat_messages_are_persisted(client, setup):
     pid, alice = setup["pid"], setup["alice"]
-    with client.websocket_connect(ws_path(client, alice, pid)) as ws:
+    with open_socket(client, alice, pid) as ws:
         ws.send_json({"content": "saved"})
         ws.receive_json()
     messages = client.get(f"/projects/{pid}/messages", headers=auth(alice)).json()["messages"]

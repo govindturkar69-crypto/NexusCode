@@ -130,6 +130,8 @@ class MessageOut(ORMModel):
     user_id: int | None
     project_id: int
     created_at: datetime
+    # The sender has since left or been removed; the message itself stays
+    author_removed: bool = False
 
 
 class MessageListResponse(BaseModel):

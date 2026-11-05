@@ -1,6 +1,7 @@
 """Chat history, the chat WebSocket and the video-meeting signaling WebSocket."""
 import json
 import logging
+import time
 
 from fastapi import (
     APIRouter,
@@ -21,7 +22,7 @@ from app.core.deps import (
     role_at_least,
 )
 from app.core.security import WS_TICKET_TTL_SECONDS, consume_ws_ticket, create_ws_ticket
-from app.models import MessageModel, ProjectModel, UserModel
+from app.models import MessageModel, ProjectMemberModel, ProjectModel, UserModel
 from app.schemas.project import MessageListResponse, WsTicketRequest, WsTicketResponse
 from app.services.realtime import manager, video_manager
 
@@ -30,6 +31,7 @@ logger = logging.getLogger("nexuscode")
 router = APIRouter(tags=["chat"])
 
 MAX_CHAT_MESSAGE_LENGTH = 2000
+TYPING_MIN_INTERVAL_SECONDS = 2.0
 MAX_SIGNAL_FRAME_BYTES = 64 * 1024  # SDP offers are a few KB; this is generous
 SIGNAL_TYPES = {"offer", "answer", "ice-candidate"}
 MAX_MEETING_PEERS = 2  # the meeting UI is a 1:1 call
@@ -48,8 +50,24 @@ def get_project_messages(
         query = query.filter(MessageModel.id < before)
     # Fetch one extra row to know whether an older page exists
     rows = query.order_by(MessageModel.id.desc()).limit(limit + 1).all()
-    messages = rows[:limit]
-    next_cursor = messages[-1].id if len(rows) > limit else None
+    page = rows[:limit]
+    next_cursor = page[-1].id if len(rows) > limit else None
+    member_ids = {
+        user_id
+        for (user_id,) in db.query(ProjectMemberModel.user_id).filter(ProjectMemberModel.project_id == project.id)
+    }
+    messages = [
+        {
+            "id": m.id,
+            "username": m.username,
+            "content": m.content,
+            "user_id": m.user_id,
+            "project_id": m.project_id,
+            "created_at": m.created_at,
+            "author_removed": m.user_id not in member_ids,
+        }
+        for m in page
+    ]
     return {"messages": messages, "next_cursor": next_cursor}
 
 
@@ -98,7 +116,21 @@ def _save_chat_message(project_id: int, user_id: int, username: str, content: st
         db.add(message)
         db.commit()
         db.refresh(message)
-        return {"id": message.id, "username": message.username, "content": message.content}
+        return {
+            "type": "message",
+            "id": message.id,
+            "username": message.username,
+            "user_id": message.user_id,
+            "content": message.content,
+            "project_id": message.project_id,
+            "created_at": message.created_at.isoformat(),
+            "author_removed": False,
+        }
+
+
+def _can_post(project_id: int, user_id: int) -> bool:
+    with SessionLocal() as db:
+        return role_at_least(project_role(db, project_id, user_id), "editor")
 
 
 @router.websocket("/ws/projects/{project_id}/chat")
@@ -108,8 +140,10 @@ async def chat_websocket(websocket: WebSocket, project_id: int):
         return
     user_id, username = member
 
-    await manager.connect(websocket, project_id, user_id)
+    await manager.connect(websocket, project_id, user_id, username)
+    last_typing = 0.0
     try:
+        await manager.broadcast_presence(project_id)
         while True:
             raw = await websocket.receive_text()
             try:
@@ -117,6 +151,15 @@ async def chat_websocket(websocket: WebSocket, project_id: int):
             except ValueError:
                 continue
             if not isinstance(data, dict):
+                continue
+
+            if data.get("type") == "typing":
+                # Clients send this while typing; at most one every couple of seconds counts
+                now = time.monotonic()
+                if now - last_typing >= TYPING_MIN_INTERVAL_SECONDS:
+                    last_typing = now
+                    if await run_in_threadpool(_can_post, project_id, user_id):
+                        await manager.broadcast_except(project_id, websocket, {"type": "typing", "user_id": user_id, "username": username})
                 continue
 
             # The sender's name always comes from their token, never the client
@@ -141,6 +184,7 @@ async def chat_websocket(websocket: WebSocket, project_id: int):
         logger.exception("Chat socket error (project %s, user %s)", project_id, username)
     finally:
         manager.disconnect(websocket, project_id)
+        await manager.broadcast_presence(project_id)
 
 
 @router.websocket("/ws/projects/{project_id}/meeting")

@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { apiFetch, apiFetchAll, socketUrl } from "../api/client";
+import { apiFetch, apiFetchAll } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 import { useProject } from "../projects/useProject";
 import { filterByAssignee, isOverdue, moveTask } from "../projects/tasks";
+import ChatPanel from "../components/ChatPanel";
 import TaskModal from "../components/TaskModal";
 import MembersPanel from "../components/MembersPanel";
 import RoleBadge from "../components/RoleBadge";
@@ -17,8 +18,6 @@ import Input from "../components/ui/Input";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
 
-// Matches the server-side limit
-const MAX_CHAT_MESSAGE_LENGTH = 2000;
 // Mirrors the backend allowlist (app/services/storage.py); the server still validates
 const UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.zip,.txt,.md,.csv,.json,.log,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.css,.sql,.yml,.yaml,.toml,.ini";
 
@@ -42,16 +41,9 @@ function Board() {
   const [files, setFiles] = useState([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [messages, setMessages] = useState([]);
-  // Cursor for "Load older messages"; null once the oldest message is loaded
-  const [olderCursor, setOlderCursor] = useState(null);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [chatInput, setChatInput] = useState("");
-  const [chatError, setChatError] = useState("");
   const [error, setError] = useState("");
   const [toDelete, setToDelete] = useState(null); // { kind: "task" | "file", id, name }
   const [deleting, setDeleting] = useState(false);
-  const ws = useRef(null);
 
   const fetchTasks = useCallback(() => {
     return apiFetchAll(`/projects/${projectId}/tasks`, "tasks")
@@ -77,63 +69,7 @@ function Board() {
     fetchMembers();
     fetchTasks();
     fetchFiles();
-    // The API returns newest first; the chat box shows the oldest at the top
-    apiFetch(`/projects/${projectId}/messages`)
-      .then((data) => {
-        setMessages([...(data.messages ?? [])].reverse());
-        setOlderCursor(data.next_cursor ?? null);
-      })
-      .catch((err) => setError(err.message));
   }, [projectId, fetchMembers, fetchTasks, fetchFiles]);
-
-  function loadOlderMessages() {
-    if (olderCursor === null) return;
-    setLoadingOlder(true);
-    apiFetch(`/projects/${projectId}/messages?before=${olderCursor}`)
-      .then((data) => {
-        setMessages((prev) => [...[...(data.messages ?? [])].reverse(), ...prev]);
-        setOlderCursor(data.next_cursor ?? null);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoadingOlder(false));
-  }
-
-  useEffect(() => {
-    let socket = null;
-    let cancelled = false;
-
-    // Get a single-use ticket, then connect (unless we unmounted meanwhile)
-    socketUrl(`/ws/projects/${projectId}/chat`, projectId)
-      .then((url) => {
-        if (cancelled) return;
-        socket = new WebSocket(url);
-        ws.current = socket;
-
-        socket.onmessage = (event) => {
-          const message = JSON.parse(event.data);
-          if (message.type === "error") {
-            setChatError(message.detail);
-            return;
-          }
-          setChatError("");
-          setMessages((prev) => [...prev, message]);
-        };
-        // The server refuses the socket if the ticket is invalid or the
-        // project isn't ours, which shows up here as a close.
-        socket.onclose = () => setChatError("Chat disconnected. Refresh the page to reconnect.");
-      })
-      .catch(() => {
-        if (!cancelled) setChatError("Couldn't connect to chat. Refresh the page to try again.");
-      });
-
-    return () => {
-      cancelled = true;
-      if (socket) {
-        socket.onclose = null;
-        socket.close();
-      }
-    };
-  }, [projectId]);
 
   function createTask(event) {
     event.preventDefault();
@@ -174,18 +110,6 @@ function Board() {
         setDeleting(false);
         setToDelete(null);
       });
-  }
-
-  function sendMessage(event) {
-    event.preventDefault();
-    if (!chatInput.trim()) return;
-    if (ws.current?.readyState !== WebSocket.OPEN) {
-      setChatError("Chat is not connected. Refresh the page to reconnect.");
-      return;
-    }
-    // The server attaches our username from the ticket
-    ws.current.send(JSON.stringify({ content: chatInput }));
-    setChatInput("");
   }
 
   function handleDragEnd(result) {
@@ -351,48 +275,7 @@ function Board() {
           </Card>
         </section>
 
-        <section className="stack">
-          <h2 className="section-title">💬 Chat</h2>
-          <Card className="grow stack">
-            <div className="chat-log" role="log" aria-live="polite" aria-label="Chat messages">
-              {olderCursor !== null && (
-                <Button variant="link" onClick={loadOlderMessages} disabled={loadingOlder}>
-                  {loadingOlder ? "Loading..." : "↑ Load older messages"}
-                </Button>
-              )}
-              {messages.length === 0 && <p className="muted small">No messages yet. Say hello!</p>}
-              {messages.map((msg, idx) => {
-                const mine = msg.username === user?.username;
-                return (
-                  <p key={msg.id || idx} className="small" style={{ marginBottom: "0.5rem" }}>
-                    <strong className={mine ? "text-success" : ""} style={mine ? undefined : { color: "var(--color-accent)" }}>
-                      {mine ? `${msg.username} (you)` : msg.username}:
-                    </strong>{" "}
-                    {msg.content}
-                  </p>
-                );
-              })}
-            </div>
-
-            {canEdit ? (
-              <form onSubmit={sendMessage} className="row">
-                <Input
-                  label="Message"
-                  hideLabel
-                  placeholder="Type a message..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  maxLength={MAX_CHAT_MESSAGE_LENGTH}
-                  className="grow"
-                />
-                <Button type="submit">Send</Button>
-              </form>
-            ) : (
-              <p className="hint">Viewers can read the chat but not post in it.</p>
-            )}
-            {chatError && <p role="alert" className="small text-danger">{chatError}</p>}
-          </Card>
-        </section>
+        <ChatPanel projectId={projectId} canPost={canEdit} currentUser={user} members={members} />
       </div>
 
       {editingTask && (

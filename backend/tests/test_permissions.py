@@ -6,7 +6,7 @@ Non-members get 404 (see test_ownership.py), too-low roles get 403.
 import io
 
 import pytest
-from conftest import add_member, auth, set_github_token, ws_path
+from conftest import add_member, auth, open_socket, set_github_token, ws_path
 from starlette.websockets import WebSocketDisconnect
 
 from app.core.database import SessionLocal
@@ -117,14 +117,14 @@ def test_analytics_counts_every_project_you_are_a_member_of(client, team):
 @pytest.mark.parametrize("kind", ["chat", "meeting"])
 @pytest.mark.parametrize("role", ROLES)
 def test_every_member_role_can_open_sockets(client, team, role, kind):
-    with client.websocket_connect(ws_path(client, team["tokens"][role], team["pid"], kind)):
+    with open_socket(client, team["tokens"][role], team["pid"], kind):
         pass
 
 
 def test_viewer_reads_chat_but_cannot_post(client, team):
     pid = team["pid"]
-    with client.websocket_connect(ws_path(client, team["tokens"]["viewer"], pid)) as viewer, \
-            client.websocket_connect(ws_path(client, team["tokens"]["editor"], pid)) as editor:
+    with open_socket(client, team["tokens"]["viewer"], pid) as viewer, \
+            open_socket(client, team["tokens"]["editor"], pid) as editor:
         viewer.send_json({"content": "let me in"})
         assert viewer.receive_json()["type"] == "error"
         editor.send_json({"content": "hello"})
@@ -135,7 +135,7 @@ def test_viewer_reads_chat_but_cannot_post(client, team):
 
 
 def test_role_change_applies_to_an_open_chat_socket(client, team):
-    with client.websocket_connect(ws_path(client, team["tokens"]["editor"], team["pid"])) as ws:
+    with open_socket(client, team["tokens"]["editor"], team["pid"]) as ws:
         ws.send_json({"content": "still editor"})
         assert ws.receive_json()["content"] == "still editor"
         with SessionLocal() as db:
@@ -146,7 +146,7 @@ def test_role_change_applies_to_an_open_chat_socket(client, team):
 
 
 def test_removed_member_socket_is_closed_on_next_message(client, team):
-    with client.websocket_connect(ws_path(client, team["tokens"]["editor"], team["pid"])) as ws:
+    with open_socket(client, team["tokens"]["editor"], team["pid"]) as ws:
         with SessionLocal() as db:
             db.query(ProjectMemberModel).filter(ProjectMemberModel.project_id == team["pid"], ProjectMemberModel.role == "editor").delete()
             db.commit()
