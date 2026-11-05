@@ -153,8 +153,9 @@ def ws_path(client, token, project_id, kind="chat"):
 
 
 class SocketWithoutPresence:
-    """A test socket whose receive_json skips presence frames, for tests that
-    are about something else. test_chat_features.py checks presence itself."""
+    """A test socket whose receive_json skips presence and activity frames, for
+    tests about something else. test_chat_features.py and test_activity.py
+    check those themselves."""
 
     def __init__(self, session):
         self.session = session
@@ -162,7 +163,7 @@ class SocketWithoutPresence:
     def receive_json(self):
         while True:
             message = self.session.receive_json()
-            if message.get("type") != "presence":
+            if message.get("type") not in ("presence", "activity"):
                 return message
 
     def __getattr__(self, name):

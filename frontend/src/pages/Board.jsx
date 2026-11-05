@@ -5,6 +5,7 @@ import { apiFetch, apiFetchAll } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 import { useProject } from "../projects/useProject";
 import { filterByAssignee, isOverdue, moveTask } from "../projects/tasks";
+import ActivityPanel from "../components/ActivityPanel";
 import ChatPanel from "../components/ChatPanel";
 import TaskModal from "../components/TaskModal";
 import MembersPanel from "../components/MembersPanel";
@@ -44,6 +45,7 @@ function Board() {
   const [error, setError] = useState("");
   const [toDelete, setToDelete] = useState(null); // { kind: "task" | "file", id, name }
   const [deleting, setDeleting] = useState(false);
+  const [activityVersion, setActivityVersion] = useState(0);
 
   const fetchTasks = useCallback(() => {
     return apiFetchAll(`/projects/${projectId}/tasks`, "tasks")
@@ -70,6 +72,18 @@ function Board() {
     fetchTasks();
     fetchFiles();
   }, [projectId, fetchMembers, fetchTasks, fetchFiles]);
+
+  // Someone (maybe us, in another tab) changed the project: show it right away
+  const handleActivity = useCallback(({ action }) => {
+    setActivityVersion((version) => version + 1);
+    if (action.startsWith("task_")) fetchTasks();
+    else if (action.startsWith("file_")) fetchFiles();
+    else if (action.startsWith("member_") || action === "role_changed") {
+      fetchMembers();
+      fetchTasks();
+      reloadProject();
+    }
+  }, [fetchTasks, fetchFiles, fetchMembers, reloadProject]);
 
   function createTask(event) {
     event.preventDefault();
@@ -238,6 +252,10 @@ function Board() {
         />
       </div>
 
+      <div style={{ marginTop: "2.5rem" }}>
+        <ActivityPanel projectId={projectId} refreshKey={activityVersion} />
+      </div>
+
       <div className="split" style={{ marginTop: "2.5rem" }}>
         <section className="stack">
           <h2 className="section-title">📁 Files</h2>
@@ -275,7 +293,7 @@ function Board() {
           </Card>
         </section>
 
-        <ChatPanel projectId={projectId} canPost={canEdit} currentUser={user} members={members} />
+        <ChatPanel projectId={projectId} canPost={canEdit} currentUser={user} members={members} onActivity={handleActivity} />
       </div>
 
       {editingTask && (

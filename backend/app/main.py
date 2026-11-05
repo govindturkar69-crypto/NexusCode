@@ -20,6 +20,7 @@ from app.core.database import SessionLocal
 from app.core.observability import configure_logging, init_sentry
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.routers import (
+    activity,
     admin,
     ai,
     analytics,
@@ -103,7 +104,7 @@ async def log_requests(request: Request, call_next):
     access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})
     return response
 
-for module in (auth, projects, members, tasks, files, chat, ai, github, analytics, admin):
+for module in (auth, projects, members, tasks, files, chat, ai, github, activity, analytics, admin):
     app.include_router(module.router)
 
 

@@ -4,10 +4,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Pagination, require_project_role
-from app.models import FileModel, ProjectModel
+from app.core.deps import Pagination, get_current_user, require_project_role
+from app.models import FileModel, ProjectModel, UserModel
 from app.schemas.project import FileListResponse, FileResponse
 from app.services import storage
+from app.services.activity import publish, record
 
 logger = logging.getLogger("nexuscode")
 
@@ -17,7 +18,12 @@ router = APIRouter(tags=["files"])
 # A plain `def` (not async): FastAPI runs it in a worker thread, so the
 # file read and the Cloudinary upload don't block the event loop.
 @router.post("/projects/{project_id}/files", status_code=201, response_model=FileResponse)
-def upload_file(file: UploadFile = File(...), project: ProjectModel = Depends(require_project_role("editor")), db: Session = Depends(get_db)):
+def upload_file(
+    file: UploadFile = File(...),
+    project: ProjectModel = Depends(require_project_role("editor")),
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
     # Read one byte past the limit so oversized files are detected without
     # loading arbitrarily large bodies (the middleware already checked
     # Content-Length; this is the definitive check).
@@ -41,8 +47,10 @@ def upload_file(file: UploadFile = File(...), project: ProjectModel = Depends(re
         project_id=project.id,
     )
     db.add(new_file)
+    record(db, project.id, current_user.id, "file_uploaded", filename)
     db.commit()
     db.refresh(new_file)
+    publish(project.id, "file_uploaded")
     return {"message": "File uploaded", "file": new_file}
 
 

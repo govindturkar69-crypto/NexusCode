@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -65,6 +66,8 @@ class ProjectModel(TimestampMixin, Base):
     messages = relationship("MessageModel", back_populates="project", cascade="all, delete-orphan")
     code_file = relationship("CodeFileModel", back_populates="project", cascade="all, delete-orphan", uselist=False)
     members = relationship("ProjectMemberModel", back_populates="project", cascade="all, delete-orphan")
+    activity = relationship("ActivityModel", cascade="all, delete-orphan")
+    notifications = relationship("NotificationModel", cascade="all, delete-orphan")
 
 # Lowest to highest; each role can do everything the ones before it can
 PROJECT_ROLES = ("viewer", "editor", "owner")
@@ -86,6 +89,33 @@ class ProjectMemberModel(Base):
 
     project = relationship("ProjectModel", back_populates="members")
     user = relationship("UserModel")
+
+class ActivityModel(Base):
+    """What happened in a project, for the Activity panel. Target is plain text
+    (a task title, a filename) so entries survive the thing they describe."""
+
+    __tablename__ = "activity"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    action = Column(String, nullable=False)
+    target = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class NotificationModel(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        CheckConstraint("kind IN ('assigned', 'added', 'role_changed')", name="ck_notifications_kind"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    message = Column(String, nullable=False)
+    is_read = Column(Boolean, nullable=False, default=False, server_default=false())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 TASK_STATUSES = ("todo", "in_progress", "done")
 TASK_PRIORITIES = ("low", "medium", "high")

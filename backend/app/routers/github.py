@@ -37,6 +37,7 @@ from app.schemas.misc import (
     PushToGithubResponse,
 )
 from app.services import github
+from app.services.activity import publish, record
 
 router = APIRouter(tags=["github"])
 
@@ -122,6 +123,9 @@ def push_to_github(
     except github.GitHubAPIError as e:
         raise _github_http_error(e, f"Repository {repo_result['full_name']} was created, but pushing {filename} failed") from e
 
+    record(db, project.id, current_user.id, "github_pushed", repo_result["full_name"])
+    db.commit()
+    publish(project.id, "github_pushed")
     return {
         "message": "Pushed to GitHub successfully",
         "repo_url": repo_result.get("html_url"),

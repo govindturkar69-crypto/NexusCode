@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import AppBar from "./components/AppBar";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AuthProvider from "./auth/AuthProvider";
 
@@ -15,7 +16,12 @@ const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const VideoMeeting = lazy(() => import("./pages/VideoMeeting"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const protect = (element) => <ProtectedRoute>{element}</ProtectedRoute>;
+const protect = (element) => (
+  <ProtectedRoute>
+    <AppBar />
+    {element}
+  </ProtectedRoute>
+);
 
 function PageLoading() {
   return (

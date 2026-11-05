@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Board from './Board'
@@ -8,9 +8,11 @@ import { fakeJwt, inOneHour, stubRoutes } from '../test/helpers'
 
 class FakeSocket {
   static OPEN = 1
-  constructor(url) { this.url = url; this.readyState = 1 }
+  static instances = []
+  constructor(url) { this.url = url; this.readyState = 1; FakeSocket.instances.push(this) }
   send() {}
   close() {}
+  receive(frame) { act(() => this.onmessage({ data: JSON.stringify(frame) })) }
 }
 
 const OVERDUE = { id: 3, title: 'Late task', status: 'todo', position: 2, priority: 'high', due_date: '2020-01-01', assignee_id: 9, assignee_username: 'nina' }
@@ -24,6 +26,7 @@ function renderBoard(role, extraTasks = [], routes = {}) {
     'GET /projects/7/tasks': [200, { tasks: [{ id: 1, title: 'A task', status: 'todo', position: 1, priority: 'medium', assignee_id: null }, ...extraTasks], total: 1 + extraTasks.length }],
     'GET /projects/7/files': [200, { files: [{ id: 2, filename: 'a.txt', url: 'https://x/a.txt' }], total: 1 }],
     'GET /projects/7/messages': [200, { messages: [], next_cursor: null }],
+    'GET /projects/7/activity': [200, { activity: [], total: 0 }],
     'POST /ws-ticket': [200, { ticket: 't', expires_in: 30 }],
     ...routes,
   })
@@ -111,5 +114,50 @@ describe('Board is role-aware', () => {
     renderBoard('owner')
     expect(await screen.findByLabelText('Add a member by username')).toBeInTheDocument()
     expect(await screen.findByLabelText('Role of me')).toBeInTheDocument()
+  })
+})
+
+describe('Board live updates', () => {
+  beforeEach(() => {
+    FakeSocket.instances = []
+    vi.stubGlobal('WebSocket', FakeSocket)
+  })
+
+  it('refreshes tasks and the activity panel on a live frame, without reconnecting', async () => {
+    const task = (id, title) => ({ id, title, status: 'todo', position: id, priority: 'medium', assignee_id: null })
+    renderBoard('viewer', [], {
+      'GET /projects/7/tasks': [
+        [200, { tasks: [task(1, 'A task')], total: 1 }],
+        [200, { tasks: [task(1, 'A task'), task(2, 'From a teammate')], total: 2 }],
+      ],
+      'GET /projects/7/activity': [
+        [200, { activity: [], total: 0 }],
+        [200, { activity: [{ id: 1, action: 'task_created', target: 'From a teammate', username: 'eddie', user_id: 2, created_at: '2030-01-15T10:30:00+00:00' }], total: 1 }],
+      ],
+    })
+    expect(await screen.findByText('A task')).toBeInTheDocument()
+    await waitFor(() => expect(FakeSocket.instances).toHaveLength(1))
+
+    FakeSocket.instances[0].receive({ type: 'activity', action: 'task_created' })
+
+    expect(await screen.findByText('From a teammate')).toBeInTheDocument()
+    expect(await screen.findByText(/eddie/)).toBeInTheDocument()
+    expect(FakeSocket.instances).toHaveLength(1)
+  })
+
+  it('picks up my own role change live', async () => {
+    renderBoard('viewer', [], {
+      'GET /projects/7': [
+        [200, { project: { id: 7, name: 'Team board', role: 'viewer' } }],
+        [200, { project: { id: 7, name: 'Team board', role: 'editor' } }],
+      ],
+    })
+    expect(await screen.findByText(/view-only access/)).toBeInTheDocument()
+    await waitFor(() => expect(FakeSocket.instances).toHaveLength(1))
+
+    FakeSocket.instances[0].receive({ type: 'activity', action: 'role_changed' })
+
+    expect(await screen.findByLabelText('New task title')).toBeInTheDocument()
+    expect(screen.queryByText(/view-only access/)).not.toBeInTheDocument()
   })
 })

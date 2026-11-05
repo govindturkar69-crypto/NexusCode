@@ -16,6 +16,7 @@ from app.schemas.members import (
     MemberResponse,
     MemberUpdate,
 )
+from app.services.activity import notify, publish, record
 from app.services.realtime import manager, video_manager
 
 router = APIRouter(tags=["members"])
@@ -74,32 +75,50 @@ def list_members(project: ProjectModel = Depends(require_project_role("viewer"))
 
 
 @router.post("/projects/{project_id}/members", status_code=201, response_model=MemberResponse)
-def add_member(body: MemberAdd, project: ProjectModel = Depends(require_project_role("owner")), db: Session = Depends(get_db)):
+def add_member(
+    body: MemberAdd,
+    project: ProjectModel = Depends(require_project_role("owner")),
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
     user = db.query(UserModel).filter(UserModel.username == body.username).first()
     if user is None:
         raise HTTPException(status_code=404, detail=f"No user named {body.username}")
     member = ProjectMemberModel(project_id=project.id, user_id=user.id, role=body.role)
     db.add(member)
+    record(db, project.id, current_user.id, "member_added", user.username)
+    notify(db, user.id, project.id, "added", f"{current_user.username} added you to {project.name} as {body.role}", current_user.id)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail=f"{body.username} is already a member of this project") from None
     db.refresh(member)
+    publish(project.id, "member_added")
     return {"member": _member_out(member, user.username)}
 
 
 @router.patch("/projects/{project_id}/members/{user_id}", response_model=MemberResponse)
-def change_role(user_id: int, body: MemberUpdate, project: ProjectModel = Depends(require_project_role("owner")), db: Session = Depends(get_db)):
+def change_role(
+    user_id: int,
+    body: MemberUpdate,
+    project: ProjectModel = Depends(require_project_role("owner")),
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
     member = _get_member(db, project.id, user_id)
     if member.role == "owner" and body.role != "owner":
         others = _other_owners(db, project.id, user_id)
         if not others:
             raise HTTPException(status_code=409, detail=LAST_OWNER)
         _hand_over_if_creator(db, project.id, user_id, others)
+    if member.role != body.role:
+        record(db, project.id, current_user.id, "role_changed", f"{member.user.username} → {body.role}")
+        notify(db, user_id, project.id, "role_changed", f"{current_user.username} changed your role in {project.name} to {body.role}", current_user.id)
     member.role = body.role
     db.commit()
     db.refresh(member)
+    publish(project.id, "role_changed")
     return {"member": _member_out(member, member.user.username)}
 
 
@@ -124,6 +143,8 @@ def remove_member(
             raise HTTPException(status_code=409, detail=LAST_OWNER)
         _hand_over_if_creator(db, project.id, user_id, others)
     project_id = project.id
+    leaving = user_id == current_user.id
+    record(db, project_id, current_user.id, "member_left" if leaving else "member_removed", member.user.username)
     db.delete(member)
     # An assignee must be a member, so their tasks here become unassigned
     db.query(TaskModel).filter(TaskModel.project_id == project_id, TaskModel.assignee_id == user_id).update({"assignee_id": None})
@@ -132,4 +153,5 @@ def remove_member(
     # They lose live access right away, not on their next message
     anyio.from_thread.run(manager.kick, project_id, user_id)
     anyio.from_thread.run(video_manager.kick, project_id, user_id)
+    publish(project_id, "member_left" if leaving else "member_removed")
     return Response(status_code=204)
