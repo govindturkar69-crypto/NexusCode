@@ -14,6 +14,11 @@
   --color-on-accent: #0d1117;
   --color-danger: #f85149;
   --color-success: #7ee787;
+  --color-on-danger: #ffffff;
+  --color-backdrop: rgba(1, 4, 9, 0.7);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
 
   --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, Consolas, monospace;
@@ -35,8 +40,25 @@
   --text-sm: 13px;
   --text-md: 14px;
   --text-lg: 16px;
+}
 
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+/* Same tokens, light values. Only colours differ between themes. */
+:root[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-surface: #f6f8fa;
+  --color-border: #d0d7de;
+  --color-text: #1f2328;
+  --color-text-muted: #59636e;
+  --color-text-subtle: #6e7781;
+  --color-accent: #0969da;
+  --color-on-accent: #ffffff;
+  --color-danger: #cf222e;
+  --color-success: #1a7f37;
+  --color-on-danger: #ffffff;
+  --color-backdrop: rgba(31, 35, 40, 0.5);
+  --shadow-lg: 0 8px 32px rgba(31, 35, 40, 0.2);
+
+  color-scheme: light;
 }
 
 /* ---------- layout ---------- */
@@ -127,7 +149,7 @@
 .btn--ghost { background: transparent; color: var(--color-text-muted); border-color: var(--color-border); font-weight: 500; }
 .btn--ghost:hover:not(:disabled) { border-color: var(--color-text-muted); color: var(--color-text); }
 .btn--danger { background: transparent; color: var(--color-danger); border-color: var(--color-danger); }
-.btn--danger-solid { background: var(--color-danger); color: #fff; }
+.btn--danger-solid { background: var(--color-danger); color: var(--color-on-danger); }
 .btn--link { background: transparent; color: var(--color-accent); padding: 0; font-weight: 500; font-size: var(--text-sm); }
 .btn--sm { padding: 4px 10px; font-size: var(--text-xs); }
 .btn--icon { padding: 2px 8px; font-size: var(--text-xs); }
@@ -235,7 +257,7 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(1, 4, 9, 0.7);
+  background: var(--color-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -283,7 +305,7 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
   padding: 0 4px;
   border-radius: 999px;
   background: var(--color-danger);
-  color: var(--color-on-accent);
+  color: var(--color-on-danger);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;

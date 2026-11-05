@@ -2,7 +2,9 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AppBar from "./components/AppBar";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ThemeToggle from "./components/ThemeToggle";
 import AuthProvider from "./auth/AuthProvider";
+import ThemeProvider from "./theme/ThemeProvider";
 
 // Every page is its own chunk, so e.g. Monaco and Recharts only download
 // when their pages are opened.
@@ -36,21 +38,31 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Suspense fallback={<PageLoading />}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/projects" replace />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/projects" element={protect(<Projects />)} />
-            <Route path="/projects/:projectId" element={protect(<Board />)} />
-            <Route path="/ai" element={protect(<AIAssistant />)} />
-            <Route path="/projects/:projectId/editor" element={protect(<CodeEditor />)} />
-            <Route path="/dashboard" element={protect(<Dashboard />)} />
-            <Route path="/admin" element={protect(<AdminDashboard />)} />
-            <Route path="/projects/:projectId/meeting" element={protect(<VideoMeeting />)} />
-            <Route path="/settings" element={protect(<Settings />)} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+        <ThemeProvider>
+          <Suspense fallback={<PageLoading />}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/projects" replace />} />
+              <Route
+                path="/login"
+                element={
+                  <>
+                    <div className="app-bar"><ThemeToggle /></div>
+                    <Login />
+                  </>
+                }
+              />
+              <Route path="/projects" element={protect(<Projects />)} />
+              <Route path="/projects/:projectId" element={protect(<Board />)} />
+              <Route path="/ai" element={protect(<AIAssistant />)} />
+              <Route path="/projects/:projectId/editor" element={protect(<CodeEditor />)} />
+              <Route path="/dashboard" element={protect(<Dashboard />)} />
+              <Route path="/admin" element={protect(<AdminDashboard />)} />
+              <Route path="/projects/:projectId/meeting" element={protect(<VideoMeeting />)} />
+              <Route path="/settings" element={protect(<Settings />)} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

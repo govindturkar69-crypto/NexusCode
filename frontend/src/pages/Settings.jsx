@@ -239,7 +239,7 @@ function Settings() {
       <PageHeader eyebrow="settings" title="Profile and settings">
         {user && <p className="muted small">Signed in as <strong>{user.username}</strong></p>}
       </PageHeader>
-      <div className="stack" style={{ "--gap": "2rem" }}>
+      <div className="stack" style={{ gap: "2rem" }}>
         <PasswordSection />
         <GitHubSection />
         <DeleteAccountSection />

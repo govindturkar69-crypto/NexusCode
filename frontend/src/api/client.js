@@ -19,13 +19,22 @@ export function clearToken() {
 // True if a token is stored and its `exp` claim hasn't passed. The server
 // still verifies the signature; this only avoids using an obviously dead token.
 export function hasValidToken() {
+  const payload = tokenPayload();
+  return payload !== null && (typeof payload.exp !== "number" || payload.exp * 1000 > Date.now());
+}
+
+// The username in the stored token, for display preferences only
+export function tokenSubject() {
+  return hasValidToken() ? (tokenPayload().sub ?? null) : null;
+}
+
+function tokenPayload() {
   const token = getToken();
-  if (!token) return false;
+  if (!token) return null;
   try {
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return typeof payload.exp !== "number" || payload.exp * 1000 > Date.now();
+    return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
   } catch {
-    return false;
+    return null;
   }
 }
 
