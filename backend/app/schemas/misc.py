@@ -29,6 +29,27 @@ class AssistRequest(BaseModel):
     context_file_ids: list[int] = Field(default_factory=list, max_length=10)
 
 
+class TaskSuggestionRequest(BaseModel):
+    description: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("description")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise PydanticCustomError("description_blank", "Describe the feature first.")
+        return value
+
+
+class TaskSuggestion(BaseModel):
+    title: str
+    description: str | None
+    priority: str
+
+
+class TaskSuggestionResponse(BaseModel):
+    tasks: list[TaskSuggestion]
+
+
 class GitHubAuthorizeUrl(BaseModel):
     url: str
 

@@ -15,6 +15,8 @@ from app.schemas.misc import (
     AssistRequest,
     CodeGenRequest,
     CodeReviewRequest,
+    TaskSuggestionRequest,
+    TaskSuggestionResponse,
 )
 from app.services import ai, ai_assist
 
@@ -107,3 +109,18 @@ def ai_assist_stream(
         # Without these, a proxy can hold the reply back until it's complete
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# Editors and up: viewers couldn't add the tasks, and each request spends quota
+@router.post("/projects/{project_id}/task-suggestions", response_model=TaskSuggestionResponse)
+@limiter.limit(AI_LIMIT, key_func=user_or_ip)
+def ai_suggest_tasks(request: Request, body: TaskSuggestionRequest, project: ProjectModel = Depends(require_project_role("editor"))):
+    """Proposes tasks and stops there. Nothing is added until the user picks from
+    the list and the browser creates each one through POST /projects/{id}/tasks."""
+    try:
+        return {"tasks": ai_assist.suggest_tasks(body.description)}
+    except (ai.AIQuotaExceededError, ai.AIServiceBusyError) as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except ai_assist.BadTaskSuggestions as e:
+        raise HTTPException(status_code=502, detail="The AI didn't come up with usable tasks. Please try again, or add more detail.") from e
+

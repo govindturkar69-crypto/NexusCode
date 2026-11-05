@@ -20,11 +20,12 @@ class AIServiceBusyError(Exception):
     pass
 
 
-def _generate_with_retry(prompt: str, max_retries: int = 3) -> str:
+def _generate_with_retry(prompt: str, max_retries: int = 3, config=None) -> str:
+    extra = {"config": config} if config is not None else {}
     last_error = None
     for _attempt in range(max_retries):
         try:
-            response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
+            response = client.models.generate_content(model=MODEL_NAME, contents=prompt, **extra)
             return response.text
         except errors.ClientError as e:
             # 429 = quota exceeded — retrying won't help, fail immediately with a clear message
