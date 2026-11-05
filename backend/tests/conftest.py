@@ -227,11 +227,14 @@ def fake_github_http(monkeypatch):
     request/response handling is still exercised."""
     import httpx
 
-    state = {"create_status": 201, "push_status": 201, "calls": []}
+    state = {"create_status": 201, "push_status": 201, "user_status": 200, "calls": []}
 
     def fake_request(method, url, headers=None, json=None, timeout=None):
         state["calls"].append((method, url, json))
         request = httpx.Request(method, url)
+        if method == "GET":
+            body = {"login": "octo-alice"} if state["user_status"] == 200 else {"message": "Bad credentials"}
+            return httpx.Response(state["user_status"], json=body, request=request)
         if method == "POST":
             if state["create_status"] == 201:
                 body = {"full_name": f"tester/{json['name']}", "html_url": f"https://github.test/tester/{json['name']}", "private": json["private"]}

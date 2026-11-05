@@ -14,6 +14,7 @@ const CodeEditor = lazy(() => import("./pages/CodeEditor"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const VideoMeeting = lazy(() => import("./pages/VideoMeeting"));
+const Settings = lazy(() => import("./pages/Settings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const protect = (element) => (
@@ -46,6 +47,7 @@ function App() {
             <Route path="/dashboard" element={protect(<Dashboard />)} />
             <Route path="/admin" element={protect(<AdminDashboard />)} />
             <Route path="/projects/:projectId/meeting" element={protect(<VideoMeeting />)} />
+            <Route path="/settings" element={protect(<Settings />)} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
