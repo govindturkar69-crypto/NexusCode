@@ -64,7 +64,7 @@ class ProjectModel(TimestampMixin, Base):
     tasks = relationship("TaskModel", back_populates="project", cascade="all, delete-orphan")
     files = relationship("FileModel", back_populates="project", cascade="all, delete-orphan")
     messages = relationship("MessageModel", back_populates="project", cascade="all, delete-orphan")
-    code_file = relationship("CodeFileModel", back_populates="project", cascade="all, delete-orphan", uselist=False)
+    code_files = relationship("CodeFileModel", back_populates="project", cascade="all, delete-orphan")
     members = relationship("ProjectMemberModel", back_populates="project", cascade="all, delete-orphan")
     activity = relationship("ActivityModel", cascade="all, delete-orphan")
     notifications = relationship("NotificationModel", cascade="all, delete-orphan")
@@ -180,10 +180,13 @@ class MessageModel(TimestampMixin, Base):
 
 class CodeFileModel(TimestampMixin, Base):
     __tablename__ = "code_files"
+    __table_args__ = (UniqueConstraint("project_id", "path", name="uq_code_files_project_path"),)
 
     id = Column(Integer, primary_key=True, index=True)
+    # Folders exist only as slashes in this path; see services/code_paths.py
+    path = Column(String, nullable=False)
     content = Column(String, default="")
-    language = Column(String, default="python")
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, unique=True)
+    language = Column(String, default="plaintext")
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
 
-    project = relationship("ProjectModel", back_populates="code_file")
+    project = relationship("ProjectModel", back_populates="code_files")

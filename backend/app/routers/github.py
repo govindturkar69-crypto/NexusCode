@@ -41,7 +41,6 @@ from app.services.activity import publish, record
 
 router = APIRouter(tags=["github"])
 
-LANGUAGE_EXTENSIONS = {"python": "py", "javascript": "js", "java": "java", "cpp": "cpp", "html": "html"}
 PENDING_MAX_AGE_SECONDS = 10 * 60
 LINK_FAILED = "GitHub connection could not be verified. Please try connecting again."
 
@@ -107,11 +106,11 @@ def push_to_github(
     if not current_user.github_token:
         raise HTTPException(status_code=400, detail="GitHub account not connected")
 
-    code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).first()
+    code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).order_by(CodeFileModel.id).first()
     if not code_file:
         raise HTTPException(status_code=404, detail="No code file found for this project")
 
-    filename = f"main.{LANGUAGE_EXTENSIONS.get(code_file.language, 'txt')}"
+    filename = code_file.path
 
     try:
         repo_result = github.create_github_repo(current_user.github_token, request.repo_name, request.private)

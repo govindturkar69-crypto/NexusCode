@@ -1,11 +1,18 @@
 from datetime import date, datetime
 from typing import Annotated, Literal, get_args
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from pydantic_core import PydanticCustomError
 
 from app.models import TASK_PRIORITIES, TASK_STATUSES
 from app.schemas.common import ORMModel, Page
+from app.services.code_paths import path_problem
 
 
 class ProjectCreate(BaseModel):
@@ -151,21 +158,79 @@ class WsTicketResponse(BaseModel):
     expires_in: int
 
 
+MAX_CODE_FILE_CHARS = 1_000_000
+
+
+def _check_path(value: str) -> str:
+    # PydanticCustomError keeps the message free of a "Value error, " prefix
+    problem = path_problem(value)
+    if problem:
+        raise PydanticCustomError("path_invalid", problem)
+    return value
+
+
 class CodeFileUpdate(BaseModel):
-    content: str
+    content: str = Field(max_length=MAX_CODE_FILE_CHARS)
     language: str = "python"
 
 
-class CodeFileOut(ORMModel):
+class CodeFileContent(BaseModel):
+    content: str = Field(max_length=MAX_CODE_FILE_CHARS)
+
+
+class CodeFileCreate(BaseModel):
+    path: str
+    content: str = Field(default="", max_length=MAX_CODE_FILE_CHARS)
+
+    _valid_path = field_validator("path")(_check_path)
+
+
+class CodeFileRename(BaseModel):
+    path: str
+
+    _valid_path = field_validator("path")(_check_path)
+
+
+class FolderRename(BaseModel):
+    path: str
+    new_path: str
+
+    _valid_paths = field_validator("path", "new_path")(_check_path)
+
+
+class FolderDelete(BaseModel):
+    path: str
+
+    _valid_path = field_validator("path")(_check_path)
+
+
+class FolderDeleted(BaseModel):
+    deleted: list[int]
+
+
+class CodeFileSummary(ORMModel):
     id: int
-    content: str | None
+    path: str
     language: str | None
     project_id: int
+    created_at: datetime
     updated_at: datetime
+
+
+class CodeFileOut(CodeFileSummary):
+    content: str | None
 
 
 class CodeFileResponse(BaseModel):
     code_file: CodeFileOut
+
+
+class CodeFileSummaryResponse(BaseModel):
+    code_file: CodeFileSummary
+
+
+class CodeFileListResponse(BaseModel):
+    code_files: list[CodeFileSummary]
 
 
 class CodeFileSavedResponse(CodeFileResponse):

@@ -20,12 +20,18 @@ ROUTES = [
     ("GET", "/projects/{pid}/files", None, False, "viewer"),
     ("GET", "/projects/{pid}/messages", None, False, "viewer"),
     ("GET", "/projects/{pid}/code", None, False, "viewer"),
+    ("GET", "/projects/{pid}/code/files", None, False, "viewer"),
+    ("GET", "/code-files/{code_file_id}", None, False, "viewer"),
     ("POST", "/projects/{pid}/tasks", {"title": "x"}, False, "editor"),
     ("PUT", "/tasks/{task_id}", {"status": "done"}, False, "editor"),
     ("DELETE", "/tasks/{task_id}", None, False, "editor"),
     ("POST", "/projects/{pid}/files", None, True, "editor"),
     ("DELETE", "/files/{file_id}", None, False, "editor"),
     ("PUT", "/projects/{pid}/code", {"content": "new", "language": "python"}, False, "editor"),
+    ("POST", "/projects/{pid}/code/files", {"path": "new.py"}, False, "editor"),
+    ("PUT", "/code-files/{code_file_id}", {"content": "new"}, False, "editor"),
+    ("PATCH", "/code-files/{code_file_id}", {"path": "moved.py"}, False, "editor"),
+    ("DELETE", "/code-files/{code_file_id}", None, False, "editor"),
     ("POST", "/projects/{pid}/push-to-github", {"repo_name": "repo"}, False, "owner"),
     ("DELETE", "/projects/{pid}", None, False, "owner"),
 ]
@@ -44,10 +50,10 @@ def team(client, make_user, project_of, fake_cloudinary, fake_github_http):
     file_id = client.post(
         f"/projects/{pid}/files", files={"file": ("n.txt", io.BytesIO(b"hi"), "text/plain")}, headers=owner
     ).json()["file"]["id"]
-    client.put(f"/projects/{pid}/code", json={"content": "x", "language": "python"}, headers=owner)
+    code_file_id = client.put(f"/projects/{pid}/code", json={"content": "x", "language": "python"}, headers=owner).json()["code_file"]["id"]
     for name in ("olivia", "eddie", "vera"):
         set_github_token(name, f"gho_{name}")
-    return {"tokens": tokens, "pid": pid, "task_id": task_id, "file_id": file_id, "github": fake_github_http}
+    return {"tokens": tokens, "pid": pid, "task_id": task_id, "file_id": file_id, "code_file_id": code_file_id, "github": fake_github_http}
 
 
 @pytest.mark.parametrize(
@@ -59,7 +65,7 @@ def test_role_matrix(client, team, role, method, path, body, multipart, min_role
         kwargs["files"] = {"file": ("a.txt", io.BytesIO(b"x"), "text/plain")}
     elif body is not None:
         kwargs["json"] = body
-    r = client.request(method, path.format(pid=team["pid"], task_id=team["task_id"], file_id=team["file_id"]), **kwargs)
+    r = client.request(method, path.format(pid=team["pid"], task_id=team["task_id"], file_id=team["file_id"], code_file_id=team["code_file_id"]), **kwargs)
     if role_at_least(role, min_role):
         assert r.status_code < 300, r.text
     else:

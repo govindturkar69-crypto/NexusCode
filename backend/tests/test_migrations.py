@@ -262,3 +262,66 @@ def test_baseline_downgrade_needs_explicit_flag(scratch_engine):
         with pytest.raises(RuntimeError, match="drops ALL tables"):
             command.downgrade(config, "base")
     assert "users" in inspect(scratch_engine).get_table_names()
+
+
+def _seed_code_files_before_0008(eng):
+    """Project 10 has every kind of language value; 11 has no file at all."""
+    with eng.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'x')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (10, 'a', 1), (11, 'b', 1), (12, 'c', 1), (13, 'd', 1), (14, 'e', 1), (15, 'f', 1), (16, 'g', 1)"))
+        conn.execute(text(
+            "INSERT INTO code_files (id, content, language, project_id) VALUES "
+            "(1, 'print(1)', 'python', 10), (2, 'js', 'javascript', 12), (3, 'J', 'java', 13), "
+            "(4, 'c', 'cpp', 14), (5, '<p>', 'html', 15), (6, NULL, NULL, 16)"
+        ))
+
+
+def test_0008_moves_each_single_file_into_a_default_file(scratch_engine):
+    _upgrade(scratch_engine, "0007_activity_notifications")
+    _seed_code_files_before_0008(scratch_engine)
+    with scratch_engine.connect() as conn:
+        before = conn.execute(text("SELECT id, updated_at FROM code_files ORDER BY id")).all()
+    _upgrade(scratch_engine, "0008_multi_file_code")
+    with scratch_engine.connect() as conn:
+        rows = conn.execute(text("SELECT project_id, path, language, content FROM code_files ORDER BY id")).all()
+        assert [tuple(r) for r in rows] == [
+            (10, "main.py", "python", "print(1)"),
+            (12, "main.js", "javascript", "js"),
+            (13, "main.java", "java", "J"),
+            (14, "main.cpp", "cpp", "c"),
+            (15, "main.html", "html", "<p>"),
+            (16, "main.txt", "plaintext", ""),
+        ]
+        assert conn.execute(text("SELECT id, updated_at FROM code_files ORDER BY id")).all() == before
+        # Many files per project now, but not the same path twice
+        conn.execute(text("INSERT INTO code_files (path, content, language, project_id) VALUES ('other.py', '', 'python', 10)"))
+        conn.commit()
+        with pytest.raises(Exception, match="(?i)unique"):
+            conn.execute(text("INSERT INTO code_files (path, content, language, project_id) VALUES ('other.py', '', 'python', 10)"))
+        conn.rollback()
+
+
+def test_0008_downgrade_keeps_each_projects_oldest_file(scratch_engine):
+    _upgrade(scratch_engine, "0007_activity_notifications")
+    _seed_code_files_before_0008(scratch_engine)
+    _upgrade(scratch_engine, "0008_multi_file_code")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO code_files (path, content, language, project_id) VALUES ('other.py', 'later', 'python', 10)"))
+
+    config = alembic_config()
+    with scratch_engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0007_activity_notifications")
+
+    with scratch_engine.connect() as conn:
+        assert "path" not in {c["name"] for c in inspect(conn).get_columns("code_files")}
+        assert conn.execute(text("SELECT content FROM code_files WHERE project_id = 10")).scalars().all() == ["print(1)"]
+        assert conn.execute(text("SELECT count(*) FROM code_files")).scalar() == 6
+        with pytest.raises(Exception, match="(?i)unique"):
+            conn.execute(text("INSERT INTO code_files (content, language, project_id) VALUES ('', 'python', 10)"))
+        conn.rollback()
+
+    # And forward again
+    _upgrade(scratch_engine, "0008_multi_file_code")
+    assert _version(scratch_engine) == "0008_multi_file_code"
+
