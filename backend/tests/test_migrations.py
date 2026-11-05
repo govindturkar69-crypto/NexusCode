@@ -195,6 +195,41 @@ def test_0004_encrypts_existing_plaintext_tokens_and_downgrade_restores(scratch_
         assert conn.execute(text("SELECT github_token FROM users WHERE id = 1")).scalar() == "gho_plain_a"
 
 
+def test_0005_makes_every_existing_owner_a_member(scratch_engine):
+    _upgrade(scratch_engine, "0004_encrypt_github_tokens")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'a', 'h'), (2, 'b', 'h')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (10, 'p1', 1), (11, 'p2', 1), (12, 'p3', 2)"))
+    _upgrade(scratch_engine, "0005_project_members")
+    with scratch_engine.connect() as conn:
+        rows = conn.execute(text("SELECT project_id, user_id, role FROM project_members ORDER BY project_id")).all()
+        assert [tuple(r) for r in rows] == [(10, 1, "owner"), (11, 1, "owner"), (12, 2, "owner")]
+        assert conn.execute(text("SELECT count(*) FROM project_members WHERE created_at IS NULL")).scalar() == 0
+
+    config = alembic_config()
+    with scratch_engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0004_encrypt_github_tokens")
+    assert "project_members" not in inspect(scratch_engine).get_table_names()
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM projects")).scalar() == 3
+
+
+def test_project_members_rejects_duplicates_and_bad_roles(scratch_engine):
+    _upgrade(scratch_engine)
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'a', 'h')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (1, 'p', 1)"))
+        conn.execute(text("INSERT INTO project_members (project_id, user_id, role) VALUES (1, 1, 'owner')"))
+    for sql in (
+        "INSERT INTO project_members (project_id, user_id, role) VALUES (1, 1, 'viewer')",
+        "UPDATE project_members SET role = 'admin'",
+    ):
+        with pytest.raises(Exception):  # noqa: B017
+            with scratch_engine.begin() as conn:
+                conn.execute(text(sql))
+
+
 def test_baseline_downgrade_needs_explicit_flag(scratch_engine):
     _upgrade(scratch_engine, "0001_baseline")
     config = alembic_config()

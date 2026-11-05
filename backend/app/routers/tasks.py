@@ -3,7 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Pagination, get_owned_project, get_owned_task
+from app.core.deps import Pagination, require_project_role
 from app.models import ProjectModel, TaskModel
 from app.schemas.project import TaskCreate, TaskListResponse, TaskResponse, TaskUpdate
 
@@ -11,7 +11,7 @@ router = APIRouter(tags=["tasks"])
 
 
 @router.post("/projects/{project_id}/tasks", status_code=201, response_model=TaskResponse)
-def create_task(task: TaskCreate, project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+def create_task(task: TaskCreate, project: ProjectModel = Depends(require_project_role("editor")), db: Session = Depends(get_db)):
     # New tasks go to the end of the board
     last_position = db.query(func.max(TaskModel.position)).filter(TaskModel.project_id == project.id).scalar()
     new_task = TaskModel(
@@ -27,13 +27,13 @@ def create_task(task: TaskCreate, project: ProjectModel = Depends(get_owned_proj
 
 
 @router.get("/projects/{project_id}/tasks", response_model=TaskListResponse)
-def get_project_tasks(page: Pagination = Depends(), project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+def get_project_tasks(page: Pagination = Depends(), project: ProjectModel = Depends(require_project_role("viewer")), db: Session = Depends(get_db)):
     query = db.query(TaskModel).filter(TaskModel.project_id == project.id).order_by(TaskModel.position, TaskModel.id)
     return page.envelope("tasks", *page.apply(query))
 
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
-def update_task_status(update: TaskUpdate, task: TaskModel = Depends(get_owned_task), db: Session = Depends(get_db)):
+def update_task_status(update: TaskUpdate, task: TaskModel = Depends(require_project_role("editor", "task")), db: Session = Depends(get_db)):
     task.status = update.status
     db.commit()
     db.refresh(task)
@@ -41,7 +41,7 @@ def update_task_status(update: TaskUpdate, task: TaskModel = Depends(get_owned_t
 
 
 @router.delete("/tasks/{task_id}", status_code=204)
-def delete_task(task: TaskModel = Depends(get_owned_task), db: Session = Depends(get_db)):
+def delete_task(task: TaskModel = Depends(require_project_role("editor", "task")), db: Session = Depends(get_db)):
     db.delete(task)
     db.commit()
     return Response(status_code=204)

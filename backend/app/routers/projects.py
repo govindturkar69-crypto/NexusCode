@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Pagination, get_current_user, get_owned_project
-from app.models import CodeFileModel, ProjectModel, UserModel
+from app.core.deps import Pagination, get_current_user, require_project_role
+from app.models import CodeFileModel, ProjectMemberModel, ProjectModel, UserModel
 from app.routers.files import delete_project_assets
 from app.schemas.project import (
     CodeFileResponse,
@@ -22,6 +22,7 @@ router = APIRouter(tags=["projects"])
 @router.post("/projects", status_code=201, response_model=ProjectCreatedResponse)
 def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     new_project = ProjectModel(name=project.name, description=project.description, owner_id=current_user.id)
+    new_project.members.append(ProjectMemberModel(user_id=current_user.id, role="owner"))
     db.add(new_project)
     db.commit()
     db.refresh(new_project)
@@ -35,12 +36,12 @@ def get_my_projects(page: Pagination = Depends(), db: Session = Depends(get_db),
 
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
-def get_project(project: ProjectModel = Depends(get_owned_project)):
+def get_project(project: ProjectModel = Depends(require_project_role("viewer"))):
     return {"project": project}
 
 
 @router.delete("/projects/{project_id}", status_code=204)
-def delete_project(project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+def delete_project(project: ProjectModel = Depends(require_project_role("owner")), db: Session = Depends(get_db)):
     # Rows go via ORM cascade; uploaded assets have to be removed from Cloudinary
     delete_project_assets(project)
     db.delete(project)
@@ -49,7 +50,7 @@ def delete_project(project: ProjectModel = Depends(get_owned_project), db: Sessi
 
 
 @router.get("/projects/{project_id}/code", response_model=CodeFileResponse)
-def get_code_file(project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+def get_code_file(project: ProjectModel = Depends(require_project_role("viewer")), db: Session = Depends(get_db)):
     code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).first()
     if not code_file:
         code_file = CodeFileModel(content="", language="python", project_id=project.id)
@@ -60,7 +61,7 @@ def get_code_file(project: ProjectModel = Depends(get_owned_project), db: Sessio
 
 
 @router.put("/projects/{project_id}/code", response_model=CodeFileSavedResponse)
-def update_code_file(update: CodeFileUpdate, project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+def update_code_file(update: CodeFileUpdate, project: ProjectModel = Depends(require_project_role("editor")), db: Session = Depends(get_db)):
     code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).first()
     if not code_file:
         code_file = CodeFileModel(project_id=project.id)

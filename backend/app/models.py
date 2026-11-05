@@ -6,6 +6,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -62,6 +63,28 @@ class ProjectModel(TimestampMixin, Base):
     files = relationship("FileModel", back_populates="project", cascade="all, delete-orphan")
     messages = relationship("MessageModel", back_populates="project", cascade="all, delete-orphan")
     code_file = relationship("CodeFileModel", back_populates="project", cascade="all, delete-orphan", uselist=False)
+    members = relationship("ProjectMemberModel", back_populates="project", cascade="all, delete-orphan")
+
+# Lowest to highest; each role can do everything the ones before it can
+PROJECT_ROLES = ("viewer", "editor", "owner")
+
+class ProjectMemberModel(Base):
+    """Who can access a project. This table, not projects.owner_id, decides access."""
+
+    __tablename__ = "project_members"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_project_members_project_user"),
+        CheckConstraint("role IN ('owner', 'editor', 'viewer')", name="ck_project_members_role"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    project = relationship("ProjectModel", back_populates="members")
+    user = relationship("UserModel")
 
 TASK_STATUSES = ("todo", "in_progress", "done")
 

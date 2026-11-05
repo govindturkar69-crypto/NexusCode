@@ -45,7 +45,7 @@ from app.core import security as auth_module  # noqa: E402
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
 from app.core.rate_limit import limiter  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import UserModel  # noqa: E402
+from app.models import ProjectMemberModel, UserModel  # noqa: E402
 from app.services import ai as ai_service  # noqa: E402
 from app.services import github as github_service  # noqa: E402
 from app.services import realtime as websocket_manager  # noqa: E402
@@ -149,6 +149,13 @@ def ws_path(client, token, project_id, kind="chat"):
     r = client.post("/ws-ticket", json={"project_id": project_id}, headers=auth(token))
     assert r.status_code == 200, r.text
     return f"/ws/projects/{project_id}/{kind}?ticket={r.json()['ticket']}"
+
+
+def add_member(username, project_id, role):
+    with SessionLocal() as db:
+        user = db.query(UserModel).filter(UserModel.username == username).one()
+        db.add(ProjectMemberModel(project_id=project_id, user_id=user.id, role=role))
+        db.commit()
 
 
 def set_github_token(username, token):

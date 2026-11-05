@@ -1,7 +1,6 @@
 """
-Shared FastAPI dependencies. Every ownership check lives here, so a route
-can't forget one: depend on get_owned_project / get_owned_task /
-get_owned_file instead of querying by id.
+Shared FastAPI dependencies. Every project permission check lives here, so a
+route can't forget one: depend on require_project_role instead of querying by id.
 """
 from fastapi import Depends, HTTPException, Query
 from fastapi.security import OAuth2PasswordBearer
@@ -9,7 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import decode_access_token
-from app.models import FileModel, ProjectModel, TaskModel, UserModel
+from app.models import (
+    PROJECT_ROLES,
+    FileModel,
+    ProjectMemberModel,
+    ProjectModel,
+    TaskModel,
+    UserModel,
+)
 
 # Looks for "Authorization: Bearer <token>". tokenUrl only feeds the /docs
 # page's "Authorize" button.
@@ -33,48 +39,65 @@ def get_current_admin(current_user: UserModel = Depends(get_current_user)) -> Us
     return current_user
 
 
-def get_owned_project(
-    project_id: int,
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
-) -> ProjectModel:
-    """The project from the URL, if the current user owns it; 404 otherwise
-    (also for other users' projects, so ids can't be probed)."""
-    project = db.query(ProjectModel).filter(
-        ProjectModel.id == project_id,
-        ProjectModel.owner_id == current_user.id,
-    ).first()
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
+def project_role(db: Session, project_id: int, user_id: int) -> str | None:
+    """The user's role in the project, or None if they aren't a member."""
+    return (
+        db.query(ProjectMemberModel.role)
+        .filter(ProjectMemberModel.project_id == project_id, ProjectMemberModel.user_id == user_id)
+        .scalar()
+    )
 
 
-def get_owned_task(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
-) -> TaskModel:
-    task = db.query(TaskModel).join(ProjectModel).filter(
-        TaskModel.id == task_id,
-        ProjectModel.owner_id == current_user.id,
-    ).first()
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task
+def role_at_least(role: str | None, min_role: str) -> bool:
+    return role is not None and PROJECT_ROLES.index(role) >= PROJECT_ROLES.index(min_role)
 
 
-def get_owned_file(
-    file_id: int,
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
-) -> FileModel:
-    file = db.query(FileModel).join(ProjectModel).filter(
-        FileModel.id == file_id,
-        ProjectModel.owner_id == current_user.id,
-    ).first()
-    if file is None:
-        raise HTTPException(status_code=404, detail="File not found")
-    return file
+def _authorize(db: Session, project_id: int, user: UserModel, min_role: str, not_found: str) -> None:
+    role = project_role(db, project_id, user.id)
+    if role is None:
+        # Same answer as "doesn't exist", so ids can't be probed
+        raise HTTPException(status_code=404, detail=not_found)
+    if not role_at_least(role, min_role):
+        raise HTTPException(status_code=403, detail=f"This action needs the {min_role} role in this project.")
+
+
+def require_project_role(min_role: str, resource: str = "project"):
+    """
+    The one permission check for project data. Returns a dependency that loads
+    the object from the URL if the current user has at least `min_role` in its
+    project: 404 for non-members, 403 for members with too low a role.
+
+    resource: "project" (/projects/{project_id}), "task" (/tasks/{task_id}) or
+    "file" (/files/{file_id}); the dependency returns that object.
+
+    viewer = read only; editor = also change tasks, files, code and chat;
+    owner = also manage members, delete the project and push to GitHub.
+    """
+    if min_role not in PROJECT_ROLES:
+        raise ValueError(f"Unknown role: {min_role}")
+
+    def project_dependency(project_id: int, db: Session = Depends(get_db), user: UserModel = Depends(get_current_user)) -> ProjectModel:
+        project = db.get(ProjectModel, project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        _authorize(db, project.id, user, min_role, "Project not found")
+        return project
+
+    def task_dependency(task_id: int, db: Session = Depends(get_db), user: UserModel = Depends(get_current_user)) -> TaskModel:
+        task = db.get(TaskModel, task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        _authorize(db, task.project_id, user, min_role, "Task not found")
+        return task
+
+    def file_dependency(file_id: int, db: Session = Depends(get_db), user: UserModel = Depends(get_current_user)) -> FileModel:
+        file = db.get(FileModel, file_id)
+        if file is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        _authorize(db, file.project_id, user, min_role, "File not found")
+        return file
+
+    return {"project": project_dependency, "task": task_dependency, "file": file_dependency}[resource]
 
 
 class Pagination:

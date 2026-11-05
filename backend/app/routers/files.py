@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Pagination, get_owned_file, get_owned_project
+from app.core.deps import Pagination, require_project_role
 from app.models import FileModel, ProjectModel
 from app.schemas.project import FileListResponse, FileResponse
 from app.services import storage
@@ -17,7 +17,7 @@ router = APIRouter(tags=["files"])
 # A plain `def` (not async): FastAPI runs it in a worker thread, so the
 # file read and the Cloudinary upload don't block the event loop.
 @router.post("/projects/{project_id}/files", status_code=201, response_model=FileResponse)
-def upload_file(file: UploadFile = File(...), project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+def upload_file(file: UploadFile = File(...), project: ProjectModel = Depends(require_project_role("editor")), db: Session = Depends(get_db)):
     # Read one byte past the limit so oversized files are detected without
     # loading arbitrarily large bodies (the middleware already checked
     # Content-Length; this is the definitive check).
@@ -47,13 +47,13 @@ def upload_file(file: UploadFile = File(...), project: ProjectModel = Depends(ge
 
 
 @router.get("/projects/{project_id}/files", response_model=FileListResponse)
-def get_project_files(page: Pagination = Depends(), project: ProjectModel = Depends(get_owned_project), db: Session = Depends(get_db)):
+def get_project_files(page: Pagination = Depends(), project: ProjectModel = Depends(require_project_role("viewer")), db: Session = Depends(get_db)):
     query = db.query(FileModel).filter(FileModel.project_id == project.id).order_by(FileModel.id)
     return page.envelope("files", *page.apply(query))
 
 
 @router.delete("/files/{file_id}", status_code=204)
-def delete_file(file: FileModel = Depends(get_owned_file), db: Session = Depends(get_db)):
+def delete_file(file: FileModel = Depends(require_project_role("editor", "file")), db: Session = Depends(get_db)):
     if file.public_id:
         try:
             storage.delete_project_file(file.public_id, file.resource_type)
