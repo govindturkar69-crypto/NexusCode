@@ -1,5 +1,6 @@
 """Schemas for AI, GitHub, analytics and admin routes."""
 import re
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_core import PydanticCustomError
@@ -20,6 +21,12 @@ class CodeReviewRequest(BaseModel):
 
 class AIResult(BaseModel):
     result: str
+
+
+class AssistRequest(BaseModel):
+    action: Literal["explain", "bugs", "docs", "tests", "refactor"]
+    file_id: int
+    context_file_ids: list[int] = Field(default_factory=list, max_length=10)
 
 
 class GitHubAuthorizeUrl(BaseModel):

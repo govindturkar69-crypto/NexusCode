@@ -5,6 +5,7 @@ import { apiFetch } from "../api/client";
 import { baseName, buildTree, isInFolder, renameFolderPath } from "../editor/fileTree";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
+import AIPanel from "../components/AIPanel";
 import FileTree from "../components/FileTree";
 import PathDialog from "../components/PathDialog";
 import PushToGithubDialog from "../components/PushToGithubDialog";
@@ -46,8 +47,6 @@ function CodeEditor() {
   const [dialog, setDialog] = useState(null); // { kind, ... } for PathDialog
   const [toDelete, setToDelete] = useState(null); // { kind: "file" | "folder", ... }
   const [deleting, setDeleting] = useState(false);
-  const [aiResult, setAiResult] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
   const [showPush, setShowPush] = useState(false);
   const [runInfo, setRunInfo] = useState(null);
   const [pushed, setPushed] = useState(null);
@@ -265,17 +264,6 @@ function CodeEditor() {
       });
   }
 
-  function askAI(type) {
-    setAiLoading(true);
-    setAiResult("");
-    const endpoint = type === "bugs" ? "detect-bugs" : "generate-docs";
-    // Errors carry the backend's real message (e.g. quota exceeded, busy)
-    apiFetch(`/ai/${endpoint}`, { method: "POST", body: { code: contents[activeId] ?? "" } })
-      .then((data) => setAiResult(data.result ?? ""))
-      .catch((err) => setAiResult(err.message))
-      .finally(() => setAiLoading(false));
-  }
-
   const nodes = useMemo(() => buildTree(files, emptyFolders), [files, emptyFolders]);
   const filesById = useMemo(() => new Map(files.map((file) => [file.id, file])), [files]);
   const activeFile = filesById.get(activeId) ?? null;
@@ -395,18 +383,16 @@ function CodeEditor() {
           )}
         </div>
 
-        <div className="stack editor-grid__ai">
-          <Button onClick={() => askAI("bugs")} disabled={aiLoading || !activeLoaded} block>
-            🐛 Detect Bugs
-          </Button>
-          <Button onClick={() => askAI("docs")} disabled={aiLoading || !activeLoaded} block>
-            📄 Generate Docs
-          </Button>
-          <Card className="grow" style={{ overflowY: "auto", minHeight: "200px", maxHeight: "500px" }} aria-live="polite">
-            {aiLoading && <p className="muted small">Thinking...</p>}
-            {!aiLoading && !aiResult && <p className="muted small">AI results will appear here.</p>}
-            {aiResult && <pre className="mono small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{aiResult}</pre>}
-          </Card>
+        <div className="editor-grid__ai">
+          <AIPanel
+            projectId={projectId}
+            files={files}
+            activeFile={activeLoaded ? activeFile : null}
+            activeContent={contents[activeId]}
+            canEdit={canEdit}
+            beforeAsk={saveEverything}
+            onApply={handleCodeChange}
+          />
         </div>
       </div>
 

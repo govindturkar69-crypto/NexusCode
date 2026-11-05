@@ -106,6 +106,72 @@ export async function apiFetch(path, { method = "GET", body, form, auth = true, 
 }
 
 /**
+ * Splits server-sent events out of a text buffer. Returns the complete events
+ * ({ event, data }, with data parsed as JSON) and whatever is left to wait for.
+ */
+export function parseSSE(buffer) {
+  const events = [];
+  const blocks = buffer.split("\n\n");
+  const rest = blocks.pop();
+  for (const block of blocks) {
+    let event = "message";
+    const data = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event: ")) event = line.slice(7);
+      else if (line.startsWith("data: ")) data.push(line.slice(6));
+    }
+    if (data.length > 0) events.push({ event, data: JSON.parse(data.join("\n")) });
+  }
+  return { events, rest };
+}
+
+/**
+ * POSTs JSON and calls onEvent for each server-sent event in the reply. EventSource
+ * can't send a POST or an auth header, so this reads the fetch body instead.
+ * Errors before the stream starts are handled like apiFetch's.
+ */
+export async function apiStream(path, { body, signal, onEvent }) {
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, { method: "POST", headers, body: JSON.stringify(body), signal });
+  } catch (err) {
+    if (err.name === "AbortError") throw err;
+    throw new ApiError("Can't reach the server. Check your connection and try again.", 0);
+  }
+  if (res.status === 401) {
+    clearToken();
+    redirectToLogin();
+    throw new ApiError("Your session has expired. Please sign in again.", 401);
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(errorMessage(data, res.status), res.status, data);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      // stream: true keeps a character split across two chunks in one piece
+      buffer += decoder.decode(value, { stream: true });
+      const { events, rest } = parseSSE(buffer);
+      buffer = rest;
+      events.forEach(onEvent);
+    }
+  } catch (err) {
+    if (err.name === "AbortError") throw err;
+    throw new ApiError("The connection was lost before the reply finished.", 0);
+  }
+}
+
+/**
  * Loads every page of a paginated list endpoint ({ [key]: [...], total }).
  * Uses the backend's maximum page size, so most lists take one request.
  */

@@ -10,6 +10,7 @@ import { fakeJwt, inOneHour, stubRoutes } from '../test/helpers'
 // Monaco can't run in jsdom; everything else here is the real page
 vi.mock('../editor/monacoSetup', () => ({}))
 vi.mock('@monaco-editor/react', () => ({
+  DiffEditor: () => <div data-testid="diff" />,
   default: ({ value, onChange, language, path, options }) => (
     <textarea
       aria-label="Code"
@@ -478,11 +479,58 @@ describe('CodeEditor', () => {
     })
   })
 
-  it('AI actions use the open file', async () => {
-    const fetchMock = setup('editor', { 'POST /ai/detect-bugs': [200, { result: 'No bugs' }] })
-    await screen.findByLabelText('Code')
-    await userEvent.click(screen.getByRole('button', { name: /Detect Bugs/ }))
-    expect(await screen.findByText('No bugs')).toBeInTheDocument()
-    expect(sent(fetchMock, 'POST', '/ai/detect-bugs')).toEqual({ code: 'console.log(2)' })
+  describe('AI', () => {
+    const streamReply = (text) => ({
+      ok: true,
+      status: 200,
+      body: new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder()
+          controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify({ text })}\n\nevent: done\ndata: {}\n\n`))
+          controller.close()
+        },
+      }),
+    })
+
+    function withStream(fetchMock, reply) {
+      const original = fetchMock.getMockImplementation()
+      fetchMock.mockImplementation((url, init) => (url.includes('/stream') ? Promise.resolve(streamReply(reply)) : original(url, init)))
+    }
+
+    it('saves first and asks about the open file', async () => {
+      const fetchMock = setup('editor', { 'PUT /code-files/2': [200, { code_file: B }] })
+      withStream(fetchMock, 'A fine file.')
+      await userEvent.type(await screen.findByLabelText('Code'), '!')
+      await userEvent.click(screen.getByRole('button', { name: /Explain/ }))
+      expect(await screen.findByText('A fine file.')).toBeInTheDocument()
+      const methods = fetchMock.mock.calls.filter(([, init]) => ['PUT', 'POST'].includes(init?.method)).map(([url, init]) => `${init.method} ${new URL(url).pathname}`)
+      expect(methods).toEqual(['PUT /code-files/2', 'POST /ai/projects/7/stream'])
+      const body = JSON.parse(fetchMock.mock.calls.find(([url]) => url.includes('/stream'))[1].body)
+      expect(body).toEqual({ action: 'explain', file_id: 2, context_file_ids: [] })
+    })
+
+    it('applying a reply changes the editor and autosaves, after the diff', async () => {
+      const fetchMock = setup('editor', { 'PUT /code-files/2': [200, { code_file: B }] })
+      withStream(fetchMock, '```js\nconst better = 1\n```\n')
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Refactor/ }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Apply to editor' }))
+      expect(screen.getByLabelText('Code')).toHaveValue('console.log(2)')
+      const dialog = await screen.findByRole('dialog')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Apply changes' }))
+      expect(screen.getByLabelText('Code')).toHaveValue('const better = 1')
+      await waitFor(() => expect(calls(fetchMock, 'PUT', '/code-files/2')).toHaveLength(1), { timeout: 3000 })
+      expect(sent(fetchMock, 'PUT', '/code-files/2')).toEqual({ content: 'const better = 1' })
+    })
+
+    it('viewers can ask but not apply', async () => {
+      const fetchMock = setup('viewer')
+      withStream(fetchMock, '```js\nconst better = 1\n```\n')
+      await screen.findByText('View only')
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Refactor/ }))
+      expect(await screen.findByRole('button', { name: 'Copy' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Apply to editor' })).not.toBeInTheDocument()
+    })
   })
 })
