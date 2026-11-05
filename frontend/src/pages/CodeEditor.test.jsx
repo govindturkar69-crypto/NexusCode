@@ -35,6 +35,7 @@ function setup(role = 'owner', routes = {}) {
     'GET /projects/7/code/files': [200, { code_files: [B, A] }],
     'GET /code-files/1': body(A, 'print(1)'),
     'GET /code-files/2': body(B, 'console.log(2)'),
+    'GET /run/info': [200, { enabled: true, languages: ['python', 'javascript'], remaining_today: 9 }],
     ...routes,
   })
   render(
@@ -96,6 +97,7 @@ describe('CodeEditor', () => {
         'GET /projects/7': [200, { project: { id: 7, name: 'P', role: 'owner' } }],
         'GET /projects/7/code/files': [200, { code_files: [B, A] }],
         'GET /code-files/2': body(B, 'console.log(2)'),
+        'GET /run/info': [200, { enabled: true, languages: [], remaining_today: 0 }],
       })
       render(
         <StrictMode>
@@ -429,6 +431,50 @@ describe('CodeEditor', () => {
       await push()
       expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(/Couldn't save your changes first: Disk full/)
       expect(fetchMock.mock.calls.some(([url]) => url.includes('push-to-github'))).toBe(false)
+    })
+  })
+
+  describe('running', () => {
+    const RESULT = { status: 'Accepted', succeeded: true, timed_out: false, stdout: 'ran!', stderr: '', compile_output: '', exit_code: 0, time_seconds: 0.1, memory_kb: 1, truncated: false, remaining_today: 8 }
+
+    it('saves first, runs the open file, and updates what is left', async () => {
+      const fetchMock = setup('editor', {
+        'PUT /code-files/2': [200, { code_file: B }],
+        'POST /code-files/2/run': [200, RESULT],
+      })
+      await userEvent.type(await screen.findByLabelText('Code'), '!')
+      expect(await screen.findByText('9 runs left today')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: '▶ Run' }))
+      expect(await screen.findByText('ran!')).toBeInTheDocument()
+      expect(screen.getByText('8 runs left today')).toBeInTheDocument()
+      const order = fetchMock.mock.calls.filter(([, init]) => ['PUT', 'POST'].includes(init?.method)).map(([url, init]) => `${init.method} ${new URL(url).pathname}`)
+      expect(order).toEqual(['PUT /code-files/2', 'POST /code-files/2/run'])
+    })
+
+    it('does not run if the file could not be saved', async () => {
+      const fetchMock = setup('editor', { 'PUT /code-files/2': [500, { detail: 'Disk full' }] })
+      await userEvent.type(await screen.findByLabelText('Code'), '!')
+      await userEvent.click(await screen.findByRole('button', { name: '▶ Run' }))
+      expect(await screen.findByText(/Couldn't save your changes first: Disk full/)).toBeInTheDocument()
+      expect(calls(fetchMock, 'POST', '/code-files/2/run')).toHaveLength(0)
+    })
+
+    it('output stays with its file when switching tabs', async () => {
+      setup('editor', { 'POST /code-files/2/run': [200, RESULT] })
+      await screen.findByLabelText('Code')
+      await userEvent.click(await screen.findByRole('button', { name: '▶ Run' }))
+      expect(await screen.findByText('ran!')).toBeInTheDocument()
+      await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
+      await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('print(1)'))
+      expect(screen.queryByText('ran!')).not.toBeInTheDocument()
+    })
+
+    it('viewers get no Run button and never ask for run info', async () => {
+      const fetchMock = setup('viewer')
+      await screen.findByText('View only')
+      await screen.findByLabelText('Code')
+      expect(screen.queryByRole('button', { name: '▶ Run' })).not.toBeInTheDocument()
+      expect(calls(fetchMock, 'GET', '/run/info')).toHaveLength(0)
     })
   })
 

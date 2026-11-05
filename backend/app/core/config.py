@@ -32,6 +32,14 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
 
+    # Code execution (app/services/runner.py). Running stays off until the key is set.
+    judge0_api_key: str | None = None
+    judge0_api_url: str = "https://judge0-ce.p.rapidapi.com"
+    judge0_api_host: str = "judge0-ce.p.rapidapi.com"
+    # Below Judge0's free 50 a day, leaving a margin. Raise on a paid plan.
+    run_daily_limit: int = Field(default=45, ge=0)
+    run_user_daily_limit: int = Field(default=15, ge=0)
+
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None

@@ -325,3 +325,13 @@ def test_0008_downgrade_keeps_each_projects_oldest_file(scratch_engine):
     _upgrade(scratch_engine, "0008_multi_file_code")
     assert _version(scratch_engine) == "0008_multi_file_code"
 
+
+def test_0009_adds_and_removes_code_runs(scratch_engine):
+    _upgrade(scratch_engine, "0009_code_runs")
+    assert "code_runs" in inspect(scratch_engine).get_table_names()
+    config = alembic_config()
+    with scratch_engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0008_multi_file_code")
+    assert "code_runs" not in inspect(scratch_engine).get_table_names()
+
