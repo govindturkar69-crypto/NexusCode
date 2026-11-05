@@ -7,10 +7,14 @@ import Card from "../components/ui/Card";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
 import { cssVar } from "../styles/tokens";
+import { useTheme } from "../theme/useTheme";
 
 function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [error, setError] = useState("");
+
+  // Re-render on a theme change: the chart reads colours as literal values
+  useTheme();
 
   useEffect(() => {
     apiFetch("/analytics")
@@ -74,7 +78,7 @@ function Dashboard() {
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ background: cssVar("--color-bg"), border: `1px solid ${cssVar("--color-border")}` }} />
+                  <Tooltip contentStyle={{ background: cssVar("--color-bg"), border: `1px solid ${cssVar("--color-border")}`, color: cssVar("--color-text") }} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>

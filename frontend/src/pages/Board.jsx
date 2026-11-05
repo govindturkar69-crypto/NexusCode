@@ -1,8 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { apiFetch, apiFetchAll, socketUrl } from "../api/client";
+import { apiFetch, apiFetchAll } from "../api/client";
 import { useAuth } from "../auth/useAuth";
+import { useProject } from "../projects/useProject";
+import { filterByAssignee, isOverdue, moveTask } from "../projects/tasks";
+import ActivityPanel from "../components/ActivityPanel";
+import ChatPanel from "../components/ChatPanel";
+import TaskModal from "../components/TaskModal";
+import MembersPanel from "../components/MembersPanel";
+import RoleBadge from "../components/RoleBadge";
 import Alert from "../components/ui/Alert";
 import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
@@ -12,8 +19,6 @@ import Input from "../components/ui/Input";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
 
-// Matches the server-side limit
-const MAX_CHAT_MESSAGE_LENGTH = 2000;
 // Mirrors the backend allowlist (app/services/storage.py); the server still validates
 const UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.zip,.txt,.md,.csv,.json,.log,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.css,.sql,.yml,.yaml,.toml,.ini";
 
@@ -26,22 +31,21 @@ const COLUMNS = [
 function Board() {
   const { projectId } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { project, role, canEdit, isOwner, error: projectError, reload: reloadProject } = useProject(projectId);
+  const [members, setMembers] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [assigneeFilter, setAssigneeFilter] = useState("");
   const [title, setTitle] = useState("");
   const [files, setFiles] = useState([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [messages, setMessages] = useState([]);
-  // Cursor for "Load older messages"; null once the oldest message is loaded
-  const [olderCursor, setOlderCursor] = useState(null);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [chatInput, setChatInput] = useState("");
-  const [chatError, setChatError] = useState("");
   const [error, setError] = useState("");
   const [toDelete, setToDelete] = useState(null); // { kind: "task" | "file", id, name }
   const [deleting, setDeleting] = useState(false);
-  const ws = useRef(null);
+  const [activityVersion, setActivityVersion] = useState(0);
 
   const fetchTasks = useCallback(() => {
     return apiFetchAll(`/projects/${projectId}/tasks`, "tasks")
@@ -57,66 +61,29 @@ function Board() {
       .finally(() => setFilesLoaded(true));
   }, [projectId]);
 
+  const fetchMembers = useCallback(() => {
+    return apiFetch(`/projects/${projectId}/members`)
+      .then((data) => setMembers(data.members ?? []))
+      .catch((err) => setError(err.message));
+  }, [projectId]);
+
   useEffect(() => {
+    fetchMembers();
     fetchTasks();
     fetchFiles();
-    // The API returns newest first; the chat box shows the oldest at the top
-    apiFetch(`/projects/${projectId}/messages`)
-      .then((data) => {
-        setMessages([...(data.messages ?? [])].reverse());
-        setOlderCursor(data.next_cursor ?? null);
-      })
-      .catch((err) => setError(err.message));
-  }, [projectId, fetchTasks, fetchFiles]);
+  }, [projectId, fetchMembers, fetchTasks, fetchFiles]);
 
-  function loadOlderMessages() {
-    if (olderCursor === null) return;
-    setLoadingOlder(true);
-    apiFetch(`/projects/${projectId}/messages?before=${olderCursor}`)
-      .then((data) => {
-        setMessages((prev) => [...[...(data.messages ?? [])].reverse(), ...prev]);
-        setOlderCursor(data.next_cursor ?? null);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoadingOlder(false));
-  }
-
-  useEffect(() => {
-    let socket = null;
-    let cancelled = false;
-
-    // Get a single-use ticket, then connect (unless we unmounted meanwhile)
-    socketUrl(`/ws/projects/${projectId}/chat`, projectId)
-      .then((url) => {
-        if (cancelled) return;
-        socket = new WebSocket(url);
-        ws.current = socket;
-
-        socket.onmessage = (event) => {
-          const message = JSON.parse(event.data);
-          if (message.type === "error") {
-            setChatError(message.detail);
-            return;
-          }
-          setChatError("");
-          setMessages((prev) => [...prev, message]);
-        };
-        // The server refuses the socket if the ticket is invalid or the
-        // project isn't ours, which shows up here as a close.
-        socket.onclose = () => setChatError("Chat disconnected. Refresh the page to reconnect.");
-      })
-      .catch(() => {
-        if (!cancelled) setChatError("Couldn't connect to chat. Refresh the page to try again.");
-      });
-
-    return () => {
-      cancelled = true;
-      if (socket) {
-        socket.onclose = null;
-        socket.close();
-      }
-    };
-  }, [projectId]);
+  // Someone (maybe us, in another tab) changed the project: show it right away
+  const handleActivity = useCallback(({ action }) => {
+    setActivityVersion((version) => version + 1);
+    if (action.startsWith("task_")) fetchTasks();
+    else if (action.startsWith("file_")) fetchFiles();
+    else if (action.startsWith("member_") || action === "role_changed") {
+      fetchMembers();
+      fetchTasks();
+      reloadProject();
+    }
+  }, [fetchTasks, fetchFiles, fetchMembers, reloadProject]);
 
   function createTask(event) {
     event.preventDefault();
@@ -128,13 +95,6 @@ function Board() {
         return fetchTasks();
       })
       .catch((err) => setError(err.message));
-  }
-
-  function updateTaskStatus(taskId, newStatus) {
-    // Always resync afterwards: on failure this undoes the optimistic move
-    apiFetch(`/tasks/${taskId}`, { method: "PUT", body: { status: newStatus } })
-      .catch((err) => setError(err.message))
-      .finally(() => fetchTasks());
   }
 
   function uploadFile(e) {
@@ -166,26 +126,21 @@ function Board() {
       });
   }
 
-  function sendMessage(event) {
-    event.preventDefault();
-    if (!chatInput.trim()) return;
-    if (ws.current?.readyState !== WebSocket.OPEN) {
-      setChatError("Chat is not connected. Refresh the page to reconnect.");
-      return;
-    }
-    // The server attaches our username from the ticket
-    ws.current.send(JSON.stringify({ content: chatInput }));
-    setChatInput("");
+  function handleDragEnd(result) {
+    const { destination, source, draggableId } = result;
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+    const taskId = Number(draggableId);
+    const status = destination.droppableId;
+    setTasks((prev) => moveTask(prev, taskId, status, destination.index));
+    // Always resync afterwards: on failure this undoes the optimistic move
+    apiFetch(`/tasks/${taskId}/move`, { method: "PATCH", body: { status, index: destination.index } })
+      .catch((err) => setError(err.message))
+      .finally(() => fetchTasks());
   }
 
-  function handleDragEnd(result) {
-    const { destination, draggableId } = result;
-    if (!destination) return;
-    const newStatus = destination.droppableId;
-    if (newStatus === result.source.droppableId) return;
-    updateTaskStatus(draggableId, newStatus);
-    setTasks((prev) => prev.map((t) => (t.id.toString() === draggableId ? { ...t, status: newStatus } : t)));
-  }
+  const filtering = assigneeFilter !== "";
+  const visibleTasks = filterByAssignee(tasks, assigneeFilter);
 
   return (
     <Page width={1100}>
@@ -194,21 +149,40 @@ function Board() {
         <Link className="btn btn--link" to={`/projects/${projectId}/editor`}>💻 Open Code Editor</Link>
         <Link className="btn btn--link" to={`/projects/${projectId}/meeting`}>📹 Start Meeting</Link>
       </div>
-      <PageHeader eyebrow={`board --project ${projectId}`} title="Project Board" />
+      <PageHeader eyebrow={`board --project ${projectId}`} title={project?.name ?? "Project Board"} actions={role && <RoleBadge role={role} />} />
 
       <Alert onDismiss={() => setError("")}>{error}</Alert>
+      {projectError && <Alert>{projectError}</Alert>}
 
-      <Card as="form" onSubmit={createTask} className="row" style={{ marginBottom: "2rem" }}>
-        <Input label="New task title" hideLabel placeholder="New task title" value={title} onChange={(e) => setTitle(e.target.value)} className="grow" />
-        <Button type="submit" disabled={!title.trim()}>+ Add Task</Button>
-      </Card>
+      {role === "viewer" && (
+        <Alert tone="info">You have view-only access to this project. Ask an owner if you need to make changes.</Alert>
+      )}
+
+      {canEdit && (
+        <Card as="form" onSubmit={createTask} className="row" style={{ marginBottom: "2rem" }}>
+          <Input label="New task title" hideLabel placeholder="New task title" value={title} onChange={(e) => setTitle(e.target.value)} className="grow" />
+          <Button type="submit" disabled={!title.trim()}>+ Add Task</Button>
+        </Card>
+      )}
+
+      <div className="row" style={{ marginBottom: "1rem" }}>
+        <label htmlFor="assignee-filter" className="muted small">Assignee</label>
+        <select id="assignee-filter" className="input input--sm" value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
+          <option value="">Everyone</option>
+          <option value="unassigned">Unassigned</option>
+          {members.map((member) => (
+            <option key={member.user_id} value={member.user_id}>{member.username}</option>
+          ))}
+        </select>
+        {filtering && canEdit && <span className="hint" style={{ margin: 0 }}>Clear the filter to drag tasks.</span>}
+      </div>
 
       {!tasksLoaded && <p role="status" className="muted">Loading tasks...</p>}
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="kanban">
           {COLUMNS.map(({ status, title: columnTitle, dot }) => {
-            const columnTasks = tasks.filter((t) => t.status === status);
+            const columnTasks = visibleTasks.filter((t) => t.status === status);
             return (
               <Droppable droppableId={status} key={status}>
                 {(provided) => (
@@ -218,27 +192,40 @@ function Board() {
                       <h2 className="small" style={{ margin: 0, fontWeight: 600 }}>{columnTitle}</h2>
                       <span className="muted small">{columnTasks.length}</span>
                     </div>
-                    {tasksLoaded && columnTasks.length === 0 && <p className="hint">Drop tasks here</p>}
+                    {tasksLoaded && columnTasks.length === 0 && <p className="hint">{canEdit ? "Drop tasks here" : "No tasks"}</p>}
                     {columnTasks.map((task, index) => (
-                      <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
+                      <Draggable key={task.id} draggableId={task.id.toString()} index={index} isDragDisabled={!canEdit || filtering}>
                         {(dragProvided) => (
                           <div
                             ref={dragProvided.innerRef}
                             {...dragProvided.draggableProps}
                             {...dragProvided.dragHandleProps}
-                            className="card card--inset"
+                            className={`card card--inset ${isOverdue(task) ? "task-card--overdue" : ""}`}
                             style={{ marginBottom: "0.5rem", ...dragProvided.draggableProps.style }}
                           >
                             <div className="row row--between">
-                              <span className="small">{task.title}</span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={`Delete task ${task.title}`}
-                                onClick={() => setToDelete({ kind: "task", id: task.id, name: task.title })}
-                              >
-                                ✕
-                              </Button>
+                              <button type="button" className="task-title" onClick={() => setEditingTask(task)}>
+                                {task.title}
+                              </button>
+                              {canEdit && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Delete task ${task.title}`}
+                                  onClick={() => setToDelete({ kind: "task", id: task.id, name: task.title })}
+                                >
+                                  ✕
+                                </Button>
+                              )}
+                            </div>
+                            <div className="row" style={{ "--gap": "0.25rem", marginTop: "0.5rem" }}>
+                              <span className={`badge badge--priority-${task.priority}`}>{task.priority}</span>
+                              {task.due_date && (
+                                <span className={`badge ${isOverdue(task) ? "badge--overdue" : "badge--muted"}`}>
+                                  {isOverdue(task) ? `Overdue: ${task.due_date}` : `Due ${task.due_date}`}
+                                </span>
+                              )}
+                              {task.assignee_username && <span className="badge badge--muted">@{task.assignee_username}</span>}
                             </div>
                           </div>
                         )}
@@ -252,17 +239,36 @@ function Board() {
           })}
         </div>
       </DragDropContext>
-      <p className="hint">Tip: tasks can be moved with the keyboard too: focus a task, press Space, use the arrow keys, then Space again.</p>
+      {canEdit && <p className="hint">Tip: tasks can be moved with the keyboard too: focus a task, press Space, use the arrow keys, then Space again.</p>}
+
+      <div style={{ marginTop: "2.5rem" }}>
+        <MembersPanel
+          projectId={projectId}
+          members={members}
+          currentUserId={user?.id}
+          isOwner={isOwner}
+          onChanged={() => Promise.all([fetchMembers(), reloadProject()])}
+          onLeft={() => navigate("/projects", { replace: true })}
+        />
+      </div>
+
+      <div style={{ marginTop: "2.5rem" }}>
+        <ActivityPanel projectId={projectId} refreshKey={activityVersion} />
+      </div>
 
       <div className="split" style={{ marginTop: "2.5rem" }}>
         <section className="stack">
           <h2 className="section-title">📁 Files</h2>
           <Card className="grow">
-            <label className="btn btn--primary">
-              {uploading ? "Uploading..." : "+ Upload a file"}
-              <input type="file" accept={UPLOAD_ACCEPT} onChange={uploadFile} disabled={uploading} className="visually-hidden" />
-            </label>
-            <p className="hint">Images, PDFs, ZIPs and text/code files, up to 10 MB.</p>
+            {canEdit && (
+              <>
+                <label className="btn btn--primary">
+                  {uploading ? "Uploading..." : "+ Upload a file"}
+                  <input type="file" accept={UPLOAD_ACCEPT} onChange={uploadFile} disabled={uploading} className="visually-hidden" />
+                </label>
+                <p className="hint">Images, PDFs, ZIPs and text/code files, up to 10 MB.</p>
+              </>
+            )}
 
             {!filesLoaded && <p role="status" className="muted small" style={{ marginTop: "1rem" }}>Loading files...</p>}
             {filesLoaded && files.length === 0 && <p className="muted small" style={{ marginTop: "1rem" }}>No files uploaded yet.</p>}
@@ -271,59 +277,37 @@ function Board() {
               {files.map((file) => (
                 <li key={file.id} className="card card--inset row row--between">
                   <a href={file.url} target="_blank" rel="noreferrer" className="btn btn--link">{file.filename}</a>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Delete file ${file.filename}`}
-                    onClick={() => setToDelete({ kind: "file", id: file.id, name: file.filename })}
-                  >
-                    ✕
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Delete file ${file.filename}`}
+                      onClick={() => setToDelete({ kind: "file", id: file.id, name: file.filename })}
+                    >
+                      ✕
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
           </Card>
         </section>
 
-        <section className="stack">
-          <h2 className="section-title">💬 Chat</h2>
-          <Card className="grow stack">
-            <div className="chat-log" role="log" aria-live="polite" aria-label="Chat messages">
-              {olderCursor !== null && (
-                <Button variant="link" onClick={loadOlderMessages} disabled={loadingOlder}>
-                  {loadingOlder ? "Loading..." : "↑ Load older messages"}
-                </Button>
-              )}
-              {messages.length === 0 && <p className="muted small">No messages yet. Say hello!</p>}
-              {messages.map((msg, idx) => {
-                const mine = msg.username === user?.username;
-                return (
-                  <p key={msg.id || idx} className="small" style={{ marginBottom: "0.5rem" }}>
-                    <strong className={mine ? "text-success" : ""} style={mine ? undefined : { color: "var(--color-accent)" }}>
-                      {mine ? `${msg.username} (you)` : msg.username}:
-                    </strong>{" "}
-                    {msg.content}
-                  </p>
-                );
-              })}
-            </div>
-
-            <form onSubmit={sendMessage} className="row">
-              <Input
-                label="Message"
-                hideLabel
-                placeholder="Type a message..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                maxLength={MAX_CHAT_MESSAGE_LENGTH}
-                className="grow"
-              />
-              <Button type="submit">Send</Button>
-            </form>
-            {chatError && <p role="alert" className="small text-danger">{chatError}</p>}
-          </Card>
-        </section>
+        <ChatPanel projectId={projectId} canPost={canEdit} currentUser={user} members={members} onActivity={handleActivity} />
       </div>
+
+      {editingTask && (
+        <TaskModal
+          task={editingTask}
+          members={members}
+          canEdit={canEdit}
+          onClose={() => setEditingTask(null)}
+          onSaved={() => {
+            setEditingTask(null);
+            return fetchTasks();
+          }}
+        />
+      )}
 
       {toDelete && (
         <ConfirmDialog

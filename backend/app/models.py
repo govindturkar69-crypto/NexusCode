@@ -2,10 +2,13 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
     String,
+    UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -62,8 +65,60 @@ class ProjectModel(TimestampMixin, Base):
     files = relationship("FileModel", back_populates="project", cascade="all, delete-orphan")
     messages = relationship("MessageModel", back_populates="project", cascade="all, delete-orphan")
     code_file = relationship("CodeFileModel", back_populates="project", cascade="all, delete-orphan", uselist=False)
+    members = relationship("ProjectMemberModel", back_populates="project", cascade="all, delete-orphan")
+    activity = relationship("ActivityModel", cascade="all, delete-orphan")
+    notifications = relationship("NotificationModel", cascade="all, delete-orphan")
+
+# Lowest to highest; each role can do everything the ones before it can
+PROJECT_ROLES = ("viewer", "editor", "owner")
+
+class ProjectMemberModel(Base):
+    """Who can access a project. This table, not projects.owner_id, decides access."""
+
+    __tablename__ = "project_members"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_project_members_project_user"),
+        CheckConstraint("role IN ('owner', 'editor', 'viewer')", name="ck_project_members_role"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    project = relationship("ProjectModel", back_populates="members")
+    user = relationship("UserModel")
+
+class ActivityModel(Base):
+    """What happened in a project, for the Activity panel. Target is plain text
+    (a task title, a filename) so entries survive the thing they describe."""
+
+    __tablename__ = "activity"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    action = Column(String, nullable=False)
+    target = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class NotificationModel(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        CheckConstraint("kind IN ('assigned', 'added', 'role_changed')", name="ck_notifications_kind"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    message = Column(String, nullable=False)
+    is_read = Column(Boolean, nullable=False, default=False, server_default=false())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 TASK_STATUSES = ("todo", "in_progress", "done")
+TASK_PRIORITIES = ("low", "medium", "high")
 
 class TaskModel(TimestampMixin, Base):
     __tablename__ = "tasks"
@@ -72,6 +127,7 @@ class TaskModel(TimestampMixin, Base):
             "status IN (" + ", ".join(f"'{s}'" for s in TASK_STATUSES) + ")",
             name="ck_tasks_status",
         ),
+        CheckConstraint("priority IN ('low', 'medium', 'high')", name="ck_tasks_priority"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -80,9 +136,17 @@ class TaskModel(TimestampMixin, Base):
     status = Column(String, nullable=False, default="todo", server_default="todo")
     # Order on the board; lower comes first
     position = Column(Integer, nullable=False, default=0, server_default="0")
+    assignee_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL", name="fk_tasks_assignee_id_users"), nullable=True, index=True)
+    due_date = Column(Date, nullable=True)
+    priority = Column(String, nullable=False, default="medium", server_default="medium")
 
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
     project = relationship("ProjectModel", back_populates="tasks")
+    assignee = relationship("UserModel")
+
+    @property
+    def assignee_username(self):
+        return self.assignee.username if self.assignee else None
 
 class FileModel(TimestampMixin, Base):
     __tablename__ = "files"

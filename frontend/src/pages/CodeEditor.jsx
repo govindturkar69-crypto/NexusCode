@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { apiFetch } from "../api/client";
 import { useAutosave } from "../editor/useAutosave";
+import { useProject } from "../projects/useProject";
 import Alert from "../components/ui/Alert";
 import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
@@ -13,6 +14,7 @@ import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
 // Self-hosted Monaco (no CDN); must run before <Editor> mounts
 import "../editor/monacoSetup";
+import { useTheme } from "../theme/useTheme";
 
 // Same rule the backend enforces
 const REPO_NAME_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
@@ -34,6 +36,8 @@ const SAVE_STATUS = {
 
 function CodeEditor() {
   const { projectId } = useParams();
+  const { role, canEdit, isOwner } = useProject(projectId);
+  const { theme } = useTheme();
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("python");
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
@@ -97,7 +101,7 @@ function CodeEditor() {
         actions={
           <>
             <span role="status" aria-live="polite" className={`small ${saveStatus.className}`}>
-              {saveStatus.text}
+              {role === "viewer" ? "View only" : saveStatus.text}
               {autosave.status === "error" && (
                 <>
                   {`: ${autosave.error} `}
@@ -106,14 +110,16 @@ function CodeEditor() {
               )}
             </span>
             <label className="visually-hidden" htmlFor="editor-language">Language</label>
-            <select id="editor-language" className="input" style={{ width: "auto" }} value={language} onChange={handleLanguageChange} disabled={loadState !== "ready"}>
+            <select id="editor-language" className="input" style={{ width: "auto" }} value={language} onChange={handleLanguageChange} disabled={loadState !== "ready" || !canEdit}>
               {LANGUAGES.map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
-            <Button onClick={() => { setPushedUrl(""); setShowPush(true); }} disabled={loadState !== "ready"}>
-              🐙 Push to GitHub
-            </Button>
+            {isOwner && (
+              <Button onClick={() => { setPushedUrl(""); setShowPush(true); }} disabled={loadState !== "ready"}>
+                🐙 Push to GitHub
+              </Button>
+            )}
           </>
         }
       />
@@ -135,8 +141,8 @@ function CodeEditor() {
               language={language}
               value={code}
               onChange={handleCodeChange}
-              theme="vs-dark"
-              options={{ fontSize: 14, minimap: { enabled: false }, readOnly: loadState !== "ready" }}
+              theme={theme === "dark" ? "vs-dark" : "light"}
+              options={{ fontSize: 14, minimap: { enabled: false }, readOnly: loadState !== "ready" || !canEdit }}
             />
           )}
         </div>

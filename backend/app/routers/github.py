@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.crypto import seal, unseal
 from app.core.database import get_db
-from app.core.deps import get_current_user, get_owned_project
+from app.core.deps import get_current_user, require_project_role
 from app.core.security import create_oauth_state, hash_oauth_nonce, verify_oauth_state
 from app.models import CodeFileModel, ProjectModel, UserModel
 from app.schemas.misc import (
@@ -37,6 +37,7 @@ from app.schemas.misc import (
     PushToGithubResponse,
 )
 from app.services import github
+from app.services.activity import publish, record
 
 router = APIRouter(tags=["github"])
 
@@ -99,7 +100,7 @@ def _github_http_error(error: github.GitHubAPIError, context: str) -> HTTPExcept
 @router.post("/projects/{project_id}/push-to-github", response_model=PushToGithubResponse)
 def push_to_github(
     request: PushToGithubRequest,
-    project: ProjectModel = Depends(get_owned_project),
+    project: ProjectModel = Depends(require_project_role("owner")),
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
@@ -122,6 +123,9 @@ def push_to_github(
     except github.GitHubAPIError as e:
         raise _github_http_error(e, f"Repository {repo_result['full_name']} was created, but pushing {filename} failed") from e
 
+    record(db, project.id, current_user.id, "github_pushed", repo_result["full_name"])
+    db.commit()
+    publish(project.id, "github_pushed")
     return {
         "message": "Pushed to GitHub successfully",
         "repo_url": repo_result.get("html_url"),

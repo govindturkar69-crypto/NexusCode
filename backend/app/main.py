@@ -19,7 +19,20 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.observability import configure_logging, init_sentry
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
-from app.routers import admin, ai, analytics, auth, chat, files, github, projects, tasks
+from app.routers import (
+    account,
+    activity,
+    admin,
+    ai,
+    analytics,
+    auth,
+    chat,
+    files,
+    github,
+    members,
+    projects,
+    tasks,
+)
 from app.services.storage import MAX_UPLOAD_BYTES
 
 configure_logging(settings.log_level, settings.log_format)
@@ -92,7 +105,7 @@ async def log_requests(request: Request, call_next):
     access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})
     return response
 
-for module in (auth, projects, tasks, files, chat, ai, github, analytics, admin):
+for module in (auth, account, projects, members, tasks, files, chat, ai, github, activity, analytics, admin):
     app.include_router(module.router)
 
 

@@ -5,7 +5,7 @@ doesn't own that project, and must refuse anonymous callers.
 import io
 
 import pytest
-from conftest import auth, set_github_token, ws_path
+from conftest import auth, open_socket, set_github_token
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def world(client, make_user, project_of, fake_cloudinary):
         headers=auth(alice),
     ).json()["file"]["id"]
     client.put(f"/projects/{pid}/code", json={"content": "print('secret')", "language": "python"}, headers=auth(alice))
-    with client.websocket_connect(ws_path(client, alice, pid)) as ws:
+    with open_socket(client, alice, pid) as ws:
         ws.send_json({"content": "alice's secret message"})
         ws.receive_json()
     set_github_token("bob", "gho_bob")

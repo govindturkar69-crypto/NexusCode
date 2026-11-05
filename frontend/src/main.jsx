@@ -4,6 +4,9 @@ import './index.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { initSentry } from './observability.js'
+import { applyInitialTheme } from './theme/theme.js'
+
+applyInitialTheme()
 
 // No-op unless VITE_SENTRY_DSN is set; never blocks rendering
 initSentry().catch(() => {})

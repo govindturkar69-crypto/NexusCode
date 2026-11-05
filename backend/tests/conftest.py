@@ -11,6 +11,7 @@ import os
 import pathlib
 import sys
 import tempfile
+from contextlib import contextmanager
 from urllib.parse import urlparse
 
 BACKEND_DIR = pathlib.Path(__file__).resolve().parents[1]
@@ -45,7 +46,7 @@ from app.core import security as auth_module  # noqa: E402
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
 from app.core.rate_limit import limiter  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import UserModel  # noqa: E402
+from app.models import ProjectMemberModel, UserModel  # noqa: E402
 from app.services import ai as ai_service  # noqa: E402
 from app.services import github as github_service  # noqa: E402
 from app.services import realtime as websocket_manager  # noqa: E402
@@ -151,6 +152,37 @@ def ws_path(client, token, project_id, kind="chat"):
     return f"/ws/projects/{project_id}/{kind}?ticket={r.json()['ticket']}"
 
 
+class SocketWithoutPresence:
+    """A test socket whose receive_json skips presence and activity frames, for
+    tests about something else. test_chat_features.py and test_activity.py
+    check those themselves."""
+
+    def __init__(self, session):
+        self.session = session
+
+    def receive_json(self):
+        while True:
+            message = self.session.receive_json()
+            if message.get("type") not in ("presence", "activity"):
+                return message
+
+    def __getattr__(self, name):
+        return getattr(self.session, name)
+
+
+@contextmanager
+def open_socket(client, token, project_id, kind="chat"):
+    with client.websocket_connect(ws_path(client, token, project_id, kind)) as session:
+        yield SocketWithoutPresence(session)
+
+
+def add_member(username, project_id, role):
+    with SessionLocal() as db:
+        user = db.query(UserModel).filter(UserModel.username == username).one()
+        db.add(ProjectMemberModel(project_id=project_id, user_id=user.id, role=role))
+        db.commit()
+
+
 def set_github_token(username, token):
     with SessionLocal() as db:
         db.query(UserModel).filter(UserModel.username == username).one().github_token = token
@@ -195,11 +227,14 @@ def fake_github_http(monkeypatch):
     request/response handling is still exercised."""
     import httpx
 
-    state = {"create_status": 201, "push_status": 201, "calls": []}
+    state = {"create_status": 201, "push_status": 201, "user_status": 200, "calls": []}
 
     def fake_request(method, url, headers=None, json=None, timeout=None):
         state["calls"].append((method, url, json))
         request = httpx.Request(method, url)
+        if method == "GET":
+            body = {"login": "octo-alice"} if state["user_status"] == 200 else {"message": "Bad credentials"}
+            return httpx.Response(state["user_status"], json=body, request=request)
         if method == "POST":
             if state["create_status"] == 201:
                 body = {"full_name": f"tester/{json['name']}", "html_url": f"https://github.test/tester/{json['name']}", "private": json["private"]}

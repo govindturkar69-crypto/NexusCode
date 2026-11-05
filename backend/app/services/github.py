@@ -59,7 +59,7 @@ class GitHubAPIError(Exception):
         self.message = message
 
 
-def _github_request(method: str, url: str, token: str, payload: dict) -> dict:
+def _github_request(method: str, url: str, token: str, payload: dict | None = None) -> dict:
     try:
         response = httpx.request(
             method,
@@ -83,6 +83,10 @@ def _github_request(method: str, url: str, token: str, payload: dict) -> dict:
         detail = next((err.get("message") for err in errors if isinstance(err, dict) and err.get("message")), None)
         raise GitHubAPIError(response.status_code, detail or data.get("message") or f"GitHub returned {response.status_code}")
     return data
+
+
+def get_github_username(token: str) -> str | None:
+    return _github_request("GET", "https://api.github.com/user", token).get("login")
 
 
 def create_github_repo(token: str, repo_name: str, private: bool = True) -> dict:

@@ -1,9 +1,10 @@
-from datetime import datetime
-from typing import Literal, get_args
+from datetime import date, datetime
+from typing import Annotated, Literal, get_args
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic_core import PydanticCustomError
 
-from app.models import TASK_STATUSES
+from app.models import TASK_PRIORITIES, TASK_STATUSES
 from app.schemas.common import ORMModel, Page
 
 
@@ -19,6 +20,8 @@ class ProjectOut(ORMModel):
     owner_id: int
     created_at: datetime
     updated_at: datetime
+    # The current user's role in this project
+    role: str
 
 
 class ProjectResponse(BaseModel):
@@ -38,13 +41,45 @@ TaskStatus = Literal["todo", "in_progress", "done"]
 assert get_args(TaskStatus) == TASK_STATUSES
 
 
+TaskPriority = Literal["low", "medium", "high"]
+assert get_args(TaskPriority) == TASK_PRIORITIES
+
+TaskTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+TaskDescription = Annotated[str, StringConstraints(max_length=5000)]
+
+
 class TaskCreate(BaseModel):
-    title: str
-    description: str | None = None
+    title: TaskTitle
+    description: TaskDescription | None = None
+    assignee_id: int | None = None
+    due_date: date | None = None
+    priority: TaskPriority = "medium"
+
+
+class TaskEdit(BaseModel):
+    """Partial update: only the fields sent are changed."""
+
+    title: TaskTitle | None = None
+    description: TaskDescription | None = None
+    assignee_id: int | None = None
+    due_date: date | None = None
+    priority: TaskPriority | None = None
+
+    @model_validator(mode="after")
+    def required_fields_cannot_be_cleared(self):
+        for field in ("title", "priority"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise PydanticCustomError("not_nullable", "{field} cannot be empty", {"field": field})
+        return self
 
 
 class TaskUpdate(BaseModel):
     status: TaskStatus
+
+
+class TaskMove(BaseModel):
+    status: TaskStatus
+    index: int = Field(ge=0)
 
 
 class TaskOut(ORMModel):
@@ -53,6 +88,10 @@ class TaskOut(ORMModel):
     description: str | None
     status: TaskStatus
     position: int
+    assignee_id: int | None
+    assignee_username: str | None
+    due_date: date | None
+    priority: TaskPriority
     project_id: int
     created_at: datetime
     updated_at: datetime
@@ -91,6 +130,8 @@ class MessageOut(ORMModel):
     user_id: int | None
     project_id: int
     created_at: datetime
+    # The sender has since left or been removed; the message itself stays
+    author_removed: bool = False
 
 
 class MessageListResponse(BaseModel):

@@ -2,7 +2,6 @@
 @import './styles/theme.css';
 
 :root {
-  color-scheme: dark;
   font-family: var(--font-sans);
   line-height: 1.45;
   color: var(--color-text);
