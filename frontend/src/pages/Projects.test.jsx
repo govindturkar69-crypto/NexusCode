@@ -21,7 +21,7 @@ function renderProjects() {
 }
 
 const ME = { id: 1, username: 'alice', is_admin: false }
-const PROJECT = { id: 3, name: 'Alpha', description: 'first', owner_id: 1, created_at: '', updated_at: '' }
+const PROJECT = { id: 3, name: 'Alpha', description: 'first', owner_id: 1, created_at: '', updated_at: '', role: 'owner' }
 
 describe('Projects page', () => {
   it('shows an empty state', async () => {
@@ -55,6 +55,18 @@ describe('Projects page', () => {
     expect(await screen.findByText(/No projects yet/)).toBeInTheDocument()
     const del = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE')
     expect(del[0]).toBe('http://api.test/projects/3')
+  })
+
+  it('shows your role and only offers Delete to owners', async () => {
+    stubRoutes({
+      'GET /me': [200, ME],
+      'GET /projects': [200, { projects: [PROJECT, { ...PROJECT, id: 4, name: 'Shared', role: 'viewer' }], total: 2 }],
+    })
+    renderProjects()
+    expect(await screen.findByRole('button', { name: 'Delete project Alpha' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete project Shared' })).not.toBeInTheDocument()
+    expect(screen.getByText('viewer')).toBeInTheDocument()
+    expect(screen.getByText('owner')).toBeInTheDocument()
   })
 
   it('opens a project from the keyboard via its link', async () => {

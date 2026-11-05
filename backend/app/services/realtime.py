@@ -1,4 +1,3 @@
-
 from fastapi import WebSocket
 
 
@@ -8,12 +7,16 @@ class _RoomManager:
     def __init__(self):
         # Maps project_id -> list of currently connected WebSocket clients
         self.active_connections: dict[int, list[WebSocket]] = {}
+        # Which user each socket belongs to
+        self.socket_users: dict[WebSocket, int] = {}
 
-    async def connect(self, websocket: WebSocket, project_id: int):
+    async def connect(self, websocket: WebSocket, project_id: int, user_id: int):
         await websocket.accept()
         self.active_connections.setdefault(project_id, []).append(websocket)
+        self.socket_users[websocket] = user_id
 
     def disconnect(self, websocket: WebSocket, project_id: int):
+        self.socket_users.pop(websocket, None)
         connections = self.active_connections.get(project_id)
         if connections is None:
             return
@@ -21,6 +24,16 @@ class _RoomManager:
             connections.remove(websocket)
         if not connections:
             del self.active_connections[project_id]
+
+    async def kick(self, project_id: int, user_id: int):
+        """Closes the user's sockets in this project (they lost access)."""
+        for connection in list(self.active_connections.get(project_id, [])):
+            if self.socket_users.get(connection) == user_id:
+                self.disconnect(connection, project_id)
+                try:
+                    await connection.close(code=1008)
+                except Exception:
+                    pass  # already gone
 
     async def _send_all(self, project_id: int, message: dict, skip: WebSocket | None = None):
         # Copy the list: disconnect() may modify it while we're sending.
@@ -42,16 +55,15 @@ class ConnectionManager(_RoomManager):
 
 # --- VIDEO MEETING (WebRTC SIGNALING) MANAGER ---
 class VideoMeetingManager(_RoomManager):
-    def join_if_room(self, websocket: WebSocket, project_id: int, max_peers: int) -> int | None:
+    def join_if_room(self, websocket: WebSocket, project_id: int, user_id: int, max_peers: int) -> int | None:
         """Adds an already-accepted socket to the room unless it is full.
         Returns how many peers were already there, or None if full. No await
         between the check and the add, so two joiners can't both squeeze in."""
         room = self.active_connections.setdefault(project_id, [])
         if len(room) >= max_peers:
-            if not room:
-                del self.active_connections[project_id]
             return None
         room.append(websocket)
+        self.socket_users[websocket] = user_id
         return len(room) - 1
 
     async def broadcast_to_peer(self, project_id: int, sender_ws: WebSocket, message: dict):

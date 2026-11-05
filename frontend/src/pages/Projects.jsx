@@ -10,6 +10,7 @@ import ConfirmDialog from "../components/ui/ConfirmDialog";
 import Input from "../components/ui/Input";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
+import RoleBadge from "../components/RoleBadge";
 
 const GITHUB_MESSAGES = {
   connected: { text: "GitHub account connected.", tone: "success" },
@@ -138,22 +139,27 @@ function Projects() {
             <div className="card card--interactive" onClick={() => navigate(`/projects/${project.id}`)}>
               <div className="row row--between" style={{ alignItems: "flex-start" }}>
                 <div className="grow">
-                  <Link to={`/projects/${project.id}`} className="project-link" onClick={(e) => e.stopPropagation()}>
-                    {project.name}
-                  </Link>
+                  <span className="row" style={{ "--gap": "0.5rem" }}>
+                    <Link to={`/projects/${project.id}`} className="project-link" onClick={(e) => e.stopPropagation()}>
+                      {project.name}
+                    </Link>
+                    <RoleBadge role={project.role} />
+                  </span>
                   {project.description && <p className="muted small" style={{ marginTop: "4px" }}>{project.description}</p>}
                 </div>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  aria-label={`Delete project ${project.name}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setToDelete(project);
-                  }}
-                >
-                  Delete
-                </Button>
+                {project.role === "owner" && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    aria-label={`Delete project ${project.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setToDelete(project);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                )}
               </div>
             </div>
           </li>
@@ -163,7 +169,7 @@ function Projects() {
       {toDelete && (
         <ConfirmDialog
           title={`Delete "${toDelete.name}"?`}
-          message="This permanently deletes the project with its tasks, files, chat history and code."
+          message="This permanently deletes the project with its tasks, files, chat history and code, for every member."
           confirmLabel="Delete project"
           busy={deleting}
           onConfirm={confirmDelete}

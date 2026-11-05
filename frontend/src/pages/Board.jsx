@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { apiFetch, apiFetchAll, socketUrl } from "../api/client";
 import { useAuth } from "../auth/useAuth";
+import { useProject } from "../projects/useProject";
+import MembersPanel from "../components/MembersPanel";
+import RoleBadge from "../components/RoleBadge";
 import Alert from "../components/ui/Alert";
 import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
@@ -26,6 +29,9 @@ const COLUMNS = [
 function Board() {
   const { projectId } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { project, role, canEdit, isOwner, error: projectError, reload: reloadProject } = useProject(projectId);
+  const [members, setMembers] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [title, setTitle] = useState("");
@@ -57,7 +63,14 @@ function Board() {
       .finally(() => setFilesLoaded(true));
   }, [projectId]);
 
+  const fetchMembers = useCallback(() => {
+    return apiFetch(`/projects/${projectId}/members`)
+      .then((data) => setMembers(data.members ?? []))
+      .catch((err) => setError(err.message));
+  }, [projectId]);
+
   useEffect(() => {
+    fetchMembers();
     fetchTasks();
     fetchFiles();
     // The API returns newest first; the chat box shows the oldest at the top
@@ -67,7 +80,7 @@ function Board() {
         setOlderCursor(data.next_cursor ?? null);
       })
       .catch((err) => setError(err.message));
-  }, [projectId, fetchTasks, fetchFiles]);
+  }, [projectId, fetchMembers, fetchTasks, fetchFiles]);
 
   function loadOlderMessages() {
     if (olderCursor === null) return;
@@ -194,14 +207,21 @@ function Board() {
         <Link className="btn btn--link" to={`/projects/${projectId}/editor`}>💻 Open Code Editor</Link>
         <Link className="btn btn--link" to={`/projects/${projectId}/meeting`}>📹 Start Meeting</Link>
       </div>
-      <PageHeader eyebrow={`board --project ${projectId}`} title="Project Board" />
+      <PageHeader eyebrow={`board --project ${projectId}`} title={project?.name ?? "Project Board"} actions={role && <RoleBadge role={role} />} />
 
       <Alert onDismiss={() => setError("")}>{error}</Alert>
+      {projectError && <Alert>{projectError}</Alert>}
 
-      <Card as="form" onSubmit={createTask} className="row" style={{ marginBottom: "2rem" }}>
-        <Input label="New task title" hideLabel placeholder="New task title" value={title} onChange={(e) => setTitle(e.target.value)} className="grow" />
-        <Button type="submit" disabled={!title.trim()}>+ Add Task</Button>
-      </Card>
+      {role === "viewer" && (
+        <Alert tone="info">You have view-only access to this project. Ask an owner if you need to make changes.</Alert>
+      )}
+
+      {canEdit && (
+        <Card as="form" onSubmit={createTask} className="row" style={{ marginBottom: "2rem" }}>
+          <Input label="New task title" hideLabel placeholder="New task title" value={title} onChange={(e) => setTitle(e.target.value)} className="grow" />
+          <Button type="submit" disabled={!title.trim()}>+ Add Task</Button>
+        </Card>
+      )}
 
       {!tasksLoaded && <p role="status" className="muted">Loading tasks...</p>}
 
@@ -218,9 +238,9 @@ function Board() {
                       <h2 className="small" style={{ margin: 0, fontWeight: 600 }}>{columnTitle}</h2>
                       <span className="muted small">{columnTasks.length}</span>
                     </div>
-                    {tasksLoaded && columnTasks.length === 0 && <p className="hint">Drop tasks here</p>}
+                    {tasksLoaded && columnTasks.length === 0 && <p className="hint">{canEdit ? "Drop tasks here" : "No tasks"}</p>}
                     {columnTasks.map((task, index) => (
-                      <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
+                      <Draggable key={task.id} draggableId={task.id.toString()} index={index} isDragDisabled={!canEdit}>
                         {(dragProvided) => (
                           <div
                             ref={dragProvided.innerRef}
@@ -231,14 +251,16 @@ function Board() {
                           >
                             <div className="row row--between">
                               <span className="small">{task.title}</span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={`Delete task ${task.title}`}
-                                onClick={() => setToDelete({ kind: "task", id: task.id, name: task.title })}
-                              >
-                                ✕
-                              </Button>
+                              {canEdit && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Delete task ${task.title}`}
+                                  onClick={() => setToDelete({ kind: "task", id: task.id, name: task.title })}
+                                >
+                                  ✕
+                                </Button>
+                              )}
                             </div>
                           </div>
                         )}
@@ -252,17 +274,32 @@ function Board() {
           })}
         </div>
       </DragDropContext>
-      <p className="hint">Tip: tasks can be moved with the keyboard too: focus a task, press Space, use the arrow keys, then Space again.</p>
+      {canEdit && <p className="hint">Tip: tasks can be moved with the keyboard too: focus a task, press Space, use the arrow keys, then Space again.</p>}
+
+      <div style={{ marginTop: "2.5rem" }}>
+        <MembersPanel
+          projectId={projectId}
+          members={members}
+          currentUserId={user?.id}
+          isOwner={isOwner}
+          onChanged={() => Promise.all([fetchMembers(), reloadProject()])}
+          onLeft={() => navigate("/projects", { replace: true })}
+        />
+      </div>
 
       <div className="split" style={{ marginTop: "2.5rem" }}>
         <section className="stack">
           <h2 className="section-title">📁 Files</h2>
           <Card className="grow">
-            <label className="btn btn--primary">
-              {uploading ? "Uploading..." : "+ Upload a file"}
-              <input type="file" accept={UPLOAD_ACCEPT} onChange={uploadFile} disabled={uploading} className="visually-hidden" />
-            </label>
-            <p className="hint">Images, PDFs, ZIPs and text/code files, up to 10 MB.</p>
+            {canEdit && (
+              <>
+                <label className="btn btn--primary">
+                  {uploading ? "Uploading..." : "+ Upload a file"}
+                  <input type="file" accept={UPLOAD_ACCEPT} onChange={uploadFile} disabled={uploading} className="visually-hidden" />
+                </label>
+                <p className="hint">Images, PDFs, ZIPs and text/code files, up to 10 MB.</p>
+              </>
+            )}
 
             {!filesLoaded && <p role="status" className="muted small" style={{ marginTop: "1rem" }}>Loading files...</p>}
             {filesLoaded && files.length === 0 && <p className="muted small" style={{ marginTop: "1rem" }}>No files uploaded yet.</p>}
@@ -271,14 +308,16 @@ function Board() {
               {files.map((file) => (
                 <li key={file.id} className="card card--inset row row--between">
                   <a href={file.url} target="_blank" rel="noreferrer" className="btn btn--link">{file.filename}</a>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Delete file ${file.filename}`}
-                    onClick={() => setToDelete({ kind: "file", id: file.id, name: file.filename })}
-                  >
-                    ✕
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Delete file ${file.filename}`}
+                      onClick={() => setToDelete({ kind: "file", id: file.id, name: file.filename })}
+                    >
+                      ✕
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -308,18 +347,22 @@ function Board() {
               })}
             </div>
 
-            <form onSubmit={sendMessage} className="row">
-              <Input
-                label="Message"
-                hideLabel
-                placeholder="Type a message..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                maxLength={MAX_CHAT_MESSAGE_LENGTH}
-                className="grow"
-              />
-              <Button type="submit">Send</Button>
-            </form>
+            {canEdit ? (
+              <form onSubmit={sendMessage} className="row">
+                <Input
+                  label="Message"
+                  hideLabel
+                  placeholder="Type a message..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  maxLength={MAX_CHAT_MESSAGE_LENGTH}
+                  className="grow"
+                />
+                <Button type="submit">Send</Button>
+              </form>
+            ) : (
+              <p className="hint">Viewers can read the chat but not post in it.</p>
+            )}
             {chatError && <p role="alert" className="small text-danger">{chatError}</p>}
           </Card>
         </section>

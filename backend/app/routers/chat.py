@@ -108,7 +108,7 @@ async def chat_websocket(websocket: WebSocket, project_id: int):
         return
     user_id, username = member
 
-    await manager.connect(websocket, project_id)
+    await manager.connect(websocket, project_id, user_id)
     try:
         while True:
             raw = await websocket.receive_text()
@@ -148,11 +148,11 @@ async def meeting_websocket(websocket: WebSocket, project_id: int):
     member = await _authorize_websocket(websocket, project_id)
     if member is None:
         return
-    _, username = member
+    user_id, username = member
 
     # Separate room from chat, so signaling never shows up in the chat box
     await websocket.accept()
-    already_there = video_manager.join_if_room(websocket, project_id, MAX_MEETING_PEERS)
+    already_there = video_manager.join_if_room(websocket, project_id, user_id, MAX_MEETING_PEERS)
     if already_there is None:
         await websocket.send_json({"type": "room-full"})
         await websocket.close(code=1013)  # "try again later"

@@ -148,6 +148,7 @@
 .input:focus { border-color: var(--color-accent); outline: none; }
 .input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 textarea.input { resize: vertical; font-family: var(--font-mono); }
+.input--sm { width: auto; padding: 3px 8px; font-size: var(--text-xs); }
 .checkbox { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--color-text-muted); font-size: var(--text-sm); cursor: pointer; }
 
 /* ---------- surfaces ---------- */
@@ -171,6 +172,18 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
 .alert--error { color: var(--color-danger); }
 .alert--success { color: var(--color-success); }
 .alert--info { color: var(--color-text-muted); }
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.badge--owner { color: var(--color-accent); }
+.badge--editor { color: var(--color-success); }
+.badge--viewer { color: var(--color-text-muted); }
 .stat { text-align: left; }
 .stat__value { font-family: var(--font-mono); font-size: 28px; font-weight: 700; color: var(--color-accent); }
 .stat__label { color: var(--color-text-muted); font-size: var(--text-sm); margin-top: var(--space-1); }

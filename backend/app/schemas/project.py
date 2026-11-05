@@ -19,6 +19,8 @@ class ProjectOut(ORMModel):
     owner_id: int
     created_at: datetime
     updated_at: datetime
+    # The current user's role in this project
+    role: str
 
 
 class ProjectResponse(BaseModel):
