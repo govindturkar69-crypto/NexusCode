@@ -3,7 +3,7 @@ import { useEffect, useId, useRef } from "react";
 // Accessible dialog: role="dialog" + aria-modal, labelled by its title,
 // Escape and backdrop click close it, focus moves inside on open, Tab stays
 // inside, and focus returns to what was focused before it opened.
-function Modal({ title, onClose, children, actions }) {
+function Modal({ title, onClose, children, actions, wide = false }) {
   const titleId = useId();
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -47,7 +47,7 @@ function Modal({ title, onClose, children, actions }) {
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <div ref={dialogRef} className={`modal ${wide ? "modal--wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <h2 id={titleId} className="modal__title">{title}</h2>
         {children}
         {actions && <div className="modal__actions">{actions}</div>}

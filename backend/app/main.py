@@ -27,10 +27,12 @@ from app.routers import (
     analytics,
     auth,
     chat,
+    code,
     files,
     github,
     members,
     projects,
+    run,
     tasks,
 )
 from app.services.storage import MAX_UPLOAD_BYTES
@@ -105,7 +107,7 @@ async def log_requests(request: Request, call_next):
     access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})
     return response
 
-for module in (auth, account, projects, members, tasks, files, chat, ai, github, activity, analytics, admin):
+for module in (auth, account, projects, members, tasks, files, code, run, chat, ai, github, activity, analytics, admin):
     app.include_router(module.router)
 
 

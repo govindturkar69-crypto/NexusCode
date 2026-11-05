@@ -1,4 +1,4 @@
-"""Projects and their single code file."""
+"""Projects."""
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
@@ -9,12 +9,9 @@ from app.core.deps import (
     project_role,
     require_project_role,
 )
-from app.models import CodeFileModel, ProjectMemberModel, ProjectModel, UserModel
+from app.models import ProjectMemberModel, ProjectModel, UserModel
 from app.routers.files import delete_project_assets
 from app.schemas.project import (
-    CodeFileResponse,
-    CodeFileSavedResponse,
-    CodeFileUpdate,
     ProjectCreate,
     ProjectCreatedResponse,
     ProjectListResponse,
@@ -75,28 +72,3 @@ def delete_project(project: ProjectModel = Depends(require_project_role("owner")
     db.delete(project)
     db.commit()
     return Response(status_code=204)
-
-
-@router.get("/projects/{project_id}/code", response_model=CodeFileResponse)
-def get_code_file(project: ProjectModel = Depends(require_project_role("viewer")), db: Session = Depends(get_db)):
-    code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).first()
-    if not code_file:
-        code_file = CodeFileModel(content="", language="python", project_id=project.id)
-        db.add(code_file)
-        db.commit()
-        db.refresh(code_file)
-    return {"code_file": code_file}
-
-
-@router.put("/projects/{project_id}/code", response_model=CodeFileSavedResponse)
-def update_code_file(update: CodeFileUpdate, project: ProjectModel = Depends(require_project_role("editor")), db: Session = Depends(get_db)):
-    code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).first()
-    if not code_file:
-        code_file = CodeFileModel(project_id=project.id)
-        db.add(code_file)
-
-    code_file.content = update.content
-    code_file.language = update.language
-    db.commit()
-    db.refresh(code_file)
-    return {"message": "Code saved", "code_file": code_file}

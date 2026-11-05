@@ -161,3 +161,39 @@ describe('Board live updates', () => {
     expect(screen.queryByText(/view-only access/)).not.toBeInTheDocument()
   })
 })
+
+describe('Board task breakdown', () => {
+  beforeEach(() => vi.stubGlobal('WebSocket', FakeSocket))
+
+  const task = (id, title) => ({ id, title, status: 'todo', position: id, priority: 'high', assignee_id: null })
+
+  it('adds reviewed proposals and refreshes the board', async () => {
+    renderBoard('editor', [], {
+      'POST /ai/projects/7/task-suggestions': [200, { tasks: [{ title: 'Proposed', description: null, priority: 'high' }] }],
+      'POST /projects/7/tasks': [201, { task: task(9, 'Proposed') }],
+      'GET /projects/7/tasks': [
+        [200, { tasks: [task(1, 'A task')], total: 1 }],
+        [200, { tasks: [task(1, 'A task'), task(9, 'Proposed')], total: 2 }],
+      ],
+    })
+    await userEvent.click(await screen.findByRole('button', { name: /Generate tasks/ }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('What are you building?'), 'A feature')
+    await userEvent.click(within(dialog).getByRole('button', { name: /Generate/ }))
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Add 1 task' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(await screen.findByRole('button', { name: 'Proposed' })).toBeInTheDocument()
+  })
+
+  it('viewers do not get the button', async () => {
+    renderBoard('viewer')
+    await screen.findByText(/view-only access/)
+    expect(screen.queryByRole('button', { name: /Generate tasks/ })).not.toBeInTheDocument()
+  })
+
+  it('owners do', async () => {
+    renderBoard('owner')
+    expect(await screen.findByRole('button', { name: /Generate tasks/ })).toBeInTheDocument()
+  })
+})
+

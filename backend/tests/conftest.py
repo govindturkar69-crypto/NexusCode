@@ -223,30 +223,154 @@ def fake_cloudinary(monkeypatch):
 
 @pytest.fixture
 def fake_github_http(monkeypatch):
-    """Fakes GitHub's REST API at the httpx level, so github_oauth's own
-    request/response handling is still exercised."""
+    """A small in-memory GitHub at the httpx level, so our own request handling
+    and the commit and tree logic still run. Repositories are in state["repos"];
+    use repo_files() to see what a branch ended up with."""
+    import base64
+    import hashlib
+    from urllib.parse import unquote, urlsplit
+
     import httpx
 
-    state = {"create_status": 201, "push_status": 201, "user_status": 200, "calls": []}
+    from app.services import github as github_module
+
+    monkeypatch.setattr(github_module, "NEW_REPO_RETRY_SECONDS", 0)
+
+    state = {
+        "login": "tester",
+        "create_status": 201,
+        "push_status": 201,
+        "user_status": 200,
+        "calls": [],
+        "repos": {},
+        # Times a new repository's first commit is still "being created"
+        "init_delay": 0,
+    }
+
+    def sha(*parts):
+        return hashlib.sha1("|".join(map(str, parts)).encode()).hexdigest()
+
+    def new_repo(name, private=True, *, empty=False):
+        repo = {"name": name, "private": private, "default_branch": "main", "refs": {}, "commits": {}, "trees": {}, "blobs": {}, "delay": 0}
+        state["repos"][name] = repo
+        if not empty:
+            commit_tree(repo, {"README.md": f"# {name}"}, "Initial commit", None, "main")
+        return repo
+
+    def commit_tree(repo, files, message, parent, branch):
+        tree = store_tree(repo, files)
+        commit = sha(tree, message, parent, len(repo["commits"]))
+        repo["commits"][commit] = {"tree": tree, "message": message, "parents": [parent] if parent else []}
+        repo["refs"][branch] = commit
+        return commit
+
+    def store_tree(repo, files):
+        tree = sha(sorted(files.items()))
+        repo["trees"][tree] = dict(files)
+        return tree
+
+    def repo_json(repo):
+        full = f"{state['login']}/{repo['name']}"
+        return {
+            "name": repo["name"],
+            "full_name": full,
+            "private": repo["private"],
+            "default_branch": repo["default_branch"],
+            "html_url": f"https://github.test/{full}",
+        }
+
+    def repo_files(name, branch="main"):
+        repo = state["repos"][name]
+        return repo["trees"][repo["commits"][repo["refs"][branch]]["tree"]]
+
+    def commits_on(name, branch="main"):
+        repo = state["repos"][name]
+        chain, current = [], repo["refs"].get(branch)
+        while current:
+            chain.append(repo["commits"][current])
+            current = (repo["commits"][current]["parents"] or [None])[0]
+        return chain
+
+    state["new_repo"] = new_repo
+    state["repo_files"] = repo_files
+    state["commits_on"] = commits_on
 
     def fake_request(method, url, headers=None, json=None, timeout=None):
         state["calls"].append((method, url, json))
         request = httpx.Request(method, url)
-        if method == "GET":
-            body = {"login": "octo-alice"} if state["user_status"] == 200 else {"message": "Bad credentials"}
-            return httpx.Response(state["user_status"], json=body, request=request)
-        if method == "POST":
-            if state["create_status"] == 201:
-                body = {"full_name": f"tester/{json['name']}", "html_url": f"https://github.test/tester/{json['name']}", "private": json["private"]}
-                return httpx.Response(201, json=body, request=request)
-            return httpx.Response(
-                state["create_status"],
-                json={"message": "Repository creation failed.", "errors": [{"message": "name already exists on this account"}]},
-                request=request,
-            )
-        if state["push_status"] == 201:
-            return httpx.Response(201, json={"content": {}}, request=request)
-        return httpx.Response(state["push_status"], json={"message": "Bad credentials"}, request=request)
+
+        def reply(status, body):
+            return httpx.Response(status, json=body, request=request)
+
+        parts = urlsplit(url)
+        path = unquote(parts.path)
+
+        if path == "/user" and method == "GET":
+            if state["user_status"] != 200:
+                return reply(state["user_status"], {"message": "Bad credentials"})
+            return reply(200, {"login": state["login"]})
+
+        if path == "/user/repos" and method == "GET":
+            return reply(200, [repo_json(r) for r in state["repos"].values()])
+
+        if path == "/user/repos" and method == "POST":
+            if state["create_status"] != 201:
+                return reply(state["create_status"], {"message": "Repository creation failed.", "errors": [{"message": "name already exists on this account"}]})
+            repo = new_repo(json["name"], json["private"], empty=not json.get("auto_init"))
+            repo["delay"] = state["init_delay"]
+            return reply(201, repo_json(repo))
+
+        segments = path.split("/")
+        repo = state["repos"].get(segments[3]) if len(segments) > 3 and segments[1] == "repos" and segments[2] == state["login"] else None
+        if repo is None:
+            return reply(404, {"message": "Not Found"})
+        rest = "/".join(segments[4:])
+
+        if method == "GET" and rest == "":
+            return reply(200, repo_json(repo))
+        if method == "GET" and rest == "branches":
+            return reply(200, [{"name": branch} for branch in repo["refs"]])
+        if method == "PUT" and rest.startswith("contents/"):
+            branch = json.get("branch") or repo["default_branch"]
+            files = {rest[len("contents/"):]: base64.b64decode(json["content"]).decode()}
+            return reply(201, {"commit": {"sha": commit_tree(repo, files, json["message"], None, branch)}})
+        if not repo["refs"]:
+            return reply(409, {"message": "Git Repository is empty."})
+        if method == "GET" and rest.startswith("git/ref/heads/"):
+            if repo["delay"] > 0:
+                repo["delay"] -= 1
+                return reply(409, {"message": "Git Repository is empty."})
+            head = repo["refs"].get(rest[len("git/ref/heads/"):])
+            return reply(200, {"object": {"sha": head}}) if head else reply(404, {"message": "Not Found"})
+        if method == "GET" and rest.startswith("git/commits/"):
+            return reply(200, {"sha": rest.split("/")[-1], "tree": {"sha": repo["commits"][rest.split("/")[-1]]["tree"]}})
+        if state["push_status"] != 201:
+            return reply(state["push_status"], {"message": "Bad credentials"})
+        if method == "POST" and rest == "git/blobs":
+            blob = sha(json["content"])
+            repo["blobs"][blob] = base64.b64decode(json["content"]).decode()
+            return reply(201, {"sha": blob})
+        if method == "POST" and rest == "git/trees":
+            files = dict(repo["trees"][json["base_tree"]]) if "base_tree" in json else {}
+            for entry in json["tree"]:
+                assert entry["mode"] == "100644" and entry["type"] == "blob"
+                files[entry["path"]] = entry["content"] if "content" in entry else repo["blobs"][entry["sha"]]
+            return reply(201, {"sha": store_tree(repo, files)})
+        if method == "POST" and rest == "git/commits":
+            commit = sha(json["tree"], json["message"], json["parents"], len(repo["commits"]))
+            repo["commits"][commit] = {"tree": json["tree"], "message": json["message"], "parents": json["parents"]}
+            return reply(201, {"sha": commit})
+        if method == "POST" and rest == "git/refs":
+            repo["refs"][json["ref"][len("refs/heads/"):]] = json["sha"]
+            return reply(201, {"ref": json["ref"]})
+        if method == "PATCH" and rest.startswith("git/refs/heads/"):
+            branch = rest[len("git/refs/heads/"):]
+            assert json["force"] is False
+            if repo["refs"][branch] not in repo["commits"][json["sha"]]["parents"]:
+                return reply(422, {"message": "Update is not a fast forward"})
+            repo["refs"][branch] = json["sha"]
+            return reply(200, {"ref": branch})
+        return reply(404, {"message": "Not Found"})
 
     monkeypatch.setattr(httpx, "request", fake_request)
     return state

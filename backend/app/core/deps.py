@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models import (
     PROJECT_ROLES,
+    CodeFileModel,
     FileModel,
     ProjectMemberModel,
     ProjectModel,
@@ -67,8 +68,9 @@ def require_project_role(min_role: str, resource: str = "project"):
     the object from the URL if the current user has at least `min_role` in its
     project: 404 for non-members, 403 for members with too low a role.
 
-    resource: "project" (/projects/{project_id}), "task" (/tasks/{task_id}) or
-    "file" (/files/{file_id}); the dependency returns that object.
+    resource: "project" (/projects/{project_id}), "task" (/tasks/{task_id}),
+    "file" (/files/{file_id}) or "code_file" (/code-files/{code_file_id}); the
+    dependency returns that object.
 
     viewer = read only; editor = also change tasks, files, code and chat;
     owner = also manage members, delete the project and push to GitHub.
@@ -97,7 +99,14 @@ def require_project_role(min_role: str, resource: str = "project"):
         _authorize(db, file.project_id, user, min_role, "File not found")
         return file
 
-    return {"project": project_dependency, "task": task_dependency, "file": file_dependency}[resource]
+    def code_file_dependency(code_file_id: int, db: Session = Depends(get_db), user: UserModel = Depends(get_current_user)) -> CodeFileModel:
+        code_file = db.get(CodeFileModel, code_file_id)
+        if code_file is None:
+            raise HTTPException(status_code=404, detail="Code file not found")
+        _authorize(db, code_file.project_id, user, min_role, "Code file not found")
+        return code_file
+
+    return {"project": project_dependency, "task": task_dependency, "file": file_dependency, "code_file": code_file_dependency}[resource]
 
 
 class Pagination:

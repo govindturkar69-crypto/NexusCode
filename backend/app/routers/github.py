@@ -18,7 +18,7 @@ import hmac
 import json
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -29,9 +29,12 @@ from app.core.deps import get_current_user, require_project_role
 from app.core.security import create_oauth_state, hash_oauth_nonce, verify_oauth_state
 from app.models import CodeFileModel, ProjectModel, UserModel
 from app.schemas.misc import (
+    REPO_NAME_PATTERN,
     GitHubAuthorizeUrl,
+    GitHubBranchListResponse,
     GitHubComplete,
     GitHubCompleteResponse,
+    GitHubRepoListResponse,
     GitHubStart,
     PushToGithubRequest,
     PushToGithubResponse,
@@ -41,8 +44,8 @@ from app.services.activity import publish, record
 
 router = APIRouter(tags=["github"])
 
-LANGUAGE_EXTENSIONS = {"python": "py", "javascript": "js", "java": "java", "cpp": "cpp", "html": "html"}
 PENDING_MAX_AGE_SECONDS = 10 * 60
+MAX_PUSH_BYTES = 50_000_000
 LINK_FAILED = "GitHub connection could not be verified. Please try connecting again."
 
 
@@ -97,6 +100,33 @@ def _github_http_error(error: github.GitHubAPIError, context: str) -> HTTPExcept
     return HTTPException(status_code=502, detail=f"{context}: {error.message}")
 
 
+def _connected_token(user: UserModel) -> str:
+    if not user.github_token:
+        raise HTTPException(status_code=400, detail="GitHub account not connected")
+    return user.github_token
+
+
+@router.get("/me/github/repos", response_model=GitHubRepoListResponse)
+def my_github_repos(current_user: UserModel = Depends(get_current_user)):
+    """Repositories on the user's own account: the ones they can push to from here."""
+    token = _connected_token(current_user)
+    try:
+        return {"repos": github.list_owned_repos(token)}
+    except github.GitHubAPIError as e:
+        raise _github_http_error(e, "Could not list your repositories") from e
+
+
+@router.get("/me/github/repos/{repo_name}/branches", response_model=GitHubBranchListResponse)
+def my_github_branches(repo_name: str = Path(pattern=REPO_NAME_PATTERN), current_user: UserModel = Depends(get_current_user)):
+    token = _connected_token(current_user)
+    try:
+        # The owner always comes from the token, so this can't read someone else's repository
+        login = github.get_github_username(token)
+        return {"branches": [branch["name"] for branch in github.list_branches(token, f"{login}/{repo_name}")]}
+    except github.GitHubAPIError as e:
+        raise _github_http_error(e, f"Could not list the branches of {repo_name}") from e
+
+
 @router.post("/projects/{project_id}/push-to-github", response_model=PushToGithubResponse)
 def push_to_github(
     request: PushToGithubRequest,
@@ -104,30 +134,48 @@ def push_to_github(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
-    if not current_user.github_token:
-        raise HTTPException(status_code=400, detail="GitHub account not connected")
+    """Pushes all the project's files in one commit, to a new repository or to
+    one the user owns. The token is decrypted only on the way to GitHub."""
+    token = _connected_token(current_user)
 
-    code_file = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).first()
-    if not code_file:
-        raise HTTPException(status_code=404, detail="No code file found for this project")
-
-    filename = f"main.{LANGUAGE_EXTENSIONS.get(code_file.language, 'txt')}"
-
-    try:
-        repo_result = github.create_github_repo(current_user.github_token, request.repo_name, request.private)
-    except github.GitHubAPIError as e:
-        raise _github_http_error(e, "Could not create the repository") from e
+    code_files = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).order_by(CodeFileModel.path).all()
+    if not code_files:
+        raise HTTPException(status_code=400, detail="This project has no files to push yet.")
+    files = {code_file.path: code_file.content or "" for code_file in code_files}
+    if sum(len(content.encode("utf-8", "replace")) for content in files.values()) > MAX_PUSH_BYTES:
+        raise HTTPException(status_code=400, detail=f"This project is larger than the {MAX_PUSH_BYTES // 1_000_000} MB that can be pushed at once.")
 
     try:
-        github.push_file_to_repo(current_user.github_token, repo_result["full_name"], filename, code_file.content or "")
+        if request.existing:
+            login = github.get_github_username(token)
+            repo = github.get_repo(token, f"{login}/{request.repo_name}")
+        else:
+            repo = github.create_github_repo(token, request.repo_name, request.private)
     except github.GitHubAPIError as e:
-        raise _github_http_error(e, f"Repository {repo_result['full_name']} was created, but pushing {filename} failed") from e
+        if request.existing and e.status_code == 404:
+            raise HTTPException(status_code=400, detail=f"There is no repository called {request.repo_name} on your GitHub account.") from e
+        raise _github_http_error(e, "Could not open the repository" if request.existing else "Could not create the repository") from e
 
-    record(db, project.id, current_user.id, "github_pushed", repo_result["full_name"])
-    db.commit()
-    publish(project.id, "github_pushed")
+    full_name = repo["full_name"]
+    count = len(files)
+    message = f"Update from NexusCode ({count} file{'' if count == 1 else 's'})"
+    try:
+        pushed = github.push_files(token, repo, request.branch, files, message, new_repo=not request.existing)
+    except github.GitHubAPIError as e:
+        context = f"Could not push to {full_name}" if request.existing else f"Repository {full_name} was created, but pushing the files failed. Try again, pushing to it as an existing repository"
+        raise _github_http_error(e, context) from e
+
+    if pushed.changed:
+        record(db, project.id, current_user.id, "github_pushed", f"{full_name} ({pushed.branch})")
+        db.commit()
+        publish(project.id, "github_pushed")
     return {
-        "message": "Pushed to GitHub successfully",
-        "repo_url": repo_result.get("html_url"),
-        "private": repo_result.get("private", request.private),
+        "message": "Pushed to GitHub successfully" if pushed.changed else "GitHub already has these files, so there was nothing to commit",
+        "repo_url": repo.get("html_url"),
+        "private": repo.get("private", request.private),
+        "repo_full_name": full_name,
+        "branch": pushed.branch,
+        "changed": pushed.changed,
+        "files": count,
+        "commit_url": pushed.commit_url,
     }

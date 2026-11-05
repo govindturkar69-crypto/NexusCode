@@ -11,6 +11,9 @@ const PHRASES = {
   member_left: () => "left the project",
   role_changed: (target) => `changed a role: ${target}`,
   github_pushed: (target) => `pushed the code to ${target}`,
+  code_created: (target) => `created ${target}`,
+  code_renamed: (target) => `renamed ${target}`,
+  code_deleted: (target) => `deleted ${target}`,
 };
 
 export function describeActivity({ action, target }) {

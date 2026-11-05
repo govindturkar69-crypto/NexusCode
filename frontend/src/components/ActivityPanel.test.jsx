@@ -23,6 +23,9 @@ describe('describeActivity', () => {
     ['member_left', 'vera', 'left the project'],
     ['role_changed', 'oscar → viewer', 'changed a role: oscar → viewer'],
     ['github_pushed', 'me/repo', 'pushed the code to me/repo'],
+    ['code_created', 'src/a.py', 'created src/a.py'],
+    ['code_renamed', 'a.py → b.py', 'renamed a.py → b.py'],
+    ['code_deleted', 'src/', 'deleted src/'],
     ['from_the_future', 'x', 'from_the_future: x'],
   ])('%s', (action, target, text) => {
     expect(describeActivity({ action, target })).toBe(text)

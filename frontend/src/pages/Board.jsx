@@ -8,6 +8,7 @@ import { filterByAssignee, isOverdue, moveTask } from "../projects/tasks";
 import ActivityPanel from "../components/ActivityPanel";
 import ChatPanel from "../components/ChatPanel";
 import TaskModal from "../components/TaskModal";
+import TaskSuggestDialog from "../components/TaskSuggestDialog";
 import MembersPanel from "../components/MembersPanel";
 import RoleBadge from "../components/RoleBadge";
 import Alert from "../components/ui/Alert";
@@ -38,6 +39,7 @@ function Board() {
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
   const [title, setTitle] = useState("");
   const [files, setFiles] = useState([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
@@ -162,6 +164,7 @@ function Board() {
         <Card as="form" onSubmit={createTask} className="row" style={{ marginBottom: "2rem" }}>
           <Input label="New task title" hideLabel placeholder="New task title" value={title} onChange={(e) => setTitle(e.target.value)} className="grow" />
           <Button type="submit" disabled={!title.trim()}>+ Add Task</Button>
+          <Button variant="ghost" onClick={() => setSuggesting(true)}>✨ Generate tasks</Button>
         </Card>
       )}
 
@@ -295,6 +298,17 @@ function Board() {
 
         <ChatPanel projectId={projectId} canPost={canEdit} currentUser={user} members={members} onActivity={handleActivity} />
       </div>
+
+      {suggesting && (
+        <TaskSuggestDialog
+          projectId={projectId}
+          onClose={() => setSuggesting(false)}
+          onAdded={(finished) => {
+            if (finished) setSuggesting(false);
+            fetchTasks();
+          }}
+        />
+      )}
 
       {editingTask && (
         <TaskModal

@@ -68,7 +68,7 @@ def test_file_upload_and_github_push_are_logged(client, team, fake_cloudinary, f
     set_github_token("olivia", "gho_x")
     client.put(f"/projects/{team['pid']}/code", json={"content": "x", "language": "python"}, headers=team["owner"])
     assert client.post(f"/projects/{team['pid']}/push-to-github", json={"repo_name": "r"}, headers=team["owner"]).status_code == 200
-    assert _feed(client, team) == [("olivia", "github_pushed", "tester/r"), ("eddie", "file_uploaded", "n.txt")]
+    assert _feed(client, team) == [("olivia", "github_pushed", "tester/r (main)"), ("eddie", "file_uploaded", "n.txt")]
 
 
 def test_failed_push_logs_nothing(client, team, fake_github_http):

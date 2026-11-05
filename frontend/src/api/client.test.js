@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { apiFetch, apiFetchAll, ApiError, clearToken, getToken, hasValidToken, setToken, socketUrl, wsUrl } from './client'
+import { apiStream, parseSSE } from './client'
 import { fakeJwt, inOneHour, stubFetch } from '../test/helpers'
 
 describe('token helpers', () => {
@@ -163,3 +164,63 @@ describe('wsUrl / socketUrl', () => {
     expect(init.headers.Authorization).toBe('Bearer login-token')
   })
 })
+
+describe('parseSSE', () => {
+  it('returns complete events and keeps the rest', () => {
+    const { events, rest } = parseSSE('event: delta\ndata: {"text":"a"}\n\nevent: done\ndata: {}\n\nevent: del')
+    expect(events).toEqual([{ event: 'delta', data: { text: 'a' } }, { event: 'done', data: {} }])
+    expect(rest).toBe('event: del')
+  })
+
+  it('waits for a frame split across chunks', () => {
+    expect(parseSSE('event: delta\ndata: {"te').events).toEqual([])
+  })
+
+  it('escaped newlines in the text are not frame breaks', () => {
+    const { events } = parseSSE('event: delta\ndata: {"text":"a\\n\\nb"}\n\n')
+    expect(events[0].data.text).toBe('a\n\nb')
+  })
+})
+
+describe('apiStream', () => {
+  function bodyOf(chunks) {
+    return new ReadableStream({
+      start(controller) {
+        chunks.forEach((chunk) => controller.enqueue(chunk))
+        controller.close()
+      },
+    })
+  }
+
+  it('delivers events however the bytes were split, multi-byte characters included', async () => {
+    const bytes = new TextEncoder().encode('event: delta\ndata: {"text":"h\u00e9llo \ud83c\udf0d"}\n\nevent: done\ndata: {}\n\n')
+    const chunks = Array.from(bytes, (byte) => new Uint8Array([byte]))
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, status: 200, body: bodyOf(chunks) })))
+    const seen = []
+    await apiStream('/x', { body: {}, onEvent: (e) => seen.push(e) })
+    expect(seen).toEqual([{ event: 'delta', data: { text: 'h\u00e9llo \ud83c\udf0d' } }, { event: 'done', data: {} }])
+  })
+
+  it('sends the token', async () => {
+    localStorage.setItem('token', 'abc')
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true, status: 200, body: bodyOf([]) }))
+    vi.stubGlobal('fetch', fetchMock)
+    await apiStream('/x', { body: { a: 1 }, onEvent: () => {} })
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer abc')
+    expect(fetchMock.mock.calls[0][1].body).toBe('{"a":1}')
+  })
+
+  it('turns an error response into its message', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({ detail: 'Busy' }) })))
+    await expect(apiStream('/x', { body: {}, onEvent: () => {} })).rejects.toThrow('Busy')
+  })
+
+  it('a dropped connection is reported, a stop is not disguised', async () => {
+    const failing = (error) => ({ ok: true, status: 200, body: new ReadableStream({ start: (c) => c.error(error) }) })
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(failing(new TypeError('network')))))
+    await expect(apiStream('/x', { body: {}, onEvent: () => {} })).rejects.toThrow(/connection was lost/)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(failing(new DOMException('Aborted', 'AbortError')))))
+    await expect(apiStream('/x', { body: {}, onEvent: () => {} })).rejects.toMatchObject({ name: 'AbortError' })
+  })
+})
+
