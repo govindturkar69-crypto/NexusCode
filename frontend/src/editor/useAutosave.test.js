@@ -160,6 +160,21 @@ describe('useAutosave', () => {
       expect(save).not.toHaveBeenCalled()
     })
 
+    it('pendingError reports a failure straight after flush, and clears on success', async () => {
+      const save = vi.fn()
+        .mockRejectedValueOnce(new Error('Server down'))
+        .mockResolvedValueOnce(undefined)
+      const { result } = renderHook(() => useAutosave(save))
+      expect(result.current.pendingError(1)).toBeNull()
+      act(() => { result.current.schedule(1, 'a') })
+      await act(async () => {
+        await result.current.flush(1)
+        expect(result.current.pendingError(1)).toBe('Server down')
+      })
+      await act(async () => { await result.current.flush(1) })
+      expect(result.current.pendingError(1)).toBeNull()
+    })
+
     it('forget aborts a save in flight and ignores how it ends', async () => {
       const inFlight = deferred()
       const save = vi.fn((key, value, { signal }) => {

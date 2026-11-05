@@ -157,9 +157,8 @@ def test_push_creates_private_repo_by_default(client, pushable, fake_github_http
     r = client.post(f"/projects/{pid}/push-to-github", json={"repo_name": "my-repo.v1"}, headers=auth(alice))
     assert r.status_code == 200, r.text
     assert r.json()["private"] is True
-    create, push = fake_github_http["calls"]
-    assert create[2] == {"name": "my-repo.v1", "private": True}
-    assert push[1].endswith("/repos/tester/my-repo.v1/contents/main.py")
+    assert fake_github_http["calls"][0][2] == {"name": "my-repo.v1", "private": True, "auto_init": True}
+    assert fake_github_http["repo_files"]("my-repo.v1") == {"main.py": "print(1)"}
 
 
 def test_push_public_when_requested(client, pushable, fake_github_http):

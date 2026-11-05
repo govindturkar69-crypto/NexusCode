@@ -10,6 +10,8 @@ const SAVED = { status: "saved", error: "" };
  *   autosave.flush(key)           -> saves that key now; resolves when it settles
  *   autosave.forget(key)          -> drops it, unsaved changes included (file deleted)
  *   autosave.state(key)           -> { status, error }
+ *   autosave.pendingError(key)    -> the last save's error if it's still unsaved, right
+ *                                    now rather than on the next render
  *
  * save(key, value, { signal, keepalive }) must return a promise that rejects on
  * failure (apiFetch does). Guarantees, for each key:
@@ -34,7 +36,7 @@ export function useAutosave(save, { delay = 1000 } = {}) {
 
   const slot = useCallback((key) => {
     if (!slots.current.has(key)) {
-      slots.current.set(key, { pending: null, timer: null, controller: null, inFlight: Promise.resolve() });
+      slots.current.set(key, { pending: null, timer: null, controller: null, inFlight: Promise.resolve(), lastError: null });
     }
     return slots.current.get(key);
   }, []);
@@ -62,13 +64,16 @@ export function useAutosave(save, { delay = 1000 } = {}) {
         .catch(() => {})
         .then(() => saveRef.current(key, value, { signal: ctrl.signal }))
         .then(() => {
-          if (isCurrent()) setState(key, current.pending === null ? "saved" : "unsaved");
+          if (!isCurrent()) return;
+          current.lastError = null;
+          setState(key, current.pending === null ? "saved" : "unsaved");
         })
         .catch((err) => {
           if (err?.name === "AbortError" || !isCurrent()) return;
           // Keep it so the next change or flush retries
           if (current.pending === null) current.pending = { value };
-          setState(key, "error", err?.message ?? "Save failed");
+          current.lastError = err?.message ?? "Save failed";
+          setState(key, "error", current.lastError);
         });
       current.inFlight = run;
       return run;
@@ -134,6 +139,10 @@ export function useAutosave(save, { delay = 1000 } = {}) {
   }, []);
 
   const state = useCallback((key) => states[key] ?? SAVED, [states]);
+  const pendingError = useCallback((key) => {
+    const current = slots.current.get(key);
+    return current && current.pending !== null ? current.lastError : null;
+  }, []);
 
-  return { state, schedule, flush, forget };
+  return { state, schedule, flush, forget, pendingError };
 }

@@ -109,7 +109,7 @@ def test_github_status_shows_the_username(client, make_user, fake_github_http):
     token = make_user("alice")
     set_github_token("alice", "gho_x")
     r = client.get("/me/github", headers=auth(token)).json()
-    assert r == {"connected": True, "username": "octo-alice", "expired": False}
+    assert r == {"connected": True, "username": "tester", "expired": False}
 
 
 def test_github_status_when_the_token_was_revoked(client, make_user, fake_github_http):

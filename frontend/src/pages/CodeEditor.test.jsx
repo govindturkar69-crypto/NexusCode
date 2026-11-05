@@ -389,6 +389,49 @@ describe('CodeEditor', () => {
     })
   })
 
+  describe('pushing', () => {
+    const PUSHED = { message: 'Pushed', repo_url: 'https://x/r', private: true, repo_full_name: 'me/r', branch: 'main', files: 2, commit_url: 'https://x/r/commit/abc' }
+
+    async function push(user = userEvent) {
+      await user.click(await screen.findByRole('button', { name: /Push to GitHub/ }))
+      const dialog = await screen.findByRole('dialog')
+      await user.type(within(dialog).getByLabelText('Repository name'), 'fresh')
+      await user.click(within(dialog).getByRole('button', { name: 'Push' }))
+    }
+
+    it('saves what is unsaved first, then links to the commit', async () => {
+      const order = []
+      const fetchMock = setup('owner', {
+        'PUT /code-files/2': [200, { code_file: B }],
+        'POST /projects/7/push-to-github': [200, { ...PUSHED, changed: true }],
+      })
+      await userEvent.type(await screen.findByLabelText('Code'), '!')
+      await push()
+      expect(await screen.findByRole('link', { name: 'Open the commit' })).toHaveAttribute('href', 'https://x/r/commit/abc')
+      expect(screen.getByText(/Pushed 2 files to me\/r \(main\)/)).toBeInTheDocument()
+      fetchMock.mock.calls.forEach(([url, init]) => {
+        if (init?.method === 'PUT' || url.includes('push-to-github')) order.push(init.method)
+      })
+      expect(order).toEqual(['PUT', 'POST'])
+    })
+
+    it('says so when GitHub already had everything', async () => {
+      setup('owner', { 'POST /projects/7/push-to-github': [200, { ...PUSHED, changed: false }] })
+      await screen.findByLabelText('Code')
+      await push()
+      expect(await screen.findByText(/already has these files/)).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Open the repository' })).toHaveAttribute('href', 'https://x/r')
+    })
+
+    it('does not push if a change could not be saved', async () => {
+      const fetchMock = setup('owner', { 'PUT /code-files/2': [500, { detail: 'Disk full' }] })
+      await userEvent.type(await screen.findByLabelText('Code'), '!')
+      await push()
+      expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(/Couldn't save your changes first: Disk full/)
+      expect(fetchMock.mock.calls.some(([url]) => url.includes('push-to-github'))).toBe(false)
+    })
+  })
+
   it('AI actions use the open file', async () => {
     const fetchMock = setup('editor', { 'POST /ai/detect-bugs': [200, { result: 'No bugs' }] })
     await screen.findByLabelText('Code')

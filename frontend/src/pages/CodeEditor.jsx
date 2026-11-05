@@ -7,21 +7,17 @@ import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
 import FileTree from "../components/FileTree";
 import PathDialog from "../components/PathDialog";
+import PushToGithubDialog from "../components/PushToGithubDialog";
 import Alert from "../components/ui/Alert";
 import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
-import Input from "../components/ui/Input";
-import Modal from "../components/ui/Modal";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
 // Self-hosted Monaco (no CDN); must run before <Editor> mounts
 import "../editor/monacoSetup";
 import { useTheme } from "../theme/useTheme";
-
-// Same rule the backend enforces
-const REPO_NAME_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 
 // Picks up files that teammates added, renamed or deleted
 const REFRESH_FILES_EVERY_MS = 30000;
@@ -52,7 +48,7 @@ function CodeEditor() {
   const [aiResult, setAiResult] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [showPush, setShowPush] = useState(false);
-  const [pushedUrl, setPushedUrl] = useState("");
+  const [pushed, setPushed] = useState(null);
 
   const save = useCallback(
     (id, content, { signal, keepalive } = {}) => apiFetch(`/code-files/${id}`, { method: "PUT", body: { content }, signal, keepalive }),
@@ -159,6 +155,13 @@ function CodeEditor() {
     if (activeId === null || !canEdit || text === contents[activeId]) return;
     setContents((prev) => ({ ...prev, [activeId]: text }));
     autosave.schedule(activeId, text);
+  }
+
+  // Rejects if something couldn't be saved, so a push never leaves changes behind
+  async function saveEverything() {
+    await Promise.all(openIds.map((id) => flush(id)));
+    const failed = openIds.map((id) => autosave.pendingError(id)).find(Boolean);
+    if (failed) throw new Error(`Couldn't save your changes first: ${failed}`);
   }
 
   function closeTab(id) {
@@ -283,7 +286,7 @@ function CodeEditor() {
               )}
             </span>
             {isOwner && (
-              <Button onClick={() => { setPushedUrl(""); setShowPush(true); }} disabled={loadState !== "ready" || files.length === 0}>
+              <Button onClick={() => { setPushed(null); setShowPush(true); }} disabled={loadState !== "ready" || files.length === 0}>
                 🐙 Push to GitHub
               </Button>
             )}
@@ -293,9 +296,14 @@ function CodeEditor() {
 
       <Alert onDismiss={() => setError("")}>{error}</Alert>
       {notice && <Alert tone="info" onDismiss={() => setNotice("")}>{notice}</Alert>}
-      {pushedUrl && (
-        <Alert tone="success" onDismiss={() => setPushedUrl("")}>
-          Pushed to GitHub. <a href={pushedUrl} target="_blank" rel="noreferrer" className="btn btn--link">Open the repository</a>
+      {pushed && (
+        <Alert tone="success" onDismiss={() => setPushed(null)}>
+          {pushed.changed
+            ? `Pushed ${pushed.files} file${pushed.files === 1 ? "" : "s"} to ${pushed.repo_full_name} (${pushed.branch}). `
+            : `${pushed.repo_full_name} (${pushed.branch}) already has these files, so nothing new was committed. `}
+          <a href={pushed.changed ? pushed.commit_url : pushed.repo_url} target="_blank" rel="noreferrer" className="btn btn--link">
+            {pushed.changed ? "Open the commit" : "Open the repository"}
+          </a>
         </Alert>
       )}
 
@@ -437,59 +445,16 @@ function CodeEditor() {
       {showPush && (
         <PushToGithubDialog
           projectId={projectId}
+          fileCount={files.length}
+          beforePush={saveEverything}
           onClose={() => setShowPush(false)}
-          onPushed={(url) => {
+          onPushed={(result) => {
             setShowPush(false);
-            setPushedUrl(url);
+            setPushed(result);
           }}
         />
       )}
     </Page>
-  );
-}
-
-function PushToGithubDialog({ projectId, onClose, onPushed }) {
-  const [repoName, setRepoName] = useState("");
-  const [isPrivate, setIsPrivate] = useState(true);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  function submit(event) {
-    event.preventDefault();
-    if (!REPO_NAME_PATTERN.test(repoName)) {
-      setError("Use letters, numbers, '.', '-' and '_' only (max 100).");
-      return;
-    }
-    setError("");
-    setBusy(true);
-    apiFetch(`/projects/${projectId}/push-to-github`, { method: "POST", body: { repo_name: repoName, private: isPrivate } })
-      .then((data) => onPushed(data.repo_url))
-      .catch((err) => setError(err.message))
-      .finally(() => setBusy(false));
-  }
-
-  return (
-    <Modal title="Push to a new GitHub repository" onClose={busy ? () => {} : onClose}>
-      <form onSubmit={submit} className="stack" noValidate>
-        <Input
-          label="Repository name"
-          value={repoName}
-          onChange={(e) => setRepoName(e.target.value)}
-          placeholder="my-project"
-          hint="Letters, numbers, '.', '-' and '_'"
-          autoComplete="off"
-        />
-        <label className="checkbox">
-          <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
-          Private repository
-        </label>
-        {error && <p role="alert" className="small text-danger">{error}</p>}
-        <div className="modal__actions">
-          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" disabled={busy || !repoName}>{busy ? "Pushing..." : "Push"}</Button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 

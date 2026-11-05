@@ -1,5 +1,8 @@
 """Schemas for AI, GitHub, analytics and admin routes."""
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
+from pydantic_core import PydanticCustomError
 
 from app.schemas.common import Page
 
@@ -37,15 +40,54 @@ class GitHubCompleteResponse(BaseModel):
     connected: bool
 
 
+# "." and ".." would change what the API URL points at
+REPO_NAME_PATTERN = r"^(?:[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}|\.[A-Za-z0-9_-][A-Za-z0-9._-]{0,98}|\.\.[A-Za-z0-9._-]{1,98})$"
+# Git's own rules for a branch name, for the characters people actually use
+BRANCH_PATTERN = re.compile(r"^(?!/)(?!.*//)(?!.*\.\.)(?!.*\.lock$)(?!.*/$)(?!.*\.$)(?!-)[A-Za-z0-9._/-]{1,100}$")
+
+
 class PushToGithubRequest(BaseModel):
-    repo_name: str = Field(pattern=r"^[A-Za-z0-9._-]{1,100}$")
+    repo_name: str = Field(pattern=REPO_NAME_PATTERN)
+    # False creates repo_name; True pushes to a repository already on the user's account
+    existing: bool = False
+    # Only used when creating. New repositories are private unless asked otherwise.
     private: bool = True
+    # None means the repository's default branch
+    branch: str | None = None
+
+    @field_validator("branch")
+    @classmethod
+    def validate_branch(cls, value: str | None) -> str | None:
+        if value is not None and not BRANCH_PATTERN.fullmatch(value):
+            raise PydanticCustomError("branch_invalid", "That isn't a valid branch name.")
+        return value
 
 
 class PushToGithubResponse(BaseModel):
     message: str
     repo_url: str | None
     private: bool
+    repo_full_name: str
+    branch: str
+    changed: bool
+    files: int
+    commit_url: str
+
+
+class GitHubRepoOut(BaseModel):
+    name: str
+    full_name: str
+    private: bool
+    default_branch: str | None
+    html_url: str
+
+
+class GitHubRepoListResponse(BaseModel):
+    repos: list[GitHubRepoOut]
+
+
+class GitHubBranchListResponse(BaseModel):
+    branches: list[str]
 
 
 class TasksByStatus(BaseModel):
