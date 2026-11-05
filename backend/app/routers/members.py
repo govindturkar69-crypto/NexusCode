@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_project_role, role_at_least
-from app.models import ProjectMemberModel, ProjectModel, UserModel
+from app.models import ProjectMemberModel, ProjectModel, TaskModel, UserModel
 from app.schemas.members import (
     MemberAdd,
     MemberListResponse,
@@ -125,6 +125,8 @@ def remove_member(
         _hand_over_if_creator(db, project.id, user_id, others)
     project_id = project.id
     db.delete(member)
+    # An assignee must be a member, so their tasks here become unassigned
+    db.query(TaskModel).filter(TaskModel.project_id == project_id, TaskModel.assignee_id == user_id).update({"assignee_id": None})
     db.commit()
 
     # They lose live access right away, not on their next message

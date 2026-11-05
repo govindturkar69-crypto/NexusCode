@@ -4,6 +4,8 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { apiFetch, apiFetchAll, socketUrl } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 import { useProject } from "../projects/useProject";
+import { filterByAssignee, isOverdue, moveTask } from "../projects/tasks";
+import TaskModal from "../components/TaskModal";
 import MembersPanel from "../components/MembersPanel";
 import RoleBadge from "../components/RoleBadge";
 import Alert from "../components/ui/Alert";
@@ -34,6 +36,8 @@ function Board() {
   const [members, setMembers] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [assigneeFilter, setAssigneeFilter] = useState("");
   const [title, setTitle] = useState("");
   const [files, setFiles] = useState([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
@@ -143,13 +147,6 @@ function Board() {
       .catch((err) => setError(err.message));
   }
 
-  function updateTaskStatus(taskId, newStatus) {
-    // Always resync afterwards: on failure this undoes the optimistic move
-    apiFetch(`/tasks/${taskId}`, { method: "PUT", body: { status: newStatus } })
-      .catch((err) => setError(err.message))
-      .finally(() => fetchTasks());
-  }
-
   function uploadFile(e) {
     const selectedFile = e.target.files[0];
     e.target.value = "";
@@ -192,13 +189,20 @@ function Board() {
   }
 
   function handleDragEnd(result) {
-    const { destination, draggableId } = result;
+    const { destination, source, draggableId } = result;
     if (!destination) return;
-    const newStatus = destination.droppableId;
-    if (newStatus === result.source.droppableId) return;
-    updateTaskStatus(draggableId, newStatus);
-    setTasks((prev) => prev.map((t) => (t.id.toString() === draggableId ? { ...t, status: newStatus } : t)));
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+    const taskId = Number(draggableId);
+    const status = destination.droppableId;
+    setTasks((prev) => moveTask(prev, taskId, status, destination.index));
+    // Always resync afterwards: on failure this undoes the optimistic move
+    apiFetch(`/tasks/${taskId}/move`, { method: "PATCH", body: { status, index: destination.index } })
+      .catch((err) => setError(err.message))
+      .finally(() => fetchTasks());
   }
+
+  const filtering = assigneeFilter !== "";
+  const visibleTasks = filterByAssignee(tasks, assigneeFilter);
 
   return (
     <Page width={1100}>
@@ -223,12 +227,24 @@ function Board() {
         </Card>
       )}
 
+      <div className="row" style={{ marginBottom: "1rem" }}>
+        <label htmlFor="assignee-filter" className="muted small">Assignee</label>
+        <select id="assignee-filter" className="input input--sm" value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
+          <option value="">Everyone</option>
+          <option value="unassigned">Unassigned</option>
+          {members.map((member) => (
+            <option key={member.user_id} value={member.user_id}>{member.username}</option>
+          ))}
+        </select>
+        {filtering && canEdit && <span className="hint" style={{ margin: 0 }}>Clear the filter to drag tasks.</span>}
+      </div>
+
       {!tasksLoaded && <p role="status" className="muted">Loading tasks...</p>}
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="kanban">
           {COLUMNS.map(({ status, title: columnTitle, dot }) => {
-            const columnTasks = tasks.filter((t) => t.status === status);
+            const columnTasks = visibleTasks.filter((t) => t.status === status);
             return (
               <Droppable droppableId={status} key={status}>
                 {(provided) => (
@@ -240,17 +256,19 @@ function Board() {
                     </div>
                     {tasksLoaded && columnTasks.length === 0 && <p className="hint">{canEdit ? "Drop tasks here" : "No tasks"}</p>}
                     {columnTasks.map((task, index) => (
-                      <Draggable key={task.id} draggableId={task.id.toString()} index={index} isDragDisabled={!canEdit}>
+                      <Draggable key={task.id} draggableId={task.id.toString()} index={index} isDragDisabled={!canEdit || filtering}>
                         {(dragProvided) => (
                           <div
                             ref={dragProvided.innerRef}
                             {...dragProvided.draggableProps}
                             {...dragProvided.dragHandleProps}
-                            className="card card--inset"
+                            className={`card card--inset ${isOverdue(task) ? "task-card--overdue" : ""}`}
                             style={{ marginBottom: "0.5rem", ...dragProvided.draggableProps.style }}
                           >
                             <div className="row row--between">
-                              <span className="small">{task.title}</span>
+                              <button type="button" className="task-title" onClick={() => setEditingTask(task)}>
+                                {task.title}
+                              </button>
                               {canEdit && (
                                 <Button
                                   variant="ghost"
@@ -261,6 +279,15 @@ function Board() {
                                   ✕
                                 </Button>
                               )}
+                            </div>
+                            <div className="row" style={{ "--gap": "0.25rem", marginTop: "0.5rem" }}>
+                              <span className={`badge badge--priority-${task.priority}`}>{task.priority}</span>
+                              {task.due_date && (
+                                <span className={`badge ${isOverdue(task) ? "badge--overdue" : "badge--muted"}`}>
+                                  {isOverdue(task) ? `Overdue: ${task.due_date}` : `Due ${task.due_date}`}
+                                </span>
+                              )}
+                              {task.assignee_username && <span className="badge badge--muted">@{task.assignee_username}</span>}
                             </div>
                           </div>
                         )}
@@ -367,6 +394,19 @@ function Board() {
           </Card>
         </section>
       </div>
+
+      {editingTask && (
+        <TaskModal
+          task={editingTask}
+          members={members}
+          canEdit={canEdit}
+          onClose={() => setEditingTask(null)}
+          onSaved={() => {
+            setEditingTask(null);
+            return fetchTasks();
+          }}
+        />
+      )}
 
       {toDelete && (
         <ConfirmDialog

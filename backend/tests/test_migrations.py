@@ -215,6 +215,30 @@ def test_0005_makes_every_existing_owner_a_member(scratch_engine):
         assert conn.execute(text("SELECT count(*) FROM projects")).scalar() == 3
 
 
+def test_0006_gives_existing_tasks_defaults_and_keeps_constraints(scratch_engine):
+    _upgrade(scratch_engine, "0005_project_members")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'a', 'h')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (1, 'p', 1)"))
+        conn.execute(text("INSERT INTO tasks (id, title, status, project_id, position) VALUES (1, 't', 'done', 1, 7)"))
+    _upgrade(scratch_engine, "0006_task_details")
+    with scratch_engine.connect() as conn:
+        row = conn.execute(text("SELECT title, status, position, priority, assignee_id, due_date FROM tasks")).one()
+        assert tuple(row) == ("t", "done", 7, "medium", None, None)
+    for sql in ("UPDATE tasks SET priority = 'urgent'", "UPDATE tasks SET status = 'bogus'"):
+        with pytest.raises(Exception):  # noqa: B017
+            with scratch_engine.begin() as conn:
+                conn.execute(text(sql))
+
+    config = alembic_config()
+    with scratch_engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0005_project_members")
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT title, status FROM tasks")).one() == ("t", "done")
+        assert "priority" not in {c["name"] for c in inspect(conn).get_columns("tasks")}
+
+
 def test_project_members_rejects_duplicates_and_bad_roles(scratch_engine):
     _upgrade(scratch_engine)
     with scratch_engine.begin() as conn:

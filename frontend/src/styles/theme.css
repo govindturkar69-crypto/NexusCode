@@ -184,6 +184,11 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
 .badge--owner { color: var(--color-accent); }
 .badge--editor { color: var(--color-success); }
 .badge--viewer { color: var(--color-text-muted); }
+.badge--muted { color: var(--color-text-muted); }
+.badge--overdue { color: var(--color-danger); }
+.badge--priority-low { color: var(--color-text-subtle); }
+.badge--priority-medium { color: var(--color-accent); }
+.badge--priority-high { color: var(--color-danger); }
 .stat { text-align: left; }
 .stat__value { font-family: var(--font-mono); font-size: 28px; font-weight: 700; color: var(--color-accent); }
 .stat__label { color: var(--color-text-muted); font-size: var(--text-sm); margin-top: var(--space-1); }
@@ -199,6 +204,18 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
   .kanban { flex-direction: column; }
   .kanban__column { min-height: 160px; }
 }
+.task-card--overdue { border-color: var(--color-danger); }
+.task-title {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+.task-title:hover { text-decoration: underline; }
 .chat-log { max-height: 240px; min-height: 100px; overflow-y: auto; flex: 1; }
 
 /* ---------- media ---------- */

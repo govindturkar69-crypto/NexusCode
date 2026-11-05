@@ -2,6 +2,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -87,6 +88,7 @@ class ProjectMemberModel(Base):
     user = relationship("UserModel")
 
 TASK_STATUSES = ("todo", "in_progress", "done")
+TASK_PRIORITIES = ("low", "medium", "high")
 
 class TaskModel(TimestampMixin, Base):
     __tablename__ = "tasks"
@@ -95,6 +97,7 @@ class TaskModel(TimestampMixin, Base):
             "status IN (" + ", ".join(f"'{s}'" for s in TASK_STATUSES) + ")",
             name="ck_tasks_status",
         ),
+        CheckConstraint("priority IN ('low', 'medium', 'high')", name="ck_tasks_priority"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -103,9 +106,17 @@ class TaskModel(TimestampMixin, Base):
     status = Column(String, nullable=False, default="todo", server_default="todo")
     # Order on the board; lower comes first
     position = Column(Integer, nullable=False, default=0, server_default="0")
+    assignee_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL", name="fk_tasks_assignee_id_users"), nullable=True, index=True)
+    due_date = Column(Date, nullable=True)
+    priority = Column(String, nullable=False, default="medium", server_default="medium")
 
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
     project = relationship("ProjectModel", back_populates="tasks")
+    assignee = relationship("UserModel")
+
+    @property
+    def assignee_username(self):
+        return self.assignee.username if self.assignee else None
 
 class FileModel(TimestampMixin, Base):
     __tablename__ = "files"
