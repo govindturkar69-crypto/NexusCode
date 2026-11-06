@@ -4,6 +4,8 @@ import Editor from "@monaco-editor/react";
 import { apiFetch } from "../api/client";
 import { baseName, buildTree, isInFolder, renameFolderPath } from "../editor/fileTree";
 import { isHtmlFile } from "../editor/preview";
+import { runnerFor, UNSUPPORTED_MESSAGE } from "../runners/runnerFor";
+import { useCodeRunner } from "../runners/useCodeRunner";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
 import AIPanel from "../components/AIPanel";
@@ -53,6 +55,10 @@ function CodeEditor() {
   const [pushed, setPushed] = useState(null);
 
   const [showPreview, setShowPreview] = useState(false);
+  const [previewRuns, setPreviewRuns] = useState(0);
+  const [stdin, setStdin] = useState("");
+  const previewPanel = useRef(null);
+  const runner = useCodeRunner();
   const [saveCount, setSaveCount] = useState(0);
 
   const save = useCallback(
@@ -285,6 +291,39 @@ function CodeEditor() {
   const activeLoaded = activeFile !== null && contents[activeId] !== undefined;
   const activeSave = activeId === null ? { status: "saved", error: "" } : autosave.state(activeId);
   const saveStatus = SAVE_STATUS[activeSave.status];
+  const activeRunner = activeFile ? runnerFor(activeFile.path, { hasHtml }) : null;
+  const runningHere = activeId !== null && runner.runningFileId === activeId;
+
+  // Runs what's in the editor, unsaved changes included. Nothing leaves the browser,
+  // so viewers can run code too; only saving needs the editor role.
+  function runActive() {
+    if (!activeLoaded || !activeRunner) return;
+    if (activeRunner === "preview") {
+      setShowPreview(true);
+      setPreviewRuns((count) => count + 1);
+      requestAnimationFrame(() => previewPanel.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }));
+    } else {
+      runner.run(activeFile, contents[activeId], activeRunner, stdin);
+    }
+  }
+
+  // Capture phase, so Monaco doesn't turn Ctrl+Enter into "insert line below" first
+  const runShortcut = useRef(runActive);
+  useEffect(() => {
+    runShortcut.current = runActive;
+  });
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
+      // A dialog has its own meaning for Enter
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runShortcut.current();
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
 
   return (
     <Page width={1400}>
@@ -303,11 +342,6 @@ function CodeEditor() {
                 </>
               )}
             </span>
-            {hasHtml && (
-              <Button variant="ghost" aria-pressed={showPreview} onClick={() => setShowPreview(!showPreview)}>
-                🖥 Preview
-              </Button>
-            )}
             {isOwner && (
               <Button onClick={() => { setPushed(null); setShowPush(true); }} disabled={loadState !== "ready" || files.length === 0}>
                 🐙 Push to GitHub
@@ -376,6 +410,37 @@ function CodeEditor() {
               );
             })}
           </div>
+          {activeLoaded && (
+            <div className="run-bar">
+              {runningHere ? (
+                <Button size="sm" variant="danger" onClick={runner.stop}>■ Stop</Button>
+              ) : (
+                <Button size="sm" onClick={runActive} disabled={!activeRunner} title="Ctrl+Enter">▶ Run</Button>
+              )}
+              {hasHtml && (
+                <Button size="sm" variant="ghost" aria-pressed={showPreview} onClick={() => setShowPreview(!showPreview)}>
+                  🖥 Preview
+                </Button>
+              )}
+              {activeRunner === "python" && (
+                <details className="run-bar__stdin small">
+                  <summary>Input (stdin){stdin ? ": set" : ""}</summary>
+                  <label htmlFor="run-stdin" className="visually-hidden">Input (stdin)</label>
+                  <textarea
+                    id="run-stdin"
+                    className="input mono small"
+                    rows={3}
+                    value={stdin}
+                    onChange={(e) => setStdin(e.target.value)}
+                    placeholder="One line for each input() call"
+                  />
+                </details>
+              )}
+              {activeRunner
+                ? <span className="hint run-bar__hint">Runs in your browser. Ctrl+Enter</span>
+                : <span className="hint run-bar__hint">{UNSUPPORTED_MESSAGE}</span>}
+            </div>
+          )}
           {activeLoaded ? (
             <Editor
               height="600px"
@@ -391,18 +456,26 @@ function CodeEditor() {
               {activeFile ? "Loading code..." : "Open a file from the list to start."}
             </p>
           )}
-          {activeLoaded && /\.(js|mjs|cjs|py)$/i.test(activeFile.path) && (
-            // Keyed by file, so one file's output never shows under another
-            <RunPanel key={activeId} file={activeFile} code={contents[activeId]} />
+          {activeId !== null && (
+            <RunPanel
+              result={runner.resultFor(activeId)}
+              running={runningHere}
+              loading={runner.loading}
+              onClear={() => runner.clear(activeId)}
+            />
           )}
           {showPreview && hasHtml && (
-            <PreviewPanel
-              files={files}
-              readFile={readFileForPreview}
-              refreshKey={previewVersion}
-              preferredEntry={activeFile && isHtmlFile(activeFile.path) ? activeFile.path : null}
-              onClose={() => setShowPreview(false)}
-            />
+            <div ref={previewPanel}>
+              {/* Keyed so that pressing Run starts the page afresh */}
+              <PreviewPanel
+                key={previewRuns}
+                files={files}
+                readFile={readFileForPreview}
+                refreshKey={previewVersion}
+                preferredEntry={activeFile && isHtmlFile(activeFile.path) ? activeFile.path : null}
+                onClose={() => setShowPreview(false)}
+              />
+            </div>
           )}
         </div>
 

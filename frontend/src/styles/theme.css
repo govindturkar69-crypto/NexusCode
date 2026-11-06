@@ -476,4 +476,8 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
   overflow-wrap: anywhere;
 }
 .run-progress { display: block; width: 100%; margin-top: var(--space-1); }
+.run-bar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2); border-bottom: 1px solid var(--color-border); }
+.run-bar__hint { margin: 0 0 0 auto; }
+.run-bar__stdin { flex-basis: auto; }
+.run-bar__stdin[open] { flex-basis: 100%; order: 3; }
 
