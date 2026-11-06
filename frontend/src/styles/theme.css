@@ -460,3 +460,19 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
 .preview-console__line--warn { color: var(--color-text-muted); }
 .preview-console__line--error { color: var(--color-danger); }
 
+/* ---------- running code ---------- */
+.run-panel { padding: var(--space-3); border-top: 1px solid var(--color-border); }
+.run-output {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  max-height: 300px;
+  overflow: auto;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+

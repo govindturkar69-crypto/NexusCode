@@ -11,6 +11,7 @@ import FileTree from "../components/FileTree";
 import PathDialog from "../components/PathDialog";
 import PreviewPanel from "../components/PreviewPanel";
 import PushToGithubDialog from "../components/PushToGithubDialog";
+import RunPanel from "../components/RunPanel";
 import Alert from "../components/ui/Alert";
 import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
@@ -389,6 +390,10 @@ function CodeEditor() {
             <p role="status" className="muted" style={{ padding: "1rem" }}>
               {activeFile ? "Loading code..." : "Open a file from the list to start."}
             </p>
+          )}
+          {activeLoaded && /\.(js|mjs|cjs)$/i.test(activeFile.path) && (
+            // Keyed by file, so one file's output never shows under another
+            <RunPanel key={activeId} file={activeFile} code={contents[activeId]} />
           )}
           {showPreview && hasHtml && (
             <PreviewPanel

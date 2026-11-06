@@ -479,6 +479,39 @@ describe('CodeEditor', () => {
     })
   })
 
+  describe('running', () => {
+    class FakeWorker {
+      static instances = []
+      constructor(url) { this.url = url; FakeWorker.instances.push(this); queueMicrotask(() => this.onmessage?.({ data: { type: 'ready' } })) }
+      postMessage(message) {
+        this.message = message
+        this.onmessage?.({ data: { type: 'started' } })
+        this.onmessage?.({ data: { type: 'output', stream: 'stdout', text: 'ran!\n' } })
+        this.onmessage?.({ data: { type: 'done', ok: true } })
+      }
+      terminate() {}
+    }
+
+    it('runs what is in the editor, unsaved changes included, sending nothing to the server', async () => {
+      FakeWorker.instances = []
+      vi.stubGlobal('Worker', FakeWorker)
+      const fetchMock = setup('viewer')
+      await screen.findByLabelText('Code')
+      fetchMock.mockClear()
+      await userEvent.click(screen.getByRole('button', { name: '▶ Run' }))
+      expect(await screen.findByText('ran!', { exact: false })).toBeInTheDocument()
+      expect(FakeWorker.instances[0].message).toEqual({ code: 'console.log(2)', fileName: 'b.js' })
+      expect(FakeWorker.instances[0].url).toMatch(/^data:text\/javascript/)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('is not offered for other files yet', async () => {
+      setup('editor', { 'GET /projects/7/code/files': [200, { code_files: [A] }] })
+      await screen.findByLabelText('Code')
+      expect(screen.queryByRole('button', { name: '▶ Run' })).not.toBeInTheDocument()
+    })
+  })
+
   describe('AI', () => {
     const streamReply = (text) => ({
       ok: true,
