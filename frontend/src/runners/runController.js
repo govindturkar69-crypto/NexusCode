@@ -7,6 +7,7 @@
 //   { type: "output", stream, text }      stream is "stdout" or "stderr"
 //   { type: "truncated" }                 it stopped sending because of its own cap
 //   { type: "done", ok }                  finished
+//   { type: "fatal", text }               the runner itself is broken, so don't reuse it
 
 export const RUN_TIMEOUT_MS = 10_000;
 export const MAX_OUTPUT_CHARS = 100_000;
@@ -123,6 +124,10 @@ export function startRun({
       case "done":
         finish(data.ok ? "ok" : "error");
         break;
+      case "fatal":
+        appendOutput(output, "stderr", String(data.text ?? ""), used, maxOutputChars);
+        finish("crashed");
+        break;
       default:
     }
   }
@@ -164,6 +169,8 @@ export function startRun({
       finish("crashed");
     };
     send(worker);
+    // A kept worker might have died, so don't wait for it to say it has started
+    startClock();
   } else {
     tryNextWorker("This browser wouldn't start the code runner.");
   }

@@ -252,6 +252,15 @@ describe('startRun', () => {
       expect(output[0].text).toMatch(/wouldn't start/)
     })
 
+    it('a runner that reports it is broken is terminated, with its message', async () => {
+      const { worker, result } = run()
+      worker.receive({ type: 'fatal', text: 'Python could not load' })
+      const { status, output } = await result
+      expect(status).toBe('crashed')
+      expect(output[0].text).toBe('Python could not load')
+      expect(worker.terminated).toBe(true)
+    })
+
     it('a crash after starting is reported, not retried', async () => {
       const second = vi.fn()
       const first = new FakeWorker()

@@ -1,5 +1,50 @@
+import { copyFileSync, createReadStream, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const PYODIDE_DIR = join(HERE, 'node_modules', 'pyodide')
+const PYODIDE_VERSION = JSON.parse(readFileSync(join(PYODIDE_DIR, 'package.json'), 'utf-8')).version
+// Versioned, so these large files can be cached forever (see vercel.json)
+const PYODIDE_BASE = `/pyodide/${PYODIDE_VERSION}/`
+const PYODIDE_TYPES = {
+  'pyodide.mjs': 'text/javascript',
+  'pyodide.asm.mjs': 'text/javascript',
+  'pyodide.asm.wasm': 'application/wasm',
+  'python_stdlib.zip': 'application/zip',
+  'pyodide-lock.json': 'application/json',
+}
+// What the first Python run downloads, for its progress bar
+const PYODIDE_DOWNLOAD_BYTES = ['pyodide.asm.wasm', 'python_stdlib.zip']
+  .reduce((total, file) => total + statSync(join(PYODIDE_DIR, file)).size, 0)
+
+// Self-hosts Pyodide, like Monaco: no CDN, and no binaries in git. They're served
+// from node_modules in development and copied beside the app at build time. Nothing
+// downloads them until someone clicks Run on a Python file.
+function selfHostPyodide() {
+  let outDir = 'dist'
+  return {
+    name: 'self-host-pyodide',
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    configureServer(server) {
+      server.middlewares.use(PYODIDE_BASE, (req, res, next) => {
+        const file = (req.url ?? '').split('?')[0].replace(/^\//, '')
+        if (!PYODIDE_TYPES[file]) return next()
+        res.setHeader('Content-Type', PYODIDE_TYPES[file])
+        createReadStream(join(PYODIDE_DIR, file)).pipe(res)
+      })
+    },
+    closeBundle() {
+      const target = resolve(HERE, outDir, `.${PYODIDE_BASE}`)
+      mkdirSync(target, { recursive: true })
+      for (const file of Object.keys(PYODIDE_TYPES)) copyFileSync(join(PYODIDE_DIR, file), join(target, file))
+    },
+  }
+}
 
 // monaco-editor ships its own copy of DOMPurify inside its source
 // (vs/base/browser/dompurify/dompurify.js, currently 3.4.15), so an npm
@@ -27,7 +72,13 @@ function monacoUsesNpmDompurify() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), monacoUsesNpmDompurify()],
+  plugins: [react(), monacoUsesNpmDompurify(), selfHostPyodide()],
+  define: {
+    __PYODIDE_BASE__: JSON.stringify(PYODIDE_BASE),
+    __PYODIDE_DOWNLOAD_BYTES__: PYODIDE_DOWNLOAD_BYTES,
+  },
+  // The Python worker imports Pyodide at run time, which needs a module worker
+  worker: { format: 'es' },
   build: {
     // Monaco's core is one large lazy chunk loaded only by the editor page
     chunkSizeWarningLimit: 4000,
@@ -40,7 +91,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{js,jsx}'],
-      exclude: ['src/test/**', 'src/**/*.test.{js,jsx}', 'src/main.jsx', 'src/editor/monacoSetup.js'],
+      // Workers run in a real browser, so the browser checks cover them
+      exclude: ['src/test/**', 'src/**/*.test.{js,jsx}', 'src/main.jsx', 'src/editor/monacoSetup.js', 'src/runners/pythonWorker.js'],
     },
   },
 })

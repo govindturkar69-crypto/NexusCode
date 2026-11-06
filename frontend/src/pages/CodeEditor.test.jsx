@@ -506,7 +506,8 @@ describe('CodeEditor', () => {
     })
 
     it('is not offered for other files yet', async () => {
-      setup('editor', { 'GET /projects/7/code/files': [200, { code_files: [A] }] })
+      const C = summary(9, 'notes.md', 'markdown')
+      setup('editor', { 'GET /projects/7/code/files': [200, { code_files: [C] }], 'GET /code-files/9': body(C, '# notes') })
       await screen.findByLabelText('Code')
       expect(screen.queryByRole('button', { name: '▶ Run' })).not.toBeInTheDocument()
     })
