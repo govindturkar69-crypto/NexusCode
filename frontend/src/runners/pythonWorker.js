@@ -8,6 +8,10 @@ import { describePythonError, exitWasClean } from "./pythonErrors";
 const BASE = new URL(__PYODIDE_BASE__, self.location.origin).href;
 const post = self.postMessage.bind(self);
 
+// sys.exit() also rejects Pyodide's internal task. run() has already dealt with it,
+// so this only keeps the browser console from reporting it as uncaught.
+self.addEventListener("unhandledrejection", (event) => event.preventDefault());
+
 let sent = 0;
 let capped = false;
 

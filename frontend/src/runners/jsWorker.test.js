@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { workerMain, workerSource } from './jsWorker'
 
 // Runs the real worker code against a stand-in for the worker's global scope.
-// A real browser run is covered by the manual checks in the report.
+// Isolation itself can only be tested in a real browser, where it was checked.
 function boot(maxChars = 1000) {
   const messages = []
   const listeners = {}
@@ -27,13 +27,9 @@ const done = (messages) => messages.find((m) => m.type === 'done')
 async function execute(code, { maxChars, fileName = 'test.js', wait = 30 } = {}) {
   const context = boot(maxChars)
   // User code sees console, setTimeout etc. through the patched scope
-  const patched = `with (self) { ${code} }`
-  void patched
-  const original = Object.getPrototypeOf(async () => {}).constructor
   const scoped = `const {console, setTimeout, clearTimeout, setInterval, clearInterval, fetch} = globalThis.__scope;\n${code}`
   globalThis.__scope = context.scope
   try {
-    void original
     await context.scope.onmessage({ data: { code: scoped, fileName } })
     await new Promise((resolve) => setTimeout(resolve, wait))
   } finally {
