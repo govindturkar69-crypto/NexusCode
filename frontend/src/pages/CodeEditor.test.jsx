@@ -433,6 +433,52 @@ describe('CodeEditor', () => {
     })
   })
 
+  describe('preview', () => {
+    const PAGE = summary(10, 'index.html', 'html')
+    const CSS = summary(11, 'site.css', 'css')
+    const previewRoutes = {
+      'GET /projects/7/code/files': [200, { code_files: [PAGE, CSS] }],
+      'GET /code-files/10': body(PAGE, '<link rel="stylesheet" href="site.css"><p>page v1</p>'),
+      'GET /code-files/11': body(CSS, 'p { color: red }'),
+    }
+    const frame = () => screen.getByTitle('Project preview')
+
+    it('is offered only when the project has an html file', async () => {
+      setup('editor')
+      await screen.findByLabelText('Code')
+      expect(screen.queryByRole('button', { name: /Preview/ })).not.toBeInTheDocument()
+    })
+
+    it('renders the project, reading unopened files from the server', async () => {
+      const fetchMock = setup('viewer', previewRoutes)
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Preview/ }))
+      await waitFor(() => expect(frame().getAttribute('srcdoc')).toContain('page v1'))
+      expect(frame().getAttribute('srcdoc')).toContain('p { color: red }')
+      expect(frame().getAttribute('sandbox')).toBe('allow-scripts')
+      expect(calls(fetchMock, 'GET', '/code-files/11')).toHaveLength(1)
+    })
+
+    it('refreshes after a save, with the new text', async () => {
+      setup('editor', { ...previewRoutes, 'PUT /code-files/10': [200, { code_file: PAGE }] })
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Preview/ }))
+      await waitFor(() => expect(frame().getAttribute('srcdoc')).toContain('page v1'))
+      await userEvent.type(screen.getByLabelText('Code'), 'EDITED')
+      expect(frame().getAttribute('srcdoc')).not.toContain('EDITED')
+      await waitFor(() => expect(frame().getAttribute('srcdoc')).toContain('EDITED'), { timeout: 3000 })
+    })
+
+    it('can be closed', async () => {
+      setup('viewer', previewRoutes)
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Preview/ }))
+      await waitFor(() => expect(frame()).toBeInTheDocument())
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+      expect(screen.queryByTitle('Project preview')).not.toBeInTheDocument()
+    })
+  })
+
   describe('AI', () => {
     const streamReply = (text) => ({
       ok: true,

@@ -3,11 +3,13 @@ import { useParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { apiFetch } from "../api/client";
 import { baseName, buildTree, isInFolder, renameFolderPath } from "../editor/fileTree";
+import { isHtmlFile } from "../editor/preview";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
 import AIPanel from "../components/AIPanel";
 import FileTree from "../components/FileTree";
 import PathDialog from "../components/PathDialog";
+import PreviewPanel from "../components/PreviewPanel";
 import PushToGithubDialog from "../components/PushToGithubDialog";
 import Alert from "../components/ui/Alert";
 import BackLink from "../components/ui/BackLink";
@@ -49,8 +51,15 @@ function CodeEditor() {
   const [showPush, setShowPush] = useState(false);
   const [pushed, setPushed] = useState(null);
 
+  const [showPreview, setShowPreview] = useState(false);
+  const [saveCount, setSaveCount] = useState(0);
+
   const save = useCallback(
-    (id, content, { signal, keepalive } = {}) => apiFetch(`/code-files/${id}`, { method: "PUT", body: { content }, signal, keepalive }),
+    (id, content, { signal, keepalive } = {}) =>
+      apiFetch(`/code-files/${id}`, { method: "PUT", body: { content }, signal, keepalive }).then((result) => {
+        setSaveCount((count) => count + 1);
+        return result;
+      }),
     []
   );
   const autosave = useAutosave(save, { delay: 1000 });
@@ -88,6 +97,24 @@ function CodeEditor() {
   useEffect(() => {
     openIdsRef.current = openIds;
   }, [openIds]);
+
+  // For the preview: what's in the editor if the file is open, else the saved copy.
+  // updated_at in the key means a teammate's newer version is fetched, not the cached one.
+  const contentsRef = useRef(contents);
+  useEffect(() => {
+    contentsRef.current = contents;
+  }, [contents]);
+  const savedCopies = useRef(new Map());
+
+  const readFileForPreview = useCallback(async (file) => {
+    if (contentsRef.current[file.id] !== undefined) return contentsRef.current[file.id];
+    const key = `${file.id}:${file.updated_at}`;
+    if (!savedCopies.current.has(key)) {
+      const data = await apiFetch(`/code-files/${file.id}`);
+      savedCopies.current.set(key, data.code_file.content ?? "");
+    }
+    return savedCopies.current.get(key);
+  }, []);
 
   const closeTabs = useCallback((ids) => {
     const closing = new Set(ids);
@@ -249,6 +276,8 @@ function CodeEditor() {
       });
   }
 
+  const hasHtml = files.some((file) => isHtmlFile(file.path));
+  const previewVersion = `${saveCount}|${files.map((file) => `${file.id}:${file.path}:${file.updated_at}`).join(",")}`;
   const nodes = useMemo(() => buildTree(files, emptyFolders), [files, emptyFolders]);
   const filesById = useMemo(() => new Map(files.map((file) => [file.id, file])), [files]);
   const activeFile = filesById.get(activeId) ?? null;
@@ -273,6 +302,11 @@ function CodeEditor() {
                 </>
               )}
             </span>
+            {hasHtml && (
+              <Button variant="ghost" aria-pressed={showPreview} onClick={() => setShowPreview(!showPreview)}>
+                🖥 Preview
+              </Button>
+            )}
             {isOwner && (
               <Button onClick={() => { setPushed(null); setShowPush(true); }} disabled={loadState !== "ready" || files.length === 0}>
                 🐙 Push to GitHub
@@ -355,6 +389,15 @@ function CodeEditor() {
             <p role="status" className="muted" style={{ padding: "1rem" }}>
               {activeFile ? "Loading code..." : "Open a file from the list to start."}
             </p>
+          )}
+          {showPreview && hasHtml && (
+            <PreviewPanel
+              files={files}
+              readFile={readFileForPreview}
+              refreshKey={previewVersion}
+              preferredEntry={activeFile && isHtmlFile(activeFile.path) ? activeFile.path : null}
+              onClose={() => setShowPreview(false)}
+            />
           )}
         </div>
 
