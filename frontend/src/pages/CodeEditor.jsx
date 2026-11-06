@@ -3,11 +3,15 @@ import { useParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { apiFetch } from "../api/client";
 import { baseName, buildTree, isInFolder, renameFolderPath } from "../editor/fileTree";
+import { isHtmlFile } from "../editor/preview";
+import { runnerFor, UNSUPPORTED_MESSAGE } from "../runners/runnerFor";
+import { useCodeRunner } from "../runners/useCodeRunner";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
 import AIPanel from "../components/AIPanel";
 import FileTree from "../components/FileTree";
 import PathDialog from "../components/PathDialog";
+import PreviewPanel from "../components/PreviewPanel";
 import PushToGithubDialog from "../components/PushToGithubDialog";
 import RunPanel from "../components/RunPanel";
 import Alert from "../components/ui/Alert";
@@ -48,11 +52,21 @@ function CodeEditor() {
   const [toDelete, setToDelete] = useState(null); // { kind: "file" | "folder", ... }
   const [deleting, setDeleting] = useState(false);
   const [showPush, setShowPush] = useState(false);
-  const [runInfo, setRunInfo] = useState(null);
   const [pushed, setPushed] = useState(null);
 
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewRuns, setPreviewRuns] = useState(0);
+  const [stdin, setStdin] = useState("");
+  const previewPanel = useRef(null);
+  const runner = useCodeRunner();
+  const [saveCount, setSaveCount] = useState(0);
+
   const save = useCallback(
-    (id, content, { signal, keepalive } = {}) => apiFetch(`/code-files/${id}`, { method: "PUT", body: { content }, signal, keepalive }),
+    (id, content, { signal, keepalive } = {}) =>
+      apiFetch(`/code-files/${id}`, { method: "PUT", body: { content }, signal, keepalive }).then((result) => {
+        setSaveCount((count) => count + 1);
+        return result;
+      }),
     []
   );
   const autosave = useAutosave(save, { delay: 1000 });
@@ -90,6 +104,24 @@ function CodeEditor() {
   useEffect(() => {
     openIdsRef.current = openIds;
   }, [openIds]);
+
+  // For the preview: what's in the editor if the file is open, else the saved copy.
+  // updated_at in the key means a teammate's newer version is fetched, not the cached one.
+  const contentsRef = useRef(contents);
+  useEffect(() => {
+    contentsRef.current = contents;
+  }, [contents]);
+  const savedCopies = useRef(new Map());
+
+  const readFileForPreview = useCallback(async (file) => {
+    if (contentsRef.current[file.id] !== undefined) return contentsRef.current[file.id];
+    const key = `${file.id}:${file.updated_at}`;
+    if (!savedCopies.current.has(key)) {
+      const data = await apiFetch(`/code-files/${file.id}`);
+      savedCopies.current.set(key, data.code_file.content ?? "");
+    }
+    return savedCopies.current.get(key);
+  }, []);
 
   const closeTabs = useCallback((ids) => {
     const closing = new Set(ids);
@@ -145,13 +177,6 @@ function CodeEditor() {
   );
 
   useEffect(() => {
-    if (!canEdit) return;
-    apiFetch("/run/info")
-      .then(setRunInfo)
-      .catch(() => setRunInfo(null));
-  }, [canEdit]);
-
-  useEffect(() => {
     const timer = setInterval(() => {
       if (!document.hidden) refreshFiles().catch(() => {});
     }, REFRESH_FILES_EVERY_MS);
@@ -163,12 +188,6 @@ function CodeEditor() {
     if (activeId === null || !canEdit || text === contents[activeId]) return;
     setContents((prev) => ({ ...prev, [activeId]: text }));
     autosave.schedule(activeId, text);
-  }
-
-  async function saveActive() {
-    await flush(activeId);
-    const failed = autosave.pendingError(activeId);
-    if (failed) throw new Error(`Couldn't save your changes first: ${failed}`);
   }
 
   // Rejects if something couldn't be saved, so a push never leaves changes behind
@@ -264,12 +283,47 @@ function CodeEditor() {
       });
   }
 
+  const hasHtml = files.some((file) => isHtmlFile(file.path));
+  const previewVersion = `${saveCount}|${files.map((file) => `${file.id}:${file.path}:${file.updated_at}`).join(",")}`;
   const nodes = useMemo(() => buildTree(files, emptyFolders), [files, emptyFolders]);
   const filesById = useMemo(() => new Map(files.map((file) => [file.id, file])), [files]);
   const activeFile = filesById.get(activeId) ?? null;
   const activeLoaded = activeFile !== null && contents[activeId] !== undefined;
   const activeSave = activeId === null ? { status: "saved", error: "" } : autosave.state(activeId);
   const saveStatus = SAVE_STATUS[activeSave.status];
+  const activeRunner = activeFile ? runnerFor(activeFile.path, { hasHtml }) : null;
+  const runningHere = activeId !== null && runner.runningFileId === activeId;
+
+  // Runs what's in the editor, unsaved changes included. Nothing leaves the browser,
+  // so viewers can run code too; only saving needs the editor role.
+  function runActive() {
+    if (!activeLoaded || !activeRunner) return;
+    if (activeRunner === "preview") {
+      setShowPreview(true);
+      setPreviewRuns((count) => count + 1);
+      requestAnimationFrame(() => previewPanel.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }));
+    } else {
+      runner.run(activeFile, contents[activeId], activeRunner, stdin);
+    }
+  }
+
+  // Capture phase, so Monaco doesn't turn Ctrl+Enter into "insert line below" first
+  const runShortcut = useRef(runActive);
+  useEffect(() => {
+    runShortcut.current = runActive;
+  });
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
+      // A dialog has its own meaning for Enter
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runShortcut.current();
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
 
   return (
     <Page width={1400}>
@@ -356,6 +410,37 @@ function CodeEditor() {
               );
             })}
           </div>
+          {activeLoaded && (
+            <div className="run-bar">
+              {runningHere ? (
+                <Button size="sm" variant="danger" onClick={runner.stop}>■ Stop</Button>
+              ) : (
+                <Button size="sm" onClick={runActive} disabled={!activeRunner} title="Ctrl+Enter">▶ Run</Button>
+              )}
+              {hasHtml && (
+                <Button size="sm" variant="ghost" aria-pressed={showPreview} onClick={() => setShowPreview(!showPreview)}>
+                  🖥 Preview
+                </Button>
+              )}
+              {activeRunner === "python" && (
+                <details className="run-bar__stdin small">
+                  <summary>Input (stdin){stdin ? ": set" : ""}</summary>
+                  <label htmlFor="run-stdin" className="visually-hidden">Input (stdin)</label>
+                  <textarea
+                    id="run-stdin"
+                    className="input mono small"
+                    rows={3}
+                    value={stdin}
+                    onChange={(e) => setStdin(e.target.value)}
+                    placeholder="One line for each input() call"
+                  />
+                </details>
+              )}
+              {activeRunner
+                ? <span className="hint run-bar__hint">Runs in your browser. Ctrl+Enter</span>
+                : <span className="hint run-bar__hint">{UNSUPPORTED_MESSAGE}</span>}
+            </div>
+          )}
           {activeLoaded ? (
             <Editor
               height="600px"
@@ -371,15 +456,26 @@ function CodeEditor() {
               {activeFile ? "Loading code..." : "Open a file from the list to start."}
             </p>
           )}
-          {canEdit && activeLoaded && (
-            // Keyed by file, so one file's output never shows under another
+          {activeId !== null && (
             <RunPanel
-              key={activeId}
-              file={activeFile}
-              info={runInfo}
-              beforeRun={saveActive}
-              onRemaining={(remaining) => setRunInfo((info) => ({ ...info, remaining_today: remaining }))}
+              result={runner.resultFor(activeId)}
+              running={runningHere}
+              loading={runner.loading}
+              onClear={() => runner.clear(activeId)}
             />
+          )}
+          {showPreview && hasHtml && (
+            <div ref={previewPanel}>
+              {/* Keyed so that pressing Run starts the page afresh */}
+              <PreviewPanel
+                key={previewRuns}
+                files={files}
+                readFile={readFileForPreview}
+                refreshKey={previewVersion}
+                preferredEntry={activeFile && isHtmlFile(activeFile.path) ? activeFile.path : null}
+                onClose={() => setShowPreview(false)}
+              />
+            </div>
           )}
         </div>
 

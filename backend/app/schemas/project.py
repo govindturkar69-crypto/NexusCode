@@ -235,27 +235,3 @@ class CodeFileListResponse(BaseModel):
 
 class CodeFileSavedResponse(CodeFileResponse):
     message: str
-
-
-class RunRequest(BaseModel):
-    stdin: str = Field(default="", max_length=10_000)
-
-
-class RunResult(BaseModel):
-    status: str
-    succeeded: bool
-    timed_out: bool
-    stdout: str
-    stderr: str
-    compile_output: str
-    exit_code: int | None
-    time_seconds: float | None
-    memory_kb: int | None
-    truncated: bool
-    remaining_today: int
-
-
-class RunInfo(BaseModel):
-    enabled: bool
-    languages: list[str]
-    remaining_today: int

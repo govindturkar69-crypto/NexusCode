@@ -22,7 +22,8 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 | 🔐 **Secure Authentication** | Sign-up and login screens, JWT auth with bcrypt password hashing, protected routes |
 | 👤 **Private Workspaces** | Each project belongs to one user; projects can't be shared with teammates yet |
 | 📈 **Project Management (Kanban)** | Drag-and-drop task board (`@hello-pangea/dnd`) with live status sync |
-| 💻 **Online Code Editor** | Monaco Editor (the engine behind VS Code) with auto-save and language switching |
+| 💻 **Online Code Editor** | Monaco Editor (the engine behind VS Code) with a file tree, tabs, per-file auto-save and language from the file extension |
+| ▶️ **Run Code in the Browser** | Run Python and JavaScript, and preview HTML/CSS/JS projects, with no server-side execution and no API keys ([details](#-running-code)) |
 | 🤖 **AI Code Generation** | Generate code from natural-language prompts via Gemini |
 | 🧠 **AI Bug Detection** | Automated code review for bugs and best-practice issues |
 | 📄 **AI Documentation** | Auto-generated Markdown documentation for any code snippet |
@@ -147,7 +148,7 @@ DB_PASSWORD=         # or set DATABASE_URL instead of the DB_* variables
 
 Keep `GITHUB_TOKEN_ENC_KEY` safe and stable: stored GitHub tokens can't be read without it (users would just have to reconnect GitHub).
 
-The rest (`GEMINI_API_KEY`, `CLOUDINARY_*`, `GITHUB_CLIENT_ID/SECRET`, `GITHUB_REDIRECT_URI`, `JUDGE0_API_KEY`) are needed for the AI, file upload, GitHub and code execution features. See `.env.example` for every key.
+The rest (`GEMINI_API_KEY`, `CLOUDINARY_*`, `GITHUB_CLIENT_ID/SECRET`, `GITHUB_REDIRECT_URI`) are needed for the AI, file upload and GitHub features. See `.env.example` for every key.
 
 Run the server:
 
@@ -219,10 +220,42 @@ cd frontend && npm test
 
 ---
 
+## ▶️ Running Code
+
+Run (or **Ctrl+Enter**) picks a runner from the file extension. Everything happens in your browser, with what's in the editor, including unsaved changes. Nothing is sent to a server, so viewers can run code too; only editors can save.
+
+| File | Runs as | Runs in |
+|---|---|---|
+| `.py` | Python 3.14 via [Pyodide](https://pyodide.org) | Web Worker |
+| `.js`, `.mjs`, `.cjs` | JavaScript | Web Worker with an opaque origin |
+| `.html`, `.htm` | Live preview of the project | Sandboxed iframe |
+| `.css` | Previews the project's page, if it has one | Sandboxed iframe |
+
+Other languages show a message that they can't run in the browser.
+
+**Limits**
+
+- **Python and JavaScript:** 10 seconds, then the worker is terminated, and 100 KB of output. Both are enforced from the page, where the running code can't interfere.
+- **Python:** the standard library only. Third-party packages such as `numpy` aren't available, and `micropip` is deliberately not included, so nothing is installed at run time. `input()` reads from the Input (stdin) box.
+- **JavaScript:** one file at a time, so no `import` of other project files. `console` output, top-level `await` and timers all work.
+- **Preview:** CSS, JS, `@import` and SVG files are inlined by path from the file tree. Binary images aren't in the code tree, so they can't be shown. ES module imports between project files aren't resolved, so use `<script src>`. Resources on `https://` sites, such as a CDN stylesheet, do load. The page has no time limit; use Close or Reload to end it.
+
+**Why in the browser?**
+
+Running other people's code on a server needs a sandboxing service, API keys and a budget, and a mistake there is a security problem for everyone. In the browser it costs nothing per run, it's limited only by the user's own machine, and the browser's isolation does the hard part:
+
+- **Workers** have no DOM and no `localStorage`, which is where the login token lives. The JavaScript worker also has an opaque origin, so no IndexedDB or same-origin requests.
+- **The preview iframe** has `sandbox="allow-scripts"` and nothing else: an opaque origin, with no access to the app or its storage, and no top navigation, popups or forms.
+
+**Size:** Pyodide adds about 13 MB to the deploy. A user downloads about 6.4 MB (gzipped) the first time they run Python, with a progress bar, and the browser caches it after that. Nothing is downloaded until then.
+
+---
+
 ## 🔑 Key Design Decisions
 
 - **JWT over sessions** — stateless auth, no server-side session storage needed.
-- **One code file per project** (for now) — kept the editor scope focused; multi-file support is a natural extension.
+- **Code runs in the browser, never on a server** — no keys, no per-run costs and no untrusted code on the backend. See [Running code](#-running-code).
+- **Pyodide is self-hosted, like Monaco** — served from our own deploy, so there's no third-party CDN at run time, and it's only downloaded on the first Python run.
 - **Cloudinary over local disk** — production-realistic file storage that survives redeploys.
 - **Cascading deletes** — deleting a project cleans up its tasks, files, messages, and code file automatically via SQLAlchemy relationships.
 - **Environment-variable-driven config** — secrets, database credentials and the frontend URL come only from environment variables, with no hardcoded fallbacks, so the same codebase runs locally, in Docker, and in production without code changes. (Earlier commits did contain hardcoded values; those have been removed and should be treated as rotated.)
@@ -235,7 +268,7 @@ cd frontend && npm test
 - Video meetings are 1:1 and use public STUN only (no TURN server), so calls can fail on strict networks.
 - No database migrations yet (tables are created on startup); schema changes need manual SQL.
 - No automated tests or CI/CD pipeline yet.
-- Single code file per project (no multi-file project support yet).
+- Run executes one file on its own: Python and JavaScript files can't import other project files, and third-party Python packages aren't available.
 - No light theme toggle yet (dark theme only).
 - Not yet implemented: notifications, password reset.
 
