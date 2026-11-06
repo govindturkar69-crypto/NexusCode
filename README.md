@@ -147,7 +147,7 @@ DB_PASSWORD=         # or set DATABASE_URL instead of the DB_* variables
 
 Keep `GITHUB_TOKEN_ENC_KEY` safe and stable: stored GitHub tokens can't be read without it (users would just have to reconnect GitHub).
 
-The rest (`GEMINI_API_KEY`, `CLOUDINARY_*`, `GITHUB_CLIENT_ID/SECRET`, `GITHUB_REDIRECT_URI`, `JUDGE0_API_KEY`) are needed for the AI, file upload, GitHub and code execution features. See `.env.example` for every key.
+The rest (`GEMINI_API_KEY`, `CLOUDINARY_*`, `GITHUB_CLIENT_ID/SECRET`, `GITHUB_REDIRECT_URI`) are needed for the AI, file upload and GitHub features. See `.env.example` for every key.
 
 Run the server:
 

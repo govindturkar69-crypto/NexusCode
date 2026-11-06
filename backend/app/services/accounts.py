@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     ActivityModel,
-    CodeRunModel,
     MessageModel,
     NotificationModel,
     ProjectMemberModel,
@@ -101,7 +100,6 @@ def delete_account(db: Session, user: UserModel) -> list[int]:
     db.query(TaskModel).filter(TaskModel.assignee_id == user.id).update({"assignee_id": None})
     db.query(MessageModel).filter(MessageModel.user_id == user.id).update({"user_id": None})
     db.query(ActivityModel).filter(ActivityModel.user_id == user.id).update({"user_id": None})
-    db.query(CodeRunModel).filter(CodeRunModel.user_id == user.id).update({"user_id": None})
 
     # Last, so a database problem above can't lose files of a project that survives
     for fate in fates:
