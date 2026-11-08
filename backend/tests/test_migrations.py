@@ -463,3 +463,27 @@ def test_0012_gives_existing_users_session_version_zero_and_adds_tokens(scratch_
     _downgrade(scratch_engine, "0011_user_email")
     assert "auth_tokens" not in inspect(scratch_engine).get_table_names()
     assert "token_version" not in {c["name"] for c in inspect(scratch_engine).get_columns("users")}
+
+
+def test_0014_adds_an_empty_agent_runs_table_and_removes_it(scratch_engine):
+    _upgrade(scratch_engine, "0013_oauth_identities")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'h1')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (1, 'P', 1)"))
+    _upgrade(scratch_engine, "0014_agent_runs")
+    with scratch_engine.begin() as conn:
+        assert conn.execute(text("SELECT count(*) FROM agent_runs")).scalar() == 0
+        conn.execute(text("INSERT INTO agent_runs (project_id, user_id, goal, nonce) VALUES (1, 1, 'g', 'n')"))
+        row = conn.execute(text("SELECT status, phase, steps, tokens, failure_streak, changes_accepted FROM agent_runs")).one()
+        assert tuple(row) == ("running", "ready", 0, 0, 0, 0)
+    with scratch_engine.connect() as conn:
+        for sql in (
+            "INSERT INTO agent_runs (project_id, user_id, goal, nonce, status) VALUES (1, 1, 'g', 'n', 'hacked')",
+            "INSERT INTO agent_runs (project_id, user_id, goal, nonce, phase) VALUES (1, 1, 'g', 'n', 'dreaming')",
+        ):
+            with pytest.raises(Exception, match="(?i)check|constraint"):
+                conn.execute(text(sql))
+            conn.rollback()
+    _downgrade(scratch_engine, "0013_oauth_identities")
+    assert "agent_runs" not in inspect(scratch_engine).get_table_names()
+    _upgrade(scratch_engine, "0014_agent_runs")

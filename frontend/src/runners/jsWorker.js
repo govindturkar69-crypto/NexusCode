@@ -1,9 +1,12 @@
+import { blockNetwork } from "./blockNetwork";
+
 // The source of the JavaScript worker. It's loaded from a data: URL, which gives
 // the worker an opaque origin: no IndexedDB, cookies or same-origin requests, on
 // top of what every worker lacks (the page's DOM and localStorage, where the
 // login token lives). That's why this is a self-contained function, not a module.
 
-export function workerMain(maxChars) {
+// blockNetwork is passed in as source text too (see workerSource)
+export function workerMain(maxChars, blockNetwork) {
   const post = self.postMessage.bind(self);
   // User code can't pretend to be the runner
   self.postMessage = undefined;
@@ -181,6 +184,7 @@ export function workerMain(maxChars) {
 
   self.onmessage = async ({ data }) => {
     self.onmessage = null;
+    if (data.offline) blockNetwork(self);
     currentFile = String(data.fileName || "script.js").replace(/[^\w./-]/g, "_");
     post({ type: "started" });
     try {
@@ -203,5 +207,5 @@ export function workerMain(maxChars) {
 }
 
 export function workerSource(maxChars) {
-  return `(${workerMain.toString()})(${Number(maxChars)});`;
+  return `(${workerMain.toString()})(${Number(maxChars)}, ${blockNetwork.toString()});`;
 }

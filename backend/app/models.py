@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     false,
     func,
@@ -78,6 +79,7 @@ class ProjectModel(TimestampMixin, Base):
     members = relationship("ProjectMemberModel", back_populates="project", cascade="all, delete-orphan")
     activity = relationship("ActivityModel", cascade="all, delete-orphan")
     notifications = relationship("NotificationModel", cascade="all, delete-orphan")
+    agent_runs = relationship("AgentRunModel", cascade="all, delete-orphan")
 
 # Lowest to highest; each role can do everything the ones before it can
 PROJECT_ROLES = ("viewer", "editor", "owner")
@@ -239,3 +241,44 @@ class OAuthIdentityModel(Base):
     email = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+
+
+AGENT_STATUSES = ("running", "finished", "stopped", "capped", "stuck", "failed")
+AGENT_PHASES = ("ready", "thinking")
+
+
+class AgentRunModel(Base):
+    """One run of the coding agent: a goal, the conversation with Gemini so far,
+    and the limits it has used. The browser runs the tools; this row is what lets
+    the server enforce the step, token and time caps, and check that tool results
+    answer the calls it actually handed out."""
+
+    __tablename__ = "agent_runs"
+    __table_args__ = (
+        CheckConstraint(f"status IN {AGENT_STATUSES}", name="ck_agent_runs_status"),
+        CheckConstraint(f"phase IN {AGENT_PHASES}", name="ck_agent_runs_phase"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Kept when the user is deleted, so the daily total still counts the run
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    goal = Column(Text, nullable=False)
+    status = Column(String, nullable=False, default="running", server_default="running")
+    phase = Column(String, nullable=False, default="ready", server_default="ready")
+    steps = Column(Integer, nullable=False, default=0, server_default="0")
+    tokens = Column(Integer, nullable=False, default=0, server_default="0")
+    # Marks untrusted text (file contents, program output) in this run's prompts
+    nonce = Column(String, nullable=False)
+    # JSON: the Gemini conversation, and the tool calls waiting for results. Both are
+    # cleared when the run ends.
+    history = Column(Text, nullable=True)
+    pending_calls = Column(Text, nullable=True)
+    failure_hash = Column(String, nullable=True)
+    failure_streak = Column(Integer, nullable=False, default=0, server_default="0")
+    summary = Column(Text, nullable=True)
+    stop_reason = Column(String, nullable=True)
+    changes_accepted = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)

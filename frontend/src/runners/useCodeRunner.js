@@ -13,7 +13,8 @@ function baseName(path) {
  * Runs files one at a time, in this browser, with what's in the editor. Each file
  * keeps its own last output, so switching tabs doesn't lose it or mix it up.
  *
- *   run(file, code, kind, stdin)  starts a run, stopping any earlier one
+ *   run(file, code, kind, stdin, extra)  starts a run, stopping any earlier one.
+ *                                 extra is passed to the runner (Python's project files)
  *   stop()                        ends the current run
  *   clear(fileId)                 forgets a file's output
  *   resultFor(fileId)             { output, outcome }
@@ -32,7 +33,7 @@ export function useCodeRunner() {
   }, []);
 
   const run = useCallback(
-    (file, code, kind, stdin = "") => {
+    (file, code, kind, stdin = "", extra = {}) => {
       current.current?.stop();
       setResult(file.id, { output: [], outcome: null });
       setLoading(null);
@@ -41,6 +42,7 @@ export function useCodeRunner() {
         code,
         fileName: baseName(file.path),
         stdin,
+        ...extra,
         onOutput: (output) => {
           if (current.current !== handle) return;
           setLoading(null);
