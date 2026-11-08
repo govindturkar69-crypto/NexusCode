@@ -23,6 +23,7 @@ from app.routers import (
     account,
     activity,
     admin,
+    agent,
     ai,
     analytics,
     auth,
@@ -112,7 +113,7 @@ async def log_requests(request: Request, call_next):
     access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})
     return response
 
-for module in (auth, account, email, password, oauth, identities, projects, members, tasks, files, code, chat, ai, github, activity, analytics, admin):
+for module in (auth, account, email, password, oauth, identities, agent, projects, members, tasks, files, code, chat, ai, github, activity, analytics, admin):
     app.include_router(module.router)
 
 

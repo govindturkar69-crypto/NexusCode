@@ -47,3 +47,20 @@ export function fakeJwt(payload) {
 }
 
 export const inOneHour = () => Math.floor(Date.now() / 1000) + 3600
+
+export const sseFrame = (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+
+// A streamed (text/event-stream) response made of frames, or an error response.
+// Set frames.hold to keep the stream open after the frames.
+export function sseResponse(frames, { status = 200, json, signal } = {}) {
+  if (status !== 200) return Promise.resolve({ ok: false, status, json: () => Promise.resolve(json) })
+  const encoder = new TextEncoder()
+  const body = new ReadableStream({
+    start(controller) {
+      signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')))
+      frames.forEach((frame) => controller.enqueue(encoder.encode(frame)))
+      if (!frames.hold) controller.close()
+    },
+  })
+  return Promise.resolve({ ok: true, status, body })
+}

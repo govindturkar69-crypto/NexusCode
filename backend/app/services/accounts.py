@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     ActivityModel,
+    AgentRunModel,
     AuthTokenModel,
     MessageModel,
     NotificationModel,
@@ -101,6 +102,10 @@ def delete_account(db: Session, user: UserModel) -> list[int]:
     db.query(NotificationModel).filter(NotificationModel.user_id == user.id).delete()
     db.query(AuthTokenModel).filter(AuthTokenModel.user_id == user.id).delete()
     db.query(OAuthIdentityModel).filter(OAuthIdentityModel.user_id == user.id).delete()
+    # Runs stay, without a user, so today's total quota still counts them
+    db.query(AgentRunModel).filter(AgentRunModel.user_id == user.id).update(
+        {"user_id": None, "history": None, "pending_calls": None}, synchronize_session=False
+    )
     db.query(TaskModel).filter(TaskModel.assignee_id == user.id).update({"assignee_id": None})
     db.query(MessageModel).filter(MessageModel.user_id == user.id).update({"user_id": None})
     db.query(ActivityModel).filter(ActivityModel.user_id == user.id).update({"user_id": None})
