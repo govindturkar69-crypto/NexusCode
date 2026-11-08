@@ -230,3 +230,29 @@ describe('email options on the login page', () => {
   })
 })
 
+
+describe('Continue with Google', () => {
+  it('is hidden until the server offers it', async () => {
+    const fetchMock = stubRoutes({ 'GET /auth/options': [200, { email: false, google: false, github: false }] })
+    renderApp()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: /Continue with/ })).not.toBeInTheDocument()
+  })
+
+  it('shows on sign in and sign up, and shows start errors', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubRoutes({
+      'GET /auth/options': [200, { email: false, google: true, github: false }],
+      'POST /auth/oauth/google/start': [503, { detail: "Signing in with Google isn't set up on this server." }],
+    })
+    renderApp()
+    const button = await screen.findByRole('button', { name: 'Continue with Google' })
+    await user.click(screen.getByRole('button', { name: 'Create an account' }))
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBe(button)
+    await user.click(button)
+    expect(await screen.findByRole('alert')).toHaveTextContent("isn't set up")
+    const start = fetchMock.mock.calls.find(([url]) => url.includes('/auth/oauth/google/start'))
+    expect(JSON.parse(start[1].body)).toMatchObject({ intent: 'login' })
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeEnabled()
+  })
+})

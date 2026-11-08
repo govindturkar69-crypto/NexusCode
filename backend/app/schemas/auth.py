@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_core import PydanticCustomError
@@ -167,4 +168,42 @@ class SessionResponse(BaseModel):
     message: str
     access_token: str
     token_type: str
+
+
+# PKCE (RFC 7636): the verifier is 43-128 of these characters; S256 makes a 43-character challenge
+PKCE_VERIFIER = r"^[A-Za-z0-9._~-]{43,128}$"
+PKCE_CHALLENGE = r"^[A-Za-z0-9_-]{43}$"
+
+
+class OAuthStart(BaseModel):
+    nonce: str = Field(min_length=16, max_length=128)
+    code_challenge: str = Field(pattern=PKCE_CHALLENGE)
+    intent: Literal["login", "link"] = "login"
+
+
+class OAuthStartResponse(BaseModel):
+    url: str
+
+
+class OAuthComplete(BaseModel):
+    provider: Literal["google"]
+    code: str = Field(min_length=1, max_length=2048)
+    state: str = Field(min_length=1, max_length=4096)
+    nonce: str = Field(min_length=16, max_length=128)
+    code_verifier: str = Field(pattern=PKCE_VERIFIER)
+
+
+class OAuthLinkWithPassword(BaseModel):
+    link_token: str = Field(min_length=1, max_length=4096)
+    password: str = Field(max_length=1000)
+
+
+class OAuthResult(BaseModel):
+    # signed_in | created | linked | link_required
+    status: str
+    access_token: str | None = None
+    token_type: str | None = None
+    username: str | None = None
+    provider: str | None = None
+    link_token: str | None = None
 

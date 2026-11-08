@@ -22,12 +22,15 @@ router = APIRouter(tags=["account"])
 
 # 400, not 401: the frontend treats any 401 as an expired session and logs out
 WRONG_PASSWORD = "That password is not correct."
+NO_PASSWORD = "This account signs in with Google or GitHub and has no password yet. Set one in Settings first."
 
 
 # Rate limited like login: a stolen session must not be able to guess the password
 @router.post("/me/password", response_model=SessionResponse)
 @limiter.limit(LOGIN_LIMIT)
 def change_password(request: Request, body: PasswordChange, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    if current_user.hashed_password is None:
+        raise HTTPException(status_code=400, detail=NO_PASSWORD)
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail=WRONG_PASSWORD)
     if body.new_password == body.current_password:
@@ -78,6 +81,8 @@ def deletion_plan(db: Session = Depends(get_db), current_user: UserModel = Depen
 @router.post("/me/delete", status_code=204)
 @limiter.limit(LOGIN_LIMIT)
 def delete_account(request: Request, body: AccountDelete, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    if current_user.hashed_password is None:
+        raise HTTPException(status_code=400, detail=NO_PASSWORD)
     if not verify_password(body.password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail=WRONG_PASSWORD)
     user_id = current_user.id

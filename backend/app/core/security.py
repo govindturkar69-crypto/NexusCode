@@ -36,7 +36,10 @@ OAUTH_STATE_TYPE = "github_oauth_state"
 def hash_password(password: str) -> str:
     return password_hasher.hash(password)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password(plain_password: str, hashed_password: str | None) -> bool:
+    # Accounts made through Google or GitHub have no password: nothing matches it
+    if not hashed_password:
+        return False
     try:
         return password_hasher.verify(plain_password, hashed_password)
     except (ValueError, UnknownHashError):

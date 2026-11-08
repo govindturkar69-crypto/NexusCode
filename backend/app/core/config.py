@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     mail_from_email: str | None = None
     mail_from_name: str = "NexusCode"
 
+    # Sign in with Google (app/services/oauth.py). Off unless all three are set.
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str | None = None
+
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None

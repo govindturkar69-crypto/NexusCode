@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 import { useAuthOptions } from "../auth/useAuthOptions";
+import ProviderButtons from "../components/ProviderButtons";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 
@@ -143,6 +144,10 @@ function Login() {
             </p>
           )}
         </form>
+
+        <div style={{ marginTop: "1rem" }}>
+          <ProviderButtons options={options} returnTo={redirectTo} />
+        </div>
 
         <p className="muted small" style={{ textAlign: "center", marginTop: "1.5rem" }}>
           {isSignup ? "Already have an account? " : "New to NexusCode? "}

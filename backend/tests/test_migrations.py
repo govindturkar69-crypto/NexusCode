@@ -405,3 +405,61 @@ def test_0011_adds_email_to_existing_users_without_changing_them(scratch_engine)
     assert "email" not in {c["name"] for c in inspect(scratch_engine).get_columns("users")}
     _upgrade(scratch_engine, "0011_user_email")
 
+
+
+def test_0013_adds_identities_and_allows_accounts_without_a_password(scratch_engine):
+    _upgrade(scratch_engine, "0012_auth_tokens")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'h1')"))
+    _upgrade(scratch_engine, "0013_oauth_identities")
+    with scratch_engine.begin() as conn:
+        assert conn.execute(text("SELECT hashed_password FROM users WHERE id = 1")).scalar() == "h1"
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (2, 'gina', NULL)"))
+        conn.execute(text("INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (2, 'google', 'g-1')"))
+    with scratch_engine.connect() as conn:
+        for sql in (
+            "INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (1, 'google', 'g-1')",  # taken
+            "INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (2, 'google', 'g-2')",  # one per user
+            "INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (1, 'myspace', 'm-1')",
+        ):
+            with pytest.raises(Exception, match="(?i)unique|check|constraint"):
+                conn.execute(text(sql))
+            conn.rollback()
+        # The same id at a different provider is a different person
+        conn.execute(text("INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (1, 'github', 'g-1')"))
+        conn.commit()
+
+    # Going back would lock out accounts that only have a provider sign-in
+    with pytest.raises(Exception, match="no password"):
+        _downgrade(scratch_engine, "0012_auth_tokens")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("DELETE FROM oauth_identities"))
+        conn.execute(text("DELETE FROM users WHERE id = 2"))
+    _downgrade(scratch_engine, "0012_auth_tokens")
+    assert "oauth_identities" not in inspect(scratch_engine).get_table_names()
+    assert not next(c for c in inspect(scratch_engine).get_columns("users") if c["name"] == "hashed_password")["nullable"]
+    _upgrade(scratch_engine, "0013_oauth_identities")
+
+
+def test_0012_gives_existing_users_session_version_zero_and_adds_tokens(scratch_engine):
+    _upgrade(scratch_engine, "0011_user_email")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'h1')"))
+    _upgrade(scratch_engine, "0012_auth_tokens")
+    with scratch_engine.begin() as conn:
+        assert conn.execute(text("SELECT token_version FROM users WHERE id = 1")).scalar() == 0
+        conn.execute(text(
+            "INSERT INTO auth_tokens (user_id, purpose, token_hash, expires_at, created_at) "
+            "VALUES (1, 'password_reset', 'abc', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ))
+    with scratch_engine.connect() as conn:
+        for purpose, token_hash in (("password_reset", "abc"), ("make_admin", "def")):
+            with pytest.raises(Exception, match="(?i)unique|check|constraint"):
+                conn.execute(text(
+                    "INSERT INTO auth_tokens (user_id, purpose, token_hash, expires_at, created_at) "
+                    f"VALUES (1, '{purpose}', '{token_hash}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ))
+            conn.rollback()
+    _downgrade(scratch_engine, "0011_user_email")
+    assert "auth_tokens" not in inspect(scratch_engine).get_table_names()
+    assert "token_version" not in {c["name"] for c in inspect(scratch_engine).get_columns("users")}

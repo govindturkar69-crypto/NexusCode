@@ -2,9 +2,10 @@ import { StrictMode } from 'react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ForgotPassword, ResetPassword, VerifyEmail } from './AccountPages'
-import { stubRoutes } from '../test/helpers'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { ForgotPassword, OAuthCallback, ResetPassword, VerifyEmail } from './AccountPages'
+import AuthProvider from '../auth/AuthProvider'
+import { fakeJwt, inOneHour, stubRoutes } from '../test/helpers'
 
 function renderPage(page, { strict = false } = {}) {
   const tree = <MemoryRouter>{page}</MemoryRouter>
@@ -108,5 +109,123 @@ describe('VerifyEmail', () => {
     renderPage(<VerifyEmail />)
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('needs the link'))
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('OAuthCallback', () => {
+  const PENDING = 'nexus.oauth.pending'
+  const NEW_TOKEN = fakeJwt({ sub: 'pat', exp: inOneHour() })
+  const savePending = (extra = {}) => sessionStorage.setItem(PENDING, JSON.stringify({ provider: 'google', nonce: 'n'.repeat(43), verifier: 'v'.repeat(64), intent: 'login', returnTo: '/projects/7', startedAt: Date.now(), ...extra }))
+
+  function Where() {
+    const location = useLocation()
+    return <p data-testid="where">{location.pathname} {location.state?.notice ?? ''}</p>
+  }
+
+  function renderCallback({ strict = true } = {}) {
+    const tree = (
+      <MemoryRouter initialEntries={['/oauth/callback']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/oauth/callback" element={<OAuthCallback />} />
+            <Route path="*" element={<Where />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+    return render(strict ? <StrictMode>{tree}</StrictMode> : tree)
+  }
+
+  beforeEach(() => {
+    sessionStorage.clear()
+    localStorage.clear()
+    withFragment('#provider=google&code=the-code&state=the-state')
+  })
+
+  it('finishes with the stored secrets once, even under StrictMode, and signs in', async () => {
+    savePending()
+    const fetchMock = stubRoutes({
+      'POST /auth/oauth/complete': [200, { status: 'created', access_token: NEW_TOKEN, token_type: 'bearer', username: 'pat' }],
+      'GET /me': [200, { username: 'pat' }],
+    })
+    renderCallback()
+    expect(window.location.hash).toBe('')
+    expect(await screen.findByTestId('where')).toHaveTextContent('/projects/7')
+    const completes = fetchMock.mock.calls.filter(([url]) => new URL(url).pathname === '/auth/oauth/complete')
+    expect(completes).toHaveLength(1)
+    expect(JSON.parse(completes[0][1].body)).toEqual({ provider: 'google', code: 'the-code', state: 'the-state', nonce: 'n'.repeat(43), code_verifier: 'v'.repeat(64) })
+    expect(completes[0][1].headers.Authorization).toBeUndefined()
+    expect(localStorage.getItem('token')).toBe(NEW_TOKEN)
+    expect(sessionStorage.getItem(PENDING)).toBeNull()
+  })
+
+  it('sends the session for a link, and goes back to Settings with a notice', async () => {
+    localStorage.setItem('token', fakeJwt({ sub: 'alice', exp: inOneHour() }))
+    savePending({ intent: 'link', returnTo: '/settings' })
+    const fetchMock = stubRoutes({
+      'POST /auth/oauth/complete': [200, { status: 'linked', provider: 'google', token_type: 'bearer' }],
+      'GET /me': [200, { username: 'alice' }],
+    })
+    renderCallback()
+    expect(await screen.findByTestId('where')).toHaveTextContent('/settings Google is now linked to your account.')
+    const call = fetchMock.mock.calls.find(([url]) => new URL(url).pathname === '/auth/oauth/complete')
+    expect(call[1].headers.Authorization).toMatch(/^Bearer /)
+  })
+
+  it('asks for the existing account password instead of joining accounts', async () => {
+    savePending()
+    const fetchMock = stubRoutes({
+      'POST /auth/oauth/complete': [200, { status: 'link_required', provider: 'google', username: 'owner', link_token: 'sealed-link' }],
+      'POST /auth/oauth/link': [[400, { detail: 'That password is not correct.' }], [200, { status: 'linked', access_token: NEW_TOKEN, username: 'owner', provider: 'google' }]],
+      'GET /me': [200, { username: 'owner' }],
+    })
+    renderCallback()
+    expect(await screen.findByText(/already uses this email address/)).toHaveTextContent('owner')
+    expect(localStorage.getItem('token')).toBeNull()
+    await userEvent.type(screen.getByLabelText('Password for owner'), 'wrong')
+    await userEvent.click(screen.getByRole('button', { name: 'Link Google and sign in' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('not correct')
+    await userEvent.clear(screen.getByLabelText('Password for owner'))
+    await userEvent.type(screen.getByLabelText('Password for owner'), 'right-password')
+    await userEvent.click(screen.getByRole('button', { name: 'Link Google and sign in' }))
+    expect(await screen.findByTestId('where')).toHaveTextContent('/projects/7')
+    const links = fetchMock.mock.calls.filter(([url]) => new URL(url).pathname === '/auth/oauth/link')
+    expect(JSON.parse(links[1][1].body)).toEqual({ link_token: 'sealed-link', password: 'right-password' })
+    expect(localStorage.getItem('token')).toBe(NEW_TOKEN)
+  })
+
+  it('refuses a callback this tab did not start', async () => {
+    const fetchMock = stubRoutes({})
+    renderCallback()
+    expect(await screen.findByRole('alert')).toHaveTextContent('started in another tab or has expired')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses secrets saved for another provider', async () => {
+    savePending({ provider: 'github' })
+    const fetchMock = stubRoutes({})
+    renderCallback()
+    expect(await screen.findByRole('alert')).toHaveTextContent('started in another tab')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['#provider=google&error=cancelled', 'was cancelled'],
+    ['#provider=google&error=failed', "couldn't be completed"],
+    ['', "couldn't be completed"],
+  ])('shows problems from the provider (%s)', async (hash, text) => {
+    savePending()
+    withFragment(hash)
+    stubRoutes({})
+    renderCallback()
+    expect(await screen.findByRole('alert')).toHaveTextContent(text)
+  })
+
+  it('shows the server error', async () => {
+    savePending()
+    stubRoutes({ 'POST /auth/oauth/complete': [400, { detail: "Google's sign-in response couldn't be verified." }] })
+    renderCallback()
+    expect(await screen.findByRole('alert')).toHaveTextContent("couldn't be verified")
+    await waitFor(() => expect(localStorage.getItem('token')).toBeNull())
   })
 })

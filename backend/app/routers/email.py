@@ -10,6 +10,7 @@ from app.core.security import verify_password
 from app.models import UserModel
 from app.schemas.auth import AuthOptions, EmailOut, EmailUpdate, MessageResponse
 from app.services import email as email_service
+from app.services import oauth
 
 router = APIRouter(tags=["email"])
 
@@ -28,7 +29,7 @@ def email_out(user: UserModel) -> dict:
 @router.get("/auth/options", response_model=AuthOptions)
 def auth_options():
     """What the login page can offer. Public: it says nothing about any account."""
-    return {"email": email_service.is_configured()}
+    return {"email": email_service.is_configured(), "google": oauth.is_enabled("google"), "github": oauth.is_enabled("github")}
 
 
 @router.get("/me/email", response_model=EmailOut)
