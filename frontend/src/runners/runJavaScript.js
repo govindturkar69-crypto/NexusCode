@@ -17,10 +17,16 @@ function createWorkers() {
   ];
 }
 
+// The agent's runs go through agentJsWorker.js, which has a strict CSP of its own
+// (see vercel.json) and runs the code in the same kind of data: URL worker.
+function createAgentWorkers() {
+  return [() => new Worker(new URL("./agentJsWorker.js", import.meta.url), { type: "module" })];
+}
+
 // offline: no network for the code (the agent's runs)
 export function runJavaScript({ code, fileName, onOutput, offline = false }) {
   return startRun({
-    createWorkers: createWorkers(),
+    createWorkers: offline ? createAgentWorkers() : createWorkers(),
     send: (worker) => worker.postMessage(offline ? { code, fileName, offline } : { code, fileName }),
     onOutput,
   });
