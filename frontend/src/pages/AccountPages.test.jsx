@@ -229,3 +229,27 @@ describe('OAuthCallback', () => {
     await waitFor(() => expect(localStorage.getItem('token')).toBeNull())
   })
 })
+
+describe('OAuthCallback for GitHub', () => {
+  it('finishes a GitHub sign-in the same way', async () => {
+    sessionStorage.setItem('nexus.oauth.pending', JSON.stringify({ provider: 'github', nonce: 'n'.repeat(43), verifier: 'v'.repeat(64), intent: 'login', returnTo: '/projects', startedAt: Date.now() }))
+    window.history.replaceState(null, '', '/oauth/callback#provider=github&code=gh-code&state=gh-state')
+    const fetchMock = stubRoutes({
+      'POST /auth/oauth/complete': [200, { status: 'signed_in', access_token: fakeJwt({ sub: 'octo', exp: inOneHour() }), username: 'octo' }],
+      'GET /me': [200, { username: 'octo' }],
+    })
+    render(
+      <MemoryRouter initialEntries={['/oauth/callback']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/oauth/callback" element={<OAuthCallback />} />
+            <Route path="*" element={<p>landed</p>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+    expect(await screen.findByText('landed')).toBeInTheDocument()
+    const call = fetchMock.mock.calls.find(([url]) => new URL(url).pathname === '/auth/oauth/complete')
+    expect(JSON.parse(call[1].body)).toMatchObject({ provider: 'github', code: 'gh-code', state: 'gh-state' })
+  })
+})

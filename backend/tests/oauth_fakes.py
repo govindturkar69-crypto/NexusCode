@@ -1,8 +1,9 @@
 """
 Stand-ins for the OAuth providers, at their HTTP boundary, that behave like the
 real ones where it matters: Google signs ID tokens with its own RSA key and
-publishes it as a JWKS, codes work once, and PKCE is enforced by checking the
-verifier against the challenge from the authorize request. So our own state,
+publishes it as a JWKS, GitHub answers /user and /user/emails only for the token
+it issued, codes work once, and PKCE is enforced by checking the verifier
+against the challenge from the authorize request. So our own state,
 PKCE and ID-token checks all run for real.
 """
 import base64
@@ -17,6 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 GOOGLE_KID = "test-key-1"
 GOOGLE_CLIENT_ID = "google-client.test"
+GITHUB_LOGIN_CLIENT_ID = "github-login-client.test"
 
 
 def _rsa_key():
@@ -47,6 +49,13 @@ class FakeProviders:
         self.id_token_key = GOOGLE_KEY
         self.id_token_kid = GOOGLE_KID
         self.id_token_alg = "RS256"
+        self.github_user = {"id": 4242, "login": "Octo-Cat", "name": "The Octocat"}
+        self.github_emails = [
+            {"email": "octo@example.com", "primary": True, "verified": True},
+            {"email": "old@example.com", "primary": False, "verified": True},
+        ]
+        self.github_tokens = set()
+        self.github_api_status = 200
         self.jwks_fetches = 0
         self.token_requests = []
         self.down = False
@@ -96,6 +105,14 @@ class FakeProviders:
             if error:
                 return httpx.Response(400, json=error, request=request)
             return httpx.Response(200, json={"id_token": self._id_token(entry["nonce"]), "access_token": "ya29.x"}, request=request)
+        if url.startswith("https://github.com/login/oauth/access_token"):
+            entry, error = self._redeem(data)
+            # Like GitHub: errors come back as 200 with an "error" field
+            if error:
+                return httpx.Response(200, json=error, request=request)
+            token = "gho_" + secrets.token_hex(8)
+            self.github_tokens.add(token)
+            return httpx.Response(200, json={"access_token": token, "token_type": "bearer", "scope": "read:user,user:email"}, request=request)
         return None
 
     def get(self, url, **kwargs):
@@ -103,4 +120,17 @@ class FakeProviders:
         if url.startswith("https://www.googleapis.com/oauth2/v3/certs"):
             self.jwks_fetches += 1
             return httpx.Response(200, json={"keys": [jwk_for(GOOGLE_KEY, GOOGLE_KID)]}, request=request)
+        if url.startswith("https://api.github.com/"):
+            if self.down:
+                raise httpx.ConnectError("down")
+            token = (kwargs.get("headers") or {}).get("Authorization", "").removeprefix("Bearer ")
+            if token not in self.github_tokens:
+                return httpx.Response(401, json={"message": "Bad credentials"}, request=request)
+            if self.github_api_status != 200:
+                return httpx.Response(self.github_api_status, json={"message": "nope"}, request=request)
+            if url == "https://api.github.com/user":
+                return httpx.Response(200, json=self.github_user, request=request)
+            if url == "https://api.github.com/user/emails":
+                return httpx.Response(200, json=self.github_emails, request=request)
+            return httpx.Response(404, json={"message": "Not Found"}, request=request)
         return None

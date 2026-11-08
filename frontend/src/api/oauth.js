@@ -1,6 +1,6 @@
 import { apiFetch } from "./client";
 
-// Signing in with Google (and other providers). This tab makes two secrets, a
+// Signing in with Google or GitHub. This tab makes two secrets, a
 // nonce and a PKCE code verifier, and keeps them in sessionStorage, which belongs
 // to this tab only. The server needs both to finish the sign-in, so a code that
 // leaks on its way back is useless anywhere else.
@@ -11,6 +11,7 @@ const PENDING_MAX_AGE_MS = 10 * 60 * 1000;
 
 export const PROVIDERS = {
   google: { name: "Google" },
+  github: { name: "GitHub" },
 };
 
 function base64url(bytes) {

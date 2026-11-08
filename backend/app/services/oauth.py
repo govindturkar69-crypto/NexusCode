@@ -1,5 +1,5 @@
 """
-Sign in with Google: OAuth 2.0 authorization code flow with PKCE.
+Sign in with Google and GitHub: OAuth 2.0 authorization code flow with PKCE.
 
 The browser tab that starts a sign-in keeps two secrets, a nonce and the PKCE
 code verifier. The provider redirects to our callback, which checks `state`
@@ -39,6 +39,10 @@ GOOGLE_JWKS = "https://www.googleapis.com/oauth2/v3/certs"
 GOOGLE_ISSUERS = ["https://accounts.google.com", "accounts.google.com"]
 JWKS_CACHE_SECONDS = 3600
 
+GITHUB_AUTHORIZE = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN = "https://github.com/login/oauth/access_token"
+GITHUB_API = "https://api.github.com"
+
 
 
 class OAuthError(Exception):
@@ -61,7 +65,8 @@ def _setting(name: str) -> str | None:
 
 def client_config(provider: str) -> tuple[str, str, str] | None:
     """(client id, secret, redirect URI), or None if the provider isn't set up."""
-    prefix = {"google": "google"}.get(provider)
+    # GitHub sign-in has its own OAuth app, separate from the repo-access one
+    prefix = {"google": "google", "github": "github_login"}.get(provider)
     if prefix is None:
         return None
     values = tuple(_setting(f"{prefix}_{part}") for part in ("client_id", "client_secret", "redirect_uri"))
@@ -108,8 +113,12 @@ def authorize_url(provider: str, state: str, code_challenge: str, nonce: str) ->
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
     }
-    params = {**common, "response_type": "code", "scope": "openid email profile", "nonce": nonce_hash(nonce), "prompt": "select_account"}
-    return f"{GOOGLE_AUTHORIZE}?{urlencode(params)}"
+    if provider == "google":
+        params = {**common, "response_type": "code", "scope": "openid email profile", "nonce": nonce_hash(nonce), "prompt": "select_account"}
+        return f"{GOOGLE_AUTHORIZE}?{urlencode(params)}"
+    # Sign-in only: who the user is and their email, nothing about their repositories
+    params = {**common, "scope": "read:user user:email", "allow_signup": "true"}
+    return f"{GITHUB_AUTHORIZE}?{urlencode(params)}"
 
 
 def _post_form(url: str, data: dict) -> dict:
@@ -205,7 +214,46 @@ def _google_profile(code: str, code_verifier: str, expected_nonce_hash: str) -> 
     return Profile("google", str(claims["sub"]), email.lower() if email else None, claims.get("name"))
 
 
+# ---- GitHub ----
+
+def _github_get(path: str, token: str):
+    try:
+        response = httpx.get(
+            f"{GITHUB_API}{path}",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+            timeout=TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as e:
+        raise OAuthError("GitHub couldn't be reached. Please try again.") from e
+    if not response.is_success:
+        raise OAuthError("GitHub didn't confirm who you are. Please try again.")
+    return response.json()
+
+
+def _github_profile(code: str, code_verifier: str, _expected_nonce_hash: str) -> Profile:
+    client_id, client_secret, redirect_uri = client_config("github")
+    tokens = _post_form(GITHUB_TOKEN, {
+        "code": code,
+        "code_verifier": code_verifier,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+    })
+    access_token = tokens.get("access_token")
+    if not access_token:
+        raise OAuthError("GitHub didn't confirm who you are. Please try again.")
+    # The token is only used here, to read who this is; it's never stored
+    user = _github_get("/user", access_token)
+    emails = _github_get("/user/emails", access_token)
+    primary = next((e for e in emails if isinstance(e, dict) and e.get("primary") and e.get("verified")), None)
+    email = primary.get("email") if primary else None
+    if not isinstance(user, dict) or user.get("id") is None:
+        raise OAuthError("GitHub didn't confirm who you are. Please try again.")
+    # The login makes a better username than the display name
+    return Profile("github", str(user["id"]), email.lower() if email else None, user.get("login") or user.get("name"))
+
+
 def fetch_profile(provider: str, code: str, code_verifier: str, expected_nonce_hash: str) -> Profile:
     if not is_enabled(provider):
         raise OAuthError("This sign-in option isn't set up on this server.")
-    return {"google": _google_profile}[provider](code, code_verifier, expected_nonce_hash)
+    return {"google": _google_profile, "github": _github_profile}[provider](code, code_verifier, expected_nonce_hash)

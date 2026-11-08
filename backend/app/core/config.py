@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str | None = None
+    # Sign in with GitHub: its own OAuth app, separate from GITHUB_CLIENT_ID (repo access)
+    github_login_client_id: str | None = None
+    github_login_client_secret: str | None = None
+    github_login_redirect_uri: str | None = None
 
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None

@@ -1,9 +1,10 @@
 """
-Signing in with Google, and linking them to an existing account.
+Signing in with Google or GitHub, and linking them to an existing account.
 
 1. POST /auth/oauth/{provider}/start: the tab sends its nonce's value and the
    PKCE challenge; it gets the provider's URL, with our signed `state`.
-2. The provider sends the browser to GET /auth/{provider}/callback.
+2. The provider sends the browser to GET /auth/{provider}/callback (GitHub's is
+   /auth/github/login/callback, separate from the repo-access "Connect GitHub").
    We check `state` and pass the code to the frontend in the URL fragment.
 3. POST /auth/oauth/complete: the tab sends the code, its nonce and the PKCE
    verifier. Only then is the code exchanged.
@@ -44,7 +45,7 @@ from app.services import oauth
 logger = logging.getLogger("nexuscode")
 router = APIRouter(tags=["oauth"])
 
-PROVIDER_NAMES = {"google": "Google"}
+PROVIDER_NAMES = {"google": "Google", "github": "GitHub"}
 LINK_TOKEN_SECONDS = 10 * 60
 FAILED = "That sign-in couldn't be completed. Please start again."
 
@@ -84,6 +85,12 @@ def _callback(provider: str, code: str | None, state: str | None, error: str | N
 @router.get("/auth/google/callback")
 def google_callback(code: str | None = None, state: str | None = None, error: str | None = None):
     return _callback("google", code, state, error)
+
+
+# Separate from /auth/github/callback, which is the repo-access "Connect GitHub" flow
+@router.get("/auth/github/login/callback")
+def github_login_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    return _callback("github", code, state, error)
 
 
 USERNAME_CHARS = re.compile(r"[^a-z0-9_]+")

@@ -186,7 +186,7 @@ class OAuthStartResponse(BaseModel):
 
 
 class OAuthComplete(BaseModel):
-    provider: Literal["google"]
+    provider: Literal["google", "github"]
     code: str = Field(min_length=1, max_length=2048)
     state: str = Field(min_length=1, max_length=4096)
     nonce: str = Field(min_length=16, max_length=128)

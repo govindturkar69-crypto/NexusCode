@@ -256,3 +256,28 @@ describe('Continue with Google', () => {
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeEnabled()
   })
 })
+
+describe('Continue with GitHub', () => {
+  it('shows only the providers the server offers, in a fixed order', async () => {
+    stubRoutes({ 'GET /auth/options': [200, { email: false, google: true, github: true }] })
+    renderApp()
+    await screen.findByRole('button', { name: 'Continue with GitHub' })
+    const names = screen.getAllByRole('button', { name: /^Continue with/ }).map((b) => b.textContent)
+    expect(names).toEqual(['Continue with Google', 'Continue with GitHub'])
+  })
+
+  it('starts the GitHub sign-in, not the repo connection', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubRoutes({
+      'GET /auth/options': [200, { email: false, google: false, github: true }],
+      'POST /auth/oauth/github/start': [500, { detail: 'boom' }],
+    })
+    renderApp()
+    expect(screen.queryByRole('button', { name: 'Continue with Google' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Continue with GitHub' }))
+    await screen.findByRole('alert')
+    const paths = fetchMock.mock.calls.map(([url]) => new URL(url).pathname)
+    expect(paths).toContain('/auth/oauth/github/start')
+    expect(paths).not.toContain('/auth/github/start')
+  })
+})
