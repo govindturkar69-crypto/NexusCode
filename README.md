@@ -19,7 +19,7 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 
 | Feature | Description |
 |---|---|
-| 🔐 **Secure Authentication** | Sign-up and login screens, JWT auth with bcrypt password hashing, protected routes |
+| 🔐 **Secure Authentication** | Username and password, or sign in with Google or GitHub (OAuth with PKCE). Password reset and email verification by email, and signing out other devices. JWT auth with bcrypt password hashing, protected routes |
 | 👤 **Private Workspaces** | Each project belongs to one user; projects can't be shared with teammates yet |
 | 📈 **Project Management (Kanban)** | Drag-and-drop task board (`@hello-pangea/dnd`) with live status sync |
 | 💻 **Online Code Editor** | Monaco Editor (the engine behind VS Code) with a file tree, tabs, per-file auto-save and language from the file extension |
@@ -148,7 +148,7 @@ DB_PASSWORD=         # or set DATABASE_URL instead of the DB_* variables
 
 Keep `GITHUB_TOKEN_ENC_KEY` safe and stable: stored GitHub tokens can't be read without it (users would just have to reconnect GitHub).
 
-The rest (`GEMINI_API_KEY`, `CLOUDINARY_*`, `GITHUB_CLIENT_ID/SECRET`, `GITHUB_REDIRECT_URI`) are needed for the AI, file upload and GitHub features. See `.env.example` for every key.
+The rest (`GEMINI_API_KEY`, `CLOUDINARY_*`, `GITHUB_CLIENT_ID/SECRET`, `GITHUB_REDIRECT_URI`) are needed for the AI, file upload and GitHub features. See `.env.example` for every key. For email and for signing in with Google or GitHub, see [below](#email-google-and-github-sign-in-optional).
 
 Run the server:
 
@@ -157,6 +157,40 @@ uvicorn main:app --reload
 ```
 
 API docs available at `http://127.0.0.1:8000/docs`.
+
+### Email, Google and GitHub sign-in (optional)
+
+Each of these is off until its variables are set. Login and Settings only show what the server has set up (`GET /auth/options`), so nothing breaks when a key is missing.
+
+**Email (Resend):** used for password reset, email verification and a test email in Settings.
+
+1. Create an API key at [resend.com/api-keys](https://resend.com/api-keys) and set `RESEND_API_KEY`.
+2. Set `MAIL_FROM_EMAIL` and optionally `MAIL_FROM_NAME` (default `NexusCode`).
+   - **No domain yet:** use `MAIL_FROM_EMAIL=onboarding@resend.dev`. Resend then only delivers to the email address of your own Resend account. Settings and the server log say that sending is restricted, and sending to anyone else shows a clear error instead of failing silently.
+   - **To email everyone:** verify a domain at [resend.com/domains](https://resend.com/domains) and send from an address on it, such as `no-reply@yourdomain.com`.
+
+Reset links last 30 minutes and verification links 24 hours. Each works once, and only its hash is stored. Resetting or changing a password signs out every other session.
+
+**Sign in with Google**
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), choose or create a project. Under **APIs & Services > OAuth consent screen**, set it up as **External** with the scopes `openid`, `email` and `profile`. While its status is **Testing**, only the test users you add can sign in. Publish the app to open it to everyone.
+2. Under **APIs & Services > Credentials**, choose **Create credentials > OAuth client ID > Web application**, and add these **Authorized redirect URIs**:
+   - `http://localhost:8000/auth/google/callback`
+   - `https://nexuscode-backend-wbt4.onrender.com/auth/google/callback`
+3. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI`, the last one being the redirect URI for that environment.
+
+**Sign in with GitHub:** this is a separate OAuth app from the repo-access `GITHUB_CLIENT_ID` app above. It asks only for `read:user` and `user:email`.
+
+1. At [github.com/settings/developers](https://github.com/settings/developers), choose **OAuth Apps > New OAuth App**. A GitHub OAuth app has a single callback URL, so make one app for local development and another for production:
+   - Local: homepage `http://localhost:5173`, callback `http://localhost:8000/auth/github/login/callback`
+   - Production: homepage `https://nexus-code-chi.vercel.app`, callback `https://nexuscode-backend-wbt4.onrender.com/auth/github/login/callback`
+2. Generate a client secret, then set `GITHUB_LOGIN_CLIENT_ID`, `GITHUB_LOGIN_CLIENT_SECRET` and `GITHUB_LOGIN_REDIRECT_URI` (that environment's callback).
+
+**How the accounts fit together**
+
+- The first sign-in with a provider creates an account with a generated username and no password. It can add a password in Settings.
+- A provider is never joined to an existing account automatically. If its verified email matches an account with a verified email, the user has to enter that account's password. A provider can also be linked from Settings while signed in.
+- Settings lists the linked providers. You can unlink any of them, but never the last way into the account.
 
 ### Frontend
 
@@ -270,7 +304,7 @@ Running other people's code on a server needs a sandboxing service, API keys and
 - No automated tests or CI/CD pipeline yet.
 - Run executes one file on its own: Python and JavaScript files can't import other project files, and third-party Python packages aren't available.
 - No light theme toggle yet (dark theme only).
-- Not yet implemented: notifications, password reset.
+- Email can only reach your own address until a domain is verified at Resend (see [setup](#email-google-and-github-sign-in-optional)).
 
 ---
 

@@ -471,3 +471,29 @@ def test_responses_never_include_provider_tokens(client, google):
     r = sign_in(client, google)
     assert "ya29" not in r.text and "id_token" not in r.text
     assert json.dumps(r.json())
+
+
+# ---- with the rest of the account system ----
+
+def test_a_google_only_account_can_reset_its_way_to_a_password(client, fake_resend, google):
+    data = sign_in(client, google).json()
+    old_session = data["access_token"]
+    client.post("/auth/password-reset/request", json={"email": "pat@example.com"})
+    text = fake_resend["sent"][-1]["json"]["text"]
+    token = text.split("/reset-password#token=")[1].split()[0]
+    assert client.post("/auth/password-reset/confirm", json={"token": token, "new_password": "pat-password-1"}).status_code == 200
+    assert client.post("/login", data={"username": "pat", "password": "pat-password-1"}).status_code == 200
+    # The reset ended the Google session too
+    assert client.get("/me", headers=auth(old_session)).status_code == 401
+    # And Google still signs in
+    assert sign_in(client, google).json()["status"] == "signed_in"
+
+
+def test_a_link_cannot_be_finished_by_a_session_that_has_ended(client, google, make_user):
+    alice = make_user("alice")
+    r, verifier = start(client, intent="link", headers=auth(alice))
+    fragment = through_google(client, google, r)
+    client.post("/me/sessions/revoke", headers=auth(alice))
+    assert complete(client, fragment, verifier, headers=auth(alice)).status_code == 401
+    with SessionLocal() as db:
+        assert db.query(OAuthIdentityModel).count() == 0
