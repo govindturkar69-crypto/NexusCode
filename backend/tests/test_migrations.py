@@ -336,10 +336,10 @@ def test_0009_adds_and_removes_code_runs(scratch_engine):
     assert "code_runs" not in inspect(scratch_engine).get_table_names()
 
 
-def test_history_has_a_single_head_ending_in_0010():
+def test_history_has_a_single_head():
     from alembic.script import ScriptDirectory
 
-    assert ScriptDirectory.from_config(alembic_config()).get_heads() == ["0010_drop_code_runs"]
+    assert len(ScriptDirectory.from_config(alembic_config()).get_heads()) == 1
 
 
 def _downgrade(eng, revision):
@@ -357,7 +357,7 @@ def test_0010_drops_code_runs_from_a_database_already_at_0009(scratch_engine):
         conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (10, 'a', 1)"))
         conn.execute(text("INSERT INTO code_files (project_id, path, language, content) VALUES (10, 'a.py', 'python', 'kept')"))
         conn.execute(text("INSERT INTO code_runs (project_id, user_id) VALUES (10, 1)"))
-    _upgrade(scratch_engine)
+    _upgrade(scratch_engine, "0010_drop_code_runs")
     assert _version(scratch_engine) == "0010_drop_code_runs"
     assert "code_runs" not in inspect(scratch_engine).get_table_names()
     with scratch_engine.connect() as conn:
@@ -367,13 +367,13 @@ def test_0010_drops_code_runs_from_a_database_already_at_0009(scratch_engine):
 def test_0010_works_from_a_database_that_never_had_0009(scratch_engine):
     _upgrade(scratch_engine, "0008_multi_file_code")
     assert "code_runs" not in inspect(scratch_engine).get_table_names()
-    _upgrade(scratch_engine)
+    _upgrade(scratch_engine, "0010_drop_code_runs")
     assert _version(scratch_engine) == "0010_drop_code_runs"
     assert "code_runs" not in inspect(scratch_engine).get_table_names()
 
 
 def test_0010_downgrade_recreates_the_empty_table(scratch_engine):
-    _upgrade(scratch_engine)
+    _upgrade(scratch_engine, "0010_drop_code_runs")
     _downgrade(scratch_engine, "0009_code_runs")
     assert _version(scratch_engine) == "0009_code_runs"
     with scratch_engine.connect() as conn:
@@ -383,3 +383,83 @@ def test_0010_downgrade_recreates_the_empty_table(scratch_engine):
     _upgrade(scratch_engine)
     assert "code_runs" not in inspect(scratch_engine).get_table_names()
 
+
+def test_0011_adds_email_to_existing_users_without_changing_them(scratch_engine):
+    _upgrade(scratch_engine, "0010_drop_code_runs")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'h1'), (2, 'bob', 'h2')"))
+    _upgrade(scratch_engine, "0011_user_email")
+    with scratch_engine.connect() as conn:
+        rows = conn.execute(text("SELECT username, hashed_password, email, email_verified FROM users ORDER BY id")).all()
+        assert [tuple(r) for r in rows] == [("alice", "h1", None, False), ("bob", "h2", None, False)]
+    with scratch_engine.begin() as conn:
+        conn.execute(text("UPDATE users SET email = 'a@x.test' WHERE id = 1"))
+    with scratch_engine.connect() as conn:
+        with pytest.raises(Exception, match="(?i)unique"):
+            conn.execute(text("UPDATE users SET email = 'a@x.test' WHERE id = 2"))
+        conn.rollback()
+        with pytest.raises(Exception, match="(?i)check|constraint"):
+            conn.execute(text("UPDATE users SET email = 'B@x.test' WHERE id = 2"))
+        conn.rollback()
+    _downgrade(scratch_engine, "0010_drop_code_runs")
+    assert "email" not in {c["name"] for c in inspect(scratch_engine).get_columns("users")}
+    _upgrade(scratch_engine, "0011_user_email")
+
+
+
+def test_0013_adds_identities_and_allows_accounts_without_a_password(scratch_engine):
+    _upgrade(scratch_engine, "0012_auth_tokens")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'h1')"))
+    _upgrade(scratch_engine, "0013_oauth_identities")
+    with scratch_engine.begin() as conn:
+        assert conn.execute(text("SELECT hashed_password FROM users WHERE id = 1")).scalar() == "h1"
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (2, 'gina', NULL)"))
+        conn.execute(text("INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (2, 'google', 'g-1')"))
+    with scratch_engine.connect() as conn:
+        for sql in (
+            "INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (1, 'google', 'g-1')",  # taken
+            "INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (2, 'google', 'g-2')",  # one per user
+            "INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (1, 'myspace', 'm-1')",
+        ):
+            with pytest.raises(Exception, match="(?i)unique|check|constraint"):
+                conn.execute(text(sql))
+            conn.rollback()
+        # The same id at a different provider is a different person
+        conn.execute(text("INSERT INTO oauth_identities (user_id, provider, provider_user_id) VALUES (1, 'github', 'g-1')"))
+        conn.commit()
+
+    # Going back would lock out accounts that only have a provider sign-in
+    with pytest.raises(Exception, match="no password"):
+        _downgrade(scratch_engine, "0012_auth_tokens")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("DELETE FROM oauth_identities"))
+        conn.execute(text("DELETE FROM users WHERE id = 2"))
+    _downgrade(scratch_engine, "0012_auth_tokens")
+    assert "oauth_identities" not in inspect(scratch_engine).get_table_names()
+    assert not next(c for c in inspect(scratch_engine).get_columns("users") if c["name"] == "hashed_password")["nullable"]
+    _upgrade(scratch_engine, "0013_oauth_identities")
+
+
+def test_0012_gives_existing_users_session_version_zero_and_adds_tokens(scratch_engine):
+    _upgrade(scratch_engine, "0011_user_email")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'h1')"))
+    _upgrade(scratch_engine, "0012_auth_tokens")
+    with scratch_engine.begin() as conn:
+        assert conn.execute(text("SELECT token_version FROM users WHERE id = 1")).scalar() == 0
+        conn.execute(text(
+            "INSERT INTO auth_tokens (user_id, purpose, token_hash, expires_at, created_at) "
+            "VALUES (1, 'password_reset', 'abc', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ))
+    with scratch_engine.connect() as conn:
+        for purpose, token_hash in (("password_reset", "abc"), ("make_admin", "def")):
+            with pytest.raises(Exception, match="(?i)unique|check|constraint"):
+                conn.execute(text(
+                    "INSERT INTO auth_tokens (user_id, purpose, token_hash, expires_at, created_at) "
+                    f"VALUES (1, '{purpose}', '{token_hash}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ))
+            conn.rollback()
+    _downgrade(scratch_engine, "0011_user_email")
+    assert "auth_tokens" not in inspect(scratch_engine).get_table_names()
+    assert "token_version" not in {c["name"] for c in inspect(scratch_engine).get_columns("users")}

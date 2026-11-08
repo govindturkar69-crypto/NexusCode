@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/useAuth";
+import { useAuthOptions } from "../auth/useAuthOptions";
+import ProviderButtons from "../components/ProviderButtons";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 
@@ -19,6 +21,8 @@ function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const options = useAuthOptions();
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
@@ -70,7 +74,7 @@ function Login() {
 
     setSubmitting(true);
     const request = isSignup
-      ? apiFetch("/signup", { method: "POST", body: { username, password }, auth: false }).then(logIn)
+      ? apiFetch("/signup", { method: "POST", body: email.trim() ? { username, password, email } : { username, password }, auth: false }).then(logIn)
       : logIn();
 
     request
@@ -107,6 +111,17 @@ function Login() {
             onChange={(e) => setPassword(e.target.value)}
             hint={isSignup ? "At least 8 characters" : undefined}
           />
+          {isSignup && options.email && (
+            <Input
+              label="Email (optional)"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              hint="For password reset. We'll send a link to confirm it."
+            />
+          )}
           {isSignup && (
             <Input
               label="Confirm password"
@@ -123,7 +138,16 @@ function Login() {
           <Button type="submit" block disabled={submitting}>
             {submitting ? copy.busy : copy.submit}
           </Button>
+          {!isSignup && options.email && (
+            <p className="small" style={{ textAlign: "center", margin: 0 }}>
+              <Link to="/forgot-password" className="btn btn--link">Forgot password?</Link>
+            </p>
+          )}
         </form>
+
+        <div style={{ marginTop: "1rem" }}>
+          <ProviderButtons options={options} returnTo={redirectTo} />
+        </div>
 
         <p className="muted small" style={{ textAlign: "center", marginTop: "1.5rem" }}>
           {isSignup ? "Already have an account? " : "New to NexusCode? "}

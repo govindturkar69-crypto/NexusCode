@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import Login from './Login'
 import AuthProvider from '../auth/AuthProvider'
 import ProtectedRoute from '../components/ProtectedRoute'
 import { useAuth } from '../auth/useAuth'
-import { fakeJwt, inOneHour, stubFetch } from '../test/helpers'
+import { fakeJwt, inOneHour, stubFetch, stubRoutes } from '../test/helpers'
+
+// The first request Login makes: what the server offers
+const OPTIONS = [200, { email: false, google: false, github: false }]
 
 function WhereAmI() {
   const location = useLocation()
@@ -42,7 +45,7 @@ async function fillSignIn(user, username, password) {
 
 describe('sign in', () => {
   it('logs in, stores the token, loads /me and goes to /projects', async () => {
-    const fetchMock = stubFetch([200, { access_token: token(), token_type: 'bearer' }], [200, { id: 1, username: 'alice', is_admin: false }])
+    const fetchMock = stubFetch(OPTIONS, [200, { access_token: token(), token_type: 'bearer' }], [200, { id: 1, username: 'alice', is_admin: false }])
     const user = userEvent.setup()
     renderApp()
     await fillSignIn(user, 'alice', 'correct-horse-1')
@@ -51,13 +54,14 @@ describe('sign in', () => {
     expect(await screen.findByTestId('path')).toHaveTextContent('/projects')
     expect(await screen.findByTestId('user')).toHaveTextContent('alice')
     expect(localStorage.getItem('token')).toBeTruthy()
-    const [loginUrl, loginInit] = fetchMock.mock.calls[0]
+    // Request 0 is the options lookup
+    const [loginUrl, loginInit] = fetchMock.mock.calls[1]
     expect(loginUrl).toBe('http://api.test/login')
     expect(loginInit.body.toString()).toBe('username=alice&password=correct-horse-1')
   })
 
   it('shows a friendly message on wrong credentials and stays put', async () => {
-    stubFetch([401, { detail: 'Incorrect username or password' }])
+    stubFetch(OPTIONS, [401, { detail: 'Incorrect username or password' }])
     const user = userEvent.setup()
     renderApp()
     await fillSignIn(user, 'alice', 'nope-nope-1')
@@ -67,7 +71,7 @@ describe('sign in', () => {
   })
 
   it('shows server/network errors as-is', async () => {
-    stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    stubFetch(OPTIONS, () => Promise.reject(new TypeError('Failed to fetch')))
     const user = userEvent.setup()
     renderApp()
     await fillSignIn(user, 'alice', 'whatever-1')
@@ -76,7 +80,7 @@ describe('sign in', () => {
   })
 
   it('returns to the page the user originally asked for', async () => {
-    stubFetch([200, { access_token: token() }], [200, { id: 1, username: 'alice' }])
+    stubFetch(OPTIONS, [200, { access_token: token() }], [200, { id: 1, username: 'alice' }])
     const user = userEvent.setup()
     renderApp('/dashboard')
     // ProtectedRoute bounced us to the login form
@@ -130,16 +134,18 @@ describe('create account', () => {
     ['alice', '€'.repeat(25), '€'.repeat(25), 'Password must be between 8 and 72 bytes'],
     ['alice', 'correct-horse-1', 'correct-horse-2', "Passwords don't match"],
   ])('validates %s / %s before calling the API', async (username, password, confirm, message) => {
-    const fetchMock = stubFetch()
+    const fetchMock = stubFetch(OPTIONS)
     const user = userEvent.setup()
     await openSignup(user)
     await fillSignup(user, username, password, confirm)
     expect(screen.getByRole('alert')).toHaveTextContent(message)
-    expect(fetchMock).not.toHaveBeenCalled()
+    // Only the options lookup: nothing was sent for the account
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['http://api.test/auth/options'])
   })
 
   it('creates the account, then signs straight in', async () => {
     const fetchMock = stubFetch(
+      OPTIONS,
       [201, { message: 'User created successfully', username: 'new_user' }],
       [200, { access_token: token() }],
       [200, { id: 2, username: 'new_user' }],
@@ -149,14 +155,14 @@ describe('create account', () => {
     await fillSignup(user, 'new_user', 'correct-horse-1')
 
     expect(await screen.findByTestId('path')).toHaveTextContent('/projects')
-    const [signupUrl, signupInit] = fetchMock.mock.calls[0]
+    const [signupUrl, signupInit] = fetchMock.mock.calls[1]
     expect(signupUrl).toBe('http://api.test/signup')
     expect(JSON.parse(signupInit.body)).toEqual({ username: 'new_user', password: 'correct-horse-1' })
-    expect(fetchMock.mock.calls[1][0]).toBe('http://api.test/login')
+    expect(fetchMock.mock.calls[2][0]).toBe('http://api.test/login')
   })
 
   it('shows the 409 message for a taken username', async () => {
-    stubFetch([409, { detail: 'Username already taken' }])
+    stubFetch(OPTIONS, [409, { detail: 'Username already taken' }])
     const user = userEvent.setup()
     await openSignup(user)
     await fillSignup(user, 'alice', 'correct-horse-1')
@@ -169,5 +175,109 @@ describe('create account', () => {
     await openSignup(user)
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(screen.queryByLabelText('Confirm password')).not.toBeInTheDocument()
+  })
+})
+
+describe('email options on the login page', () => {
+  function renderLogin(email) {
+    const fetchMock = stubRoutes({
+      'GET /auth/options': [200, { email, google: false, github: false }],
+      'POST /signup': [201, { message: 'ok', username: 'newbie' }],
+      'POST /login': [200, { access_token: token(), token_type: 'bearer' }],
+      'GET /me': [200, { id: 1, username: 'newbie', is_admin: false }],
+    })
+    renderApp()
+    return fetchMock
+  }
+
+  it('offers Forgot password only when email works', async () => {
+    renderLogin(true)
+    expect(await screen.findByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password')
+  })
+
+  it('hides it when email is off', async () => {
+    const fetchMock = renderLogin(false)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(screen.queryByRole('link', { name: 'Forgot password?' })).not.toBeInTheDocument()
+  })
+
+  it('sign-up sends the optional email when given', async () => {
+    const user = userEvent.setup()
+    const fetchMock = renderLogin(true)
+    await user.click(screen.getByRole('button', { name: 'Create an account' }))
+    await user.type(await screen.findByLabelText('Email (optional)'), 'me@example.com')
+    await user.type(screen.getByLabelText('Username'), 'newbie')
+    await user.type(screen.getByLabelText('Password'), 'long-enough-1')
+    await user.type(screen.getByLabelText('Confirm password'), 'long-enough-1')
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('/signup'))).toBe(true))
+    const signup = fetchMock.mock.calls.find(([url]) => url.includes('/signup'))
+    expect(JSON.parse(signup[1].body)).toEqual({ username: 'newbie', password: 'long-enough-1', email: 'me@example.com' })
+  })
+
+  it('sign-up leaves email out when empty, or when email is off', async () => {
+    const user = userEvent.setup()
+    const fetchMock = renderLogin(false)
+    await user.click(screen.getByRole('button', { name: 'Create an account' }))
+    expect(screen.queryByLabelText('Email (optional)')).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('Username'), 'newbie')
+    await user.type(screen.getByLabelText('Password'), 'long-enough-1')
+    await user.type(screen.getByLabelText('Confirm password'), 'long-enough-1')
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('/signup'))).toBe(true))
+    const signup = fetchMock.mock.calls.find(([url]) => url.includes('/signup'))
+    expect(JSON.parse(signup[1].body)).toEqual({ username: 'newbie', password: 'long-enough-1' })
+  })
+})
+
+
+describe('Continue with Google', () => {
+  it('is hidden until the server offers it', async () => {
+    const fetchMock = stubRoutes({ 'GET /auth/options': [200, { email: false, google: false, github: false }] })
+    renderApp()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: /Continue with/ })).not.toBeInTheDocument()
+  })
+
+  it('shows on sign in and sign up, and shows start errors', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubRoutes({
+      'GET /auth/options': [200, { email: false, google: true, github: false }],
+      'POST /auth/oauth/google/start': [503, { detail: "Signing in with Google isn't set up on this server." }],
+    })
+    renderApp()
+    const button = await screen.findByRole('button', { name: 'Continue with Google' })
+    await user.click(screen.getByRole('button', { name: 'Create an account' }))
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBe(button)
+    await user.click(button)
+    expect(await screen.findByRole('alert')).toHaveTextContent("isn't set up")
+    const start = fetchMock.mock.calls.find(([url]) => url.includes('/auth/oauth/google/start'))
+    expect(JSON.parse(start[1].body)).toMatchObject({ intent: 'login' })
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeEnabled()
+  })
+})
+
+describe('Continue with GitHub', () => {
+  it('shows only the providers the server offers, in a fixed order', async () => {
+    stubRoutes({ 'GET /auth/options': [200, { email: false, google: true, github: true }] })
+    renderApp()
+    await screen.findByRole('button', { name: 'Continue with GitHub' })
+    const names = screen.getAllByRole('button', { name: /^Continue with/ }).map((b) => b.textContent)
+    expect(names).toEqual(['Continue with Google', 'Continue with GitHub'])
+  })
+
+  it('starts the GitHub sign-in, not the repo connection', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubRoutes({
+      'GET /auth/options': [200, { email: false, google: false, github: true }],
+      'POST /auth/oauth/github/start': [500, { detail: 'boom' }],
+    })
+    renderApp()
+    expect(screen.queryByRole('button', { name: 'Continue with Google' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Continue with GitHub' }))
+    await screen.findByRole('alert')
+    const paths = fetchMock.mock.calls.map(([url]) => new URL(url).pathname)
+    expect(paths).toContain('/auth/oauth/github/start')
+    expect(paths).not.toContain('/auth/github/start')
   })
 })

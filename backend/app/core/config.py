@@ -32,6 +32,20 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
 
+    # Email (app/services/email.py). Off unless both of the first two are set.
+    resend_api_key: str | None = None
+    mail_from_email: str | None = None
+    mail_from_name: str = "NexusCode"
+
+    # Sign in with Google (app/services/oauth.py). Off unless all three are set.
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str | None = None
+    # Sign in with GitHub: its own OAuth app, separate from GITHUB_CLIENT_ID (repo access)
+    github_login_client_id: str | None = None
+    github_login_client_secret: str | None = None
+    github_login_redirect_uri: str | None = None
+
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None

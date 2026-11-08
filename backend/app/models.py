@@ -41,10 +41,20 @@ class TimestampMixin:
 
 class UserModel(TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_users_email"),
+        # Stored lowercased, which makes the unique constraint case-insensitive
+        CheckConstraint("email = lower(email)", name="ck_users_email_lowercase"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    # None for accounts made through Google or GitHub, until they set a password
+    hashed_password = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    email_verified = Column(Boolean, nullable=False, default=False, server_default=false())
+    # In every login token; raising it ends all existing sessions
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
     # Encrypted at rest; existing plaintext rows are encrypted by migration 0004
     github_token = Column(EncryptedString, nullable=True)
     is_admin = Column(Boolean, default=False)
@@ -190,3 +200,42 @@ class CodeFileModel(TimestampMixin, Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
 
     project = relationship("ProjectModel", back_populates="code_files")
+
+class AuthTokenModel(Base):
+    """Single-use password reset and email verification tokens. Only the hash is stored."""
+
+    __tablename__ = "auth_tokens"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_auth_tokens_token_hash"),
+        CheckConstraint("purpose IN ('password_reset', 'verify_email')", name="ck_auth_tokens_purpose"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    purpose = Column(String, nullable=False)
+    token_hash = Column(String, nullable=False)
+    # The address the token was sent to
+    email = Column(String, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class OAuthIdentityModel(Base):
+    """A Google or GitHub account that can sign in to a NexusCode account."""
+
+    __tablename__ = "oauth_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_oauth_identities_provider_user"),
+        # One account per provider per user
+        UniqueConstraint("user_id", "provider", name="uq_oauth_identities_user_provider"),
+        CheckConstraint("provider IN ('google', 'github')", name="ck_oauth_identities_provider"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String, nullable=False)
+    provider_user_id = Column(String, nullable=False)
+    # The verified email the provider gave, for showing in Settings
+    email = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+

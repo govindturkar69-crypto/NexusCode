@@ -28,18 +28,24 @@ from app.routers import (
     auth,
     chat,
     code,
+    email,
     files,
     github,
+    identities,
     members,
+    oauth,
+    password,
     projects,
     tasks,
 )
+from app.services import email as email_service
 from app.services.storage import MAX_UPLOAD_BYTES
 
 configure_logging(settings.log_level, settings.log_format)
 SENTRY_ENABLED = init_sentry(settings.sentry_dsn, settings.sentry_environment, settings.sentry_traces_sample_rate)
 
 logger = logging.getLogger("nexuscode")
+email_service.log_configuration()
 access_logger = logging.getLogger("nexuscode.access")
 
 app = FastAPI(title="NexusCode API")
@@ -106,7 +112,7 @@ async def log_requests(request: Request, call_next):
     access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})
     return response
 
-for module in (auth, account, projects, members, tasks, files, code, chat, ai, github, activity, analytics, admin):
+for module in (auth, account, email, password, oauth, identities, projects, members, tasks, files, code, chat, ai, github, activity, analytics, admin):
     app.include_router(module.router)
 
 
