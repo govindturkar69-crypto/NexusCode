@@ -1,9 +1,20 @@
 import re
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_core import PydanticCustomError
 
 USERNAME_PATTERN = re.compile(r"^[a-z0-9_]{3,30}$")
+
+
+EMAIL_PATTERN = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]+$")
+
+
+def normalize_email(value: str) -> str:
+    """Trimmed and lowercased, so one address can't belong to two accounts."""
+    email = value.strip().lower()
+    if len(email) > 254 or not EMAIL_PATTERN.fullmatch(email) or ".." in email.split("@")[1]:
+        raise PydanticCustomError("email_invalid", "Enter a valid email address.")
+    return email
 
 
 def _check_new_password(value: str) -> str:
@@ -17,6 +28,13 @@ def _check_new_password(value: str) -> str:
 class UserCreate(BaseModel):
     username: str
     password: str
+    # Optional: email can be off on a server, and accounts work without one
+    email: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str | None) -> str | None:
+        return None if value is None or not value.strip() else normalize_email(value)
 
     # PydanticCustomError keeps the message clean (no "Value error, " prefix)
     # so the frontend can show it as-is.
@@ -92,17 +110,6 @@ class DeletionPlan(BaseModel):
     left: list[PlannedProject]
 
 
-EMAIL_PATTERN = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]+$")
-
-
-def normalize_email(value: str) -> str:
-    """Trimmed and lowercased, so one address can't belong to two accounts."""
-    email = value.strip().lower()
-    if len(email) > 254 or not EMAIL_PATTERN.fullmatch(email) or ".." in email.split("@")[1]:
-        raise PydanticCustomError("email_invalid", "Enter a valid email address.")
-    return email
-
-
 class EmailUpdate(BaseModel):
     email: str
     # Required when the account has a password
@@ -131,4 +138,33 @@ class AuthOptions(BaseModel):
     email: bool
     google: bool = False
     github: bool = False
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return _check_new_password(value)
+
+
+class EmailToken(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
+
+
+class SessionResponse(BaseModel):
+    message: str
+    access_token: str
+    token_type: str
 

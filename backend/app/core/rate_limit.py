@@ -18,6 +18,9 @@ LOGIN_LIMIT = "5/minute"
 SIGNUP_LIMIT = "3/hour"
 AI_LIMIT = "10/minute"
 TEST_EMAIL_LIMIT = "3/hour"
+# Per IP. Small, because each request can send an email
+RESET_REQUEST_LIMIT = "5/hour"
+RESET_CONFIRM_LIMIT = "10/hour"
 
 
 def user_or_ip(request: Request) -> str:

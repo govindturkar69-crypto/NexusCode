@@ -17,6 +17,9 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const VideoMeeting = lazy(() => import("./pages/VideoMeeting"));
 const Settings = lazy(() => import("./pages/Settings"));
+const ForgotPassword = lazy(() => import("./pages/AccountPages").then((m) => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import("./pages/AccountPages").then((m) => ({ default: m.ResetPassword })));
+const VerifyEmail = lazy(() => import("./pages/AccountPages").then((m) => ({ default: m.VerifyEmail })));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const protect = (element) => (
@@ -24,6 +27,14 @@ const protect = (element) => (
     <AppBar />
     {element}
   </ProtectedRoute>
+);
+
+// Pages anyone can open, with the theme toggle but not the signed-in controls
+const signedOut = (element) => (
+  <>
+    <div className="app-bar"><ThemeToggle /></div>
+    {element}
+  </>
 );
 
 function PageLoading() {
@@ -51,6 +62,9 @@ function App() {
                   </>
                 }
               />
+              <Route path="/forgot-password" element={signedOut(<ForgotPassword />)} />
+              <Route path="/reset-password" element={signedOut(<ResetPassword />)} />
+              <Route path="/verify-email" element={signedOut(<VerifyEmail />)} />
               <Route path="/projects" element={protect(<Projects />)} />
               <Route path="/projects/:projectId" element={protect(<Board />)} />
               <Route path="/ai" element={protect(<AIAssistant />)} />

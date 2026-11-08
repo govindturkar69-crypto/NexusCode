@@ -6,6 +6,7 @@ import Settings from './Settings'
 import AuthProvider from '../auth/AuthProvider'
 import { fakeJwt, inOneHour, stubRoutes } from '../test/helpers'
 
+const NEW_TOKEN = fakeJwt({ sub: 'alice', ver: 1, exp: inOneHour() })
 const NOT_CONNECTED = { connected: false, username: null, expired: false }
 const EMPTY_PLAN = { deleted: [], transferred: [], left: [] }
 
@@ -53,9 +54,11 @@ describe('Settings', () => {
 
   describe('password', () => {
     it('changes it and clears the form', async () => {
-      const fetchMock = setup({ 'POST /me/password': [200, { message: 'Password changed' }] })
+      const fetchMock = setup({ 'POST /me/password': [200, { message: 'Password changed', access_token: NEW_TOKEN, token_type: 'bearer' }] })
       await fillPassword()
-      expect(await screen.findByText('Password changed.')).toBeInTheDocument()
+      expect(await screen.findByText(/Password changed. Other devices have been signed out./)).toBeInTheDocument()
+      // This session carries on with the token the change returned
+      expect(localStorage.getItem('token')).toBe(NEW_TOKEN)
       expect(posted(fetchMock, '/me/password')).toEqual({ current_password: 'old-password', new_password: 'new-password' })
       expect(screen.getByLabelText('New password')).toHaveValue('')
     })
@@ -176,3 +179,35 @@ describe('Settings', () => {
     })
   })
 })
+
+describe('Settings: verification and sessions', () => {
+  beforeEach(() => {
+    localStorage.setItem('token', fakeJwt({ sub: 'alice', exp: inOneHour() }))
+  })
+
+  const EMAIL = { email: 'a@example.com', email_verified: false, has_password: true, sending: { enabled: true, restricted: false, message: null } }
+
+  it('offers to verify an unverified address', async () => {
+    const fetchMock = setup({
+      'GET /me/email': [200, EMAIL],
+      'POST /me/email/verification': [200, { message: "We've sent a link to a@example.com. It works for 24 hours." }],
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Send verification email' }))
+    expect(await screen.findByText(/sent a link to a@example.com/)).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([url, init]) => url.includes('/me/email/verification') && init.method === 'POST')).toBe(true)
+  })
+
+  it('does not offer it for a verified address, or when email is off', async () => {
+    setup({ 'GET /me/email': [200, { ...EMAIL, email_verified: true }] })
+    expect(await screen.findByText('verified')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send verification email' })).not.toBeInTheDocument()
+  })
+
+  it('signs out other devices and keeps this one with the new token', async () => {
+    setup({ 'POST /me/sessions/revoke': [200, { message: 'Signed out everywhere else.', access_token: NEW_TOKEN, token_type: 'bearer' }] })
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign out of other devices' }))
+    expect(await screen.findByText('Signed out everywhere else.')).toBeInTheDocument()
+    expect(localStorage.getItem('token')).toBe(NEW_TOKEN)
+  })
+})
+

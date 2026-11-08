@@ -65,6 +65,8 @@ def test_new_password_limits_are_inclusive(client, make_user):
     token = make_user("alice")
     r = client.post("/me/password", json={"current_password": DEFAULT_PASSWORD, "new_password": "x" * 72}, headers=auth(token))
     assert r.status_code == 200
+    # A password change ends other sessions, so carry on with the token it returns
+    token = r.json()["access_token"]
     r = client.post("/me/password", json={"current_password": "x" * 72, "new_password": "y" * 8}, headers=auth(token))
     assert r.status_code == 200
 

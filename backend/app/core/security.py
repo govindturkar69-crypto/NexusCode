@@ -50,15 +50,27 @@ def create_access_token(data: dict) -> str:
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def decode_access_token(token: str):
+def session_token_for(user) -> str:
+    """A login token. `ver` is the user's token_version: raising that ends every token issued before."""
+    return create_access_token(data={"sub": user.username, "ver": user.token_version or 0})
+
+
+def decode_session(token: str) -> tuple[str, int] | None:
+    """(username, token version) from a valid login token. Tokens from before
+    versions existed have none, which counts as 0."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            return None
-        return username
     except JWTError:
         return None
+    username, version = payload.get("sub"), payload.get("ver", 0)
+    if not isinstance(username, str) or not isinstance(version, int):
+        return None
+    return username, version
+
+
+def decode_access_token(token: str):
+    session = decode_session(token)
+    return session[0] if session else None
 
 def hash_oauth_nonce(nonce: str) -> str:
     return hashlib.sha256(nonce.encode()).hexdigest()

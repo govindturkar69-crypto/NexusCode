@@ -23,6 +23,7 @@ function newPasswordProblem(password, confirmation) {
 }
 
 function PasswordSection() {
+  const { signIn } = useAuth();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -38,7 +39,9 @@ function PasswordSection() {
     if (problem) return;
     setBusy(true);
     apiFetch("/me/password", { method: "POST", body: { current_password: current, new_password: next } })
-      .then(() => {
+      .then((data) => {
+        // Changing the password ended every session, this one included; carry on with the new token
+        signIn(data.access_token);
         setSaved(true);
         setCurrent("");
         setNext("");
@@ -52,7 +55,7 @@ function PasswordSection() {
     <section className="stack">
       <h2 className="section-title">🔑 Change password</h2>
       <Card as="form" onSubmit={submit} className="stack">
-        {saved && <Alert tone="success" onDismiss={() => setSaved(false)}>Password changed.</Alert>}
+        {saved && <Alert tone="success" onDismiss={() => setSaved(false)}>Password changed. Other devices have been signed out.</Alert>}
         <Alert>{error}</Alert>
         <Input label="Current password" type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
         <Input label="New password" type="password" autoComplete="new-password" required hint="8 to 72 bytes." value={next} onChange={(e) => setNext(e.target.value)} />
@@ -232,6 +235,62 @@ function DeleteAccountSection() {
   );
 }
 
+function VerifyEmailButton({ info }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  if (!info.email || info.email_verified || !info.sending.enabled) return null;
+
+  function send() {
+    setBusy(true);
+    setError("");
+    apiFetch("/me/email/verification", { method: "POST" })
+      .then((data) => setMessage(data.message))
+      .catch((err) => setError(err.message))
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <div className="stack" style={{ "--gap": "0.5rem" }}>
+      <p className="small muted">Verify this address so you can use it to reset your password.</p>
+      <div><Button onClick={send} disabled={busy}>{busy ? "Sending..." : "Send verification email"}</Button></div>
+      {message && <Alert tone="success" onDismiss={() => setMessage("")}>{message}</Alert>}
+      <Alert>{error}</Alert>
+    </div>
+  );
+}
+
+function SessionsSection() {
+  const { signIn } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  function signOutOthers() {
+    setBusy(true);
+    setError("");
+    apiFetch("/me/sessions/revoke", { method: "POST" })
+      .then((data) => {
+        signIn(data.access_token);
+        setMessage(data.message);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <section className="stack">
+      <h2 className="section-title">💻 Sessions</h2>
+      <Card className="stack">
+        <p className="small muted">Signed in somewhere you've lost track of? This signs out every other browser and device. You stay signed in here.</p>
+        <div><Button variant="ghost" onClick={signOutOthers} disabled={busy}>{busy ? "Signing out..." : "Sign out of other devices"}</Button></div>
+        {message && <Alert tone="success" onDismiss={() => setMessage("")}>{message}</Alert>}
+        <Alert>{error}</Alert>
+      </Card>
+    </section>
+  );
+}
+
 function Settings() {
   const { user } = useAuth();
   return (
@@ -241,9 +300,10 @@ function Settings() {
         {user && <p className="muted small">Signed in as <strong>{user.username}</strong></p>}
       </PageHeader>
       <div className="stack" style={{ gap: "2rem" }}>
-        <EmailSection />
+        <EmailSection>{({ info }) => <VerifyEmailButton info={info} />}</EmailSection>
         <PasswordSection />
         <GitHubSection />
+        <SessionsSection />
         <DeleteAccountSection />
       </div>
     </Page>

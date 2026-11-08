@@ -52,6 +52,8 @@ class UserModel(TimestampMixin, Base):
     hashed_password = Column(String, nullable=False)
     email = Column(String, nullable=True)
     email_verified = Column(Boolean, nullable=False, default=False, server_default=false())
+    # In every login token; raising it ends all existing sessions
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
     # Encrypted at rest; existing plaintext rows are encrypted by migration 0004
     github_token = Column(EncryptedString, nullable=True)
     is_admin = Column(Boolean, default=False)
@@ -197,3 +199,23 @@ class CodeFileModel(TimestampMixin, Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
 
     project = relationship("ProjectModel", back_populates="code_files")
+
+class AuthTokenModel(Base):
+    """Single-use password reset and email verification tokens. Only the hash is stored."""
+
+    __tablename__ = "auth_tokens"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_auth_tokens_token_hash"),
+        CheckConstraint("purpose IN ('password_reset', 'verify_email')", name="ck_auth_tokens_purpose"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    purpose = Column(String, nullable=False)
+    token_hash = Column(String, nullable=False)
+    # The address the token was sent to
+    email = Column(String, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
