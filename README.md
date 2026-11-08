@@ -24,6 +24,7 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 | 📈 **Project Management (Kanban)** | Drag-and-drop task board (`@hello-pangea/dnd`) with live status sync |
 | 💻 **Online Code Editor** | Monaco Editor (the engine behind VS Code) with a file tree, tabs, per-file auto-save and language from the file extension |
 | ▶️ **Run Code in the Browser** | Run Python and JavaScript, and preview HTML/CSS/JS projects, with no server-side execution and no API keys ([details](#-running-code)) |
+| 🦾 **AI Agent** | Give it a goal and it writes files, runs them in your browser, and fixes them until they pass. You review every change as a diff ([details](#-ai-agent)) |
 | 🤖 **AI Code Generation** | Generate code from natural-language prompts via Gemini |
 | 🧠 **AI Bug Detection** | Automated code review for bugs and best-practice issues |
 | 📄 **AI Documentation** | Auto-generated Markdown documentation for any code snippet |
@@ -270,7 +271,7 @@ Other languages show a message that they can't run in the browser.
 **Limits**
 
 - **Python and JavaScript:** 10 seconds, then the worker is terminated, and 100 KB of output. Both are enforced from the page, where the running code can't interfere.
-- **Python:** the standard library only. Third-party packages such as `numpy` aren't available, and `micropip` is deliberately not included, so nothing is installed at run time. `input()` reads from the Input (stdin) box.
+- **Python:** the standard library only. Third-party packages such as `numpy` aren't available, and `micropip` is deliberately not included, so nothing is installed at run time. `input()` reads from the Input (stdin) box. The project's other `.py` files come along in the worker's in-memory filesystem, so `from calc import add` works, and `unittest.main()` finds the file's tests.
 - **JavaScript:** one file at a time, so no `import` of other project files. `console` output, top-level `await` and timers all work.
 - **Preview:** CSS, JS, `@import` and SVG files are inlined by path from the file tree. Binary images aren't in the code tree, so they can't be shown. ES module imports between project files aren't resolved, so use `<script src>`. Resources on `https://` sites, such as a CDN stylesheet, do load. The page has no time limit; use Close or Reload to end it.
 
@@ -282,6 +283,61 @@ Running other people's code on a server needs a sandboxing service, API keys and
 - **The preview iframe** has `sandbox="allow-scripts"` and nothing else: an opaque origin, with no access to the app or its storage, and no top navigation, popups or forms.
 
 **Size:** Pyodide adds about 13 MB to the deploy. A user downloads about 6.4 MB (gzipped) the first time they run Python, with a progress bar, and the browser caches it after that. Nothing is downloaded until then.
+
+---
+
+## 🤖 AI Agent
+
+In the code editor, editors and owners can open **🤖 Agent**, give it a goal such as *"Build a todo CLI in Python with tests"*, and watch it work. The agent writes files, runs them in your browser, reads the errors, fixes the code and runs it again until it passes. It's built so that it can't change your project without you.
+
+**How a run works**
+
+1. The browser drives the run one step at a time. For each step the server streams one Gemini reply over server-sent events: text and tool calls.
+2. The browser runs the tools and sends the results back with its next step request:
+   - `list_files`, `read_file`, `write_file` and `add_task` work on a working copy of the project.
+   - `run_file` uses the same in-browser runners as **Run**.
+3. User code never runs on the server.
+
+The timeline shows each step live: the agent's text, every tool call with its result and output, and how the run ended. At the end, a summary lists the files that changed and what passed, for example "test_calc.py passed on run 2, after 1 failed".
+
+**You review every change**
+
+- Each file the agent writes appears as a diff with **Accept** and **Reject**, and **Undo** once accepted. Nothing is saved until you accept it.
+- Proposed board tasks wait for **Add to board** in the same way.
+- A per-session **Save the agent's changes without asking** switch is available. It's off by default.
+- While a run is going, the agent sees its own pending changes. A rejected change is gone for it too.
+- If you edit a file after the agent read it, accepting asks you to **Overwrite** first.
+- Accepted changes go through the normal file and task routes and appear in the Activity feed.
+
+**Model and limits**
+
+| | |
+|---|---|
+| Model | `gemini-3.5-flash-lite`, with native function calling (AUTO mode). It has its own free-tier allowance, separate from the `gemini-2.5-flash` used by the other AI features. |
+| Steps | At most 8 Gemini calls per run. On the last one, tools are switched off so the run ends with a summary. |
+| Run limits | 250k tokens and 15 minutes per run. A run also stops when the same failing run comes back after a fix. |
+| Daily quota | 2 runs per user and 2 runs in total per UTC day (at most 16 calls), sized for a free tier of 20 requests a day per model. A run counts once Gemini has answered it. The panel shows how many are left. To raise them, change `USER_DAILY_RUNS` and `TOTAL_DAILY_RUNS` in `backend/app/services/agent.py`. |
+| Gemini's own limits | A daily limit reported by Gemini turns new runs away until it resets. A per-minute limit is retried after a pause. |
+| Who | Editors and owners. Viewers can't run the agent. A run belongs to the user who started it. |
+
+**Languages it can run:** Python (`.py`, the standard library only, and files can import other `.py` files in the project) and JavaScript (`.js`, one file at a time). It can write any language, but anything else, `.html` pages included, can't be run in the browser. The agent says so and tells you how to run it yourself.
+
+**Safety**
+
+- The server checks every tool call before the browser sees it:
+  - the tool has to exist and its arguments have to have the right shape
+  - paths follow the project's path rules: no `..`, absolute paths or `.git`
+  - sizes are capped
+- The server keeps the conversation itself, so a browser can't rewrite what the model said. It only accepts results for calls it issued.
+- File contents and program output reach Gemini fenced with a random per-run token. The model is told never to follow instructions found inside them. This was checked live with a project file that tried to redirect the agent.
+- The agent's code runs with **no network**: both runners turn off `fetch`, XHR, sockets, `importScripts` and nested workers before it starts. Like all runs, it can't reach the login token.
+
+**Trying it by hand**
+
+1. Make a project with a `calc.py` whose `add` returns `a - b`, and a `test_calc.py` with a `unittest` test that `add(2, 3) == 5` and `unittest.main()` at the bottom.
+2. Open the editor, then **🤖 Agent**.
+3. Give it the goal *"Run test_calc.py. If a test fails, fix calc.py (not the tests) and run the tests again until they pass."*
+4. The timeline should show a failing run, the fix as a diff, a passing run, and "passed on run 2, after 1 failed". Accept the change and it's saved and appears in Activity.
 
 ---
 
@@ -302,7 +358,8 @@ Running other people's code on a server needs a sandboxing service, API keys and
 - Video meetings are 1:1 and use public STUN only (no TURN server), so calls can fail on strict networks.
 - No database migrations yet (tables are created on startup); schema changes need manual SQL.
 - No automated tests or CI/CD pipeline yet.
-- Run executes one file on its own: Python and JavaScript files can't import other project files, and third-party Python packages aren't available.
+- JavaScript runs one file on its own (no imports of other project files), and third-party Python packages aren't available.
+- The agent's free-tier quota is small (2 runs a day), and it can only run Python and JavaScript.
 - No light theme toggle yet (dark theme only).
 - Email can only reach your own address until a domain is verified at Resend (see [setup](#email-google-and-github-sign-in-optional)).
 

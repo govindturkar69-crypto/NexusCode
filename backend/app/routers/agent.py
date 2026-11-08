@@ -256,7 +256,8 @@ def step(request: Request, run_id: int, body: AgentStepRequest, db: Session = De
 
     reply = agent.StepReply()
     try:
-        events = agent.stream_step(contents, reply)
+        # On the last step the model can only answer in text, so the run ends with a summary
+        events = agent.stream_step(contents, reply, final=run.steps == agent.MAX_STEPS - 1)
     except (AIQuotaExceededError, AIServiceBusyError) as e:
         run.phase = "ready"
         db.commit()

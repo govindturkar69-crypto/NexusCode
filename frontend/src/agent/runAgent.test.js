@@ -74,8 +74,11 @@ describe('runAgent', () => {
 
   it('ends with the reason the server gives for capping a run', async () => {
     stubServer([[frame('done', { status: 'capped', reason: 'The agent used all 8 steps for this run.', steps: 8 })]])
-    const end = await runAgent({ projectId: 7, goal: 'g', tools: { execute: vi.fn() } })
+    const events = []
+    const end = await runAgent({ projectId: 7, goal: 'g', tools: { execute: vi.fn() }, onEvent: (e) => events.push(e) })
     expect(end).toMatchObject({ status: 'capped', reason: 'The agent used all 8 steps for this run.' })
+    // The server ended it without a model step, so no step is shown for it
+    expect(events.map((e) => e.type)).toEqual(['run', 'end'])
   })
 
   it('retries a busy step with the same results, then gives up', async () => {

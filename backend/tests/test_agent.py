@@ -538,3 +538,21 @@ def test_the_agent_uses_its_own_model(client, owner, project, gemini, monkeypatc
     run_id = start(client, owner, project).json()["id"]
     step(client, owner, run_id)
     assert seen == [agent.AGENT_MODEL] and agent.AGENT_MODEL != ai.MODEL_NAME
+
+
+def test_the_last_step_has_tools_off_so_the_run_ends_with_a_summary(client, owner, project, gemini):
+    gemini.script(*[[call("list_files")] for _ in range(agent.MAX_STEPS - 1)], [text("Summary: built it, tests pass.")])
+    run_id = start(client, owner, project).json()["id"]
+    events, call_id = _loop(client, owner, run_id, gemini, agent.MAX_STEPS - 1, {"files": []})
+    _, events = step(client, owner, run_id, [{"id": call_id, "result": {"files": []}}])
+    modes = [config.tool_config.function_calling_config.mode for _, config in gemini.requests]
+    assert modes == ["AUTO"] * (agent.MAX_STEPS - 1) + ["NONE"]
+    done = _events(events, "done")[0]
+    assert done["status"] == "finished" and done["summary"] == "Summary: built it, tests pass."
+
+
+def test_the_first_prompt_states_the_step_budget(client, owner, project, gemini):
+    gemini.script([text("ok")])
+    run_id = start(client, owner, project).json()["id"]
+    step(client, owner, run_id)
+    assert f"at most {agent.MAX_STEPS} replies" in gemini.requests[0][0][0].parts[0].text

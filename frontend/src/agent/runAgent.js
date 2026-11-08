@@ -49,7 +49,9 @@ export function reportAccepted(runId, { files = [], tasks = [] }) {
 }
 
 // One step. Resolves { calls, done, error } where error is { detail, retryable }.
-async function streamStep(runId, results, { signal, onEvent }) {
+// announce() is called before anything the model sent, so a step the server ends
+// straight away (a cap) never shows up as a step.
+async function streamStep(runId, results, { signal, onEvent, announce }) {
   const calls = [];
   let done = null;
   let error = null;
@@ -57,9 +59,16 @@ async function streamStep(runId, results, { signal, onEvent }) {
     body: { results },
     signal,
     onEvent: ({ event, data }) => {
-      if (event === "thought" || event === "text") onEvent({ type: event, text: data.text });
-      else if (event === "tool_call") calls.push(data);
-      else if (event === "tool_rejected") onEvent({ type: "tool_rejected", call: data });
+      if (event === "thought" || event === "text") {
+        announce();
+        onEvent({ type: event, text: data.text });
+      } else if (event === "tool_call") {
+        announce();
+        calls.push(data);
+      } else if (event === "tool_rejected") {
+        announce();
+        onEvent({ type: "tool_rejected", call: data });
+      }
       else if (event === "done") done = data;
       else if (event === "error") error = data;
     },
@@ -79,12 +88,17 @@ export async function runAgent({ projectId, goal, tools, onEvent = () => {}, sig
   let results = [];
   for (let stepNumber = 1; ; stepNumber += 1) {
     if (signal?.aborted) return end({ status: "stopped", reason: "Stopped by you." });
-    onEvent({ type: "step", step: stepNumber });
+    let announced = false;
+    const announce = () => {
+      if (announced) return;
+      announced = true;
+      onEvent({ type: "step", step: stepNumber });
+    };
 
     let outcome;
     for (let attempt = 0; ; attempt += 1) {
       try {
-        outcome = await streamStep(run.id, results, { signal, onEvent });
+        outcome = await streamStep(run.id, results, { signal, onEvent, announce });
       } catch (err) {
         if (err.name === "AbortError" || signal?.aborted) return end({ status: "stopped", reason: "Stopped by you." });
         // 503 is Gemini busy or out of quota; the server left the step to be asked again
