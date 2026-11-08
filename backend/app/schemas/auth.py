@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -207,3 +208,25 @@ class OAuthResult(BaseModel):
     provider: str | None = None
     link_token: str | None = None
 
+
+
+class LinkedIdentity(BaseModel):
+    provider: str
+    email: str | None = None
+    linked_at: datetime
+
+
+class SignInMethods(BaseModel):
+    has_password: bool
+    identities: list[LinkedIdentity]
+    # Providers this server has set up, so Settings offers only those
+    available: dict[str, bool]
+
+
+class PasswordSet(BaseModel):
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return _check_new_password(value)

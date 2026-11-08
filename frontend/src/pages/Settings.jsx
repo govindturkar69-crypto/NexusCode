@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { startGithubLink } from "../api/github";
 import { useAuth } from "../auth/useAuth";
@@ -8,6 +8,8 @@ import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import EmailSection from "../components/EmailSection";
+import SignInMethodsSection from "../components/SignInMethodsSection";
+import { useSignInMethods } from "../auth/useSignInMethods";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
 import Input from "../components/ui/Input";
 import Modal from "../components/ui/Modal";
@@ -68,6 +70,43 @@ function PasswordSection() {
   );
 }
 
+// For accounts made with Google or GitHub, which start without a password
+function SetPasswordSection({ onSet }) {
+  const [next, setNext] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  function submit(event) {
+    event.preventDefault();
+    const problem = newPasswordProblem(next, confirmation);
+    setError(problem);
+    if (problem) return;
+    setBusy(true);
+    apiFetch("/me/password/set", { method: "POST", body: { new_password: next } })
+      .then((data) => onSet(data.message))
+      .catch((err) => {
+        setError(err.message);
+        setBusy(false);
+      });
+  }
+
+  return (
+    <section className="stack">
+      <h2 className="section-title">🔑 Set a password</h2>
+      <Card as="form" onSubmit={submit} className="stack">
+        <p className="small muted">You sign in with Google or GitHub. Add a password to also sign in with your username, and to delete your account.</p>
+        <Alert>{error}</Alert>
+        <Input label="New password" type="password" autoComplete="new-password" required hint="8 to 72 bytes." value={next} onChange={(e) => setNext(e.target.value)} />
+        <Input label="Confirm new password" type="password" autoComplete="new-password" required value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
+        <div>
+          <Button type="submit" disabled={busy}>{busy ? "Saving..." : "Set password"}</Button>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
 function GitHubSection() {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
@@ -103,7 +142,7 @@ function GitHubSection() {
 
   return (
     <section className="stack">
-      <h2 className="section-title">🐙 GitHub</h2>
+      <h2 className="section-title">🐙 GitHub repositories</h2>
       <Card className="stack">
         <Alert>{error}</Alert>
         {status === null && !error && <p role="status" className="muted small">Checking your connection...</p>}
@@ -166,7 +205,7 @@ function DeletionPlanList({ plan }) {
   );
 }
 
-function DeleteAccountSection() {
+function DeleteAccountSection({ hasPassword }) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const [plan, setPlan] = useState(null);
@@ -208,7 +247,11 @@ function DeleteAccountSection() {
         <p className="muted small">
           This can't be undone. Your chat messages stay in shared projects under your old name, marked as removed.
         </p>
-        <div><Button variant="danger" onClick={start}>Delete my account...</Button></div>
+        {hasPassword === false ? (
+          <p className="small muted">Set a password first. Deleting your account asks for it.</p>
+        ) : (
+          <div><Button variant="danger" onClick={start}>Delete my account...</Button></div>
+        )}
       </Card>
       {open && (
         <Modal
@@ -293,6 +336,23 @@ function SessionsSection() {
 
 function Settings() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { methods, error: methodsError, reload } = useSignInMethods();
+  // A message handed over by the page that sent us here (after linking an account)
+  const [notice, setNotice] = useState(() => location.state?.notice ?? "");
+  const [passwordSet, setPasswordSet] = useState("");
+
+  useEffect(() => {
+    // Clear it from history, so a reload doesn't show it again
+    if (location.state?.notice) navigate(location.pathname, { replace: true, state: null });
+  }, [location, navigate]);
+
+  function onPasswordSet(message) {
+    setPasswordSet(message);
+    reload();
+  }
+
   return (
     <Page width={640}>
       <BackLink to="/projects">All projects</BackLink>
@@ -301,10 +361,12 @@ function Settings() {
       </PageHeader>
       <div className="stack" style={{ gap: "2rem" }}>
         <EmailSection>{({ info }) => <VerifyEmailButton info={info} />}</EmailSection>
-        <PasswordSection />
+        <SignInMethodsSection methods={methods} error={methodsError} reload={reload} notice={notice} onDismissNotice={() => setNotice("")} />
+        {passwordSet && <Alert tone="success" onDismiss={() => setPasswordSet("")}>{passwordSet}</Alert>}
+        {methods?.has_password === false ? <SetPasswordSection onSet={onPasswordSet} /> : <PasswordSection />}
         <GitHubSection />
         <SessionsSection />
-        <DeleteAccountSection />
+        <DeleteAccountSection hasPassword={methods?.has_password} />
       </div>
     </Page>
   );
