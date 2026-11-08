@@ -41,10 +41,17 @@ class TimestampMixin:
 
 class UserModel(TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_users_email"),
+        # Stored lowercased, which makes the unique constraint case-insensitive
+        CheckConstraint("email = lower(email)", name="ck_users_email_lowercase"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    email_verified = Column(Boolean, nullable=False, default=False, server_default=false())
     # Encrypted at rest; existing plaintext rows are encrypted by migration 0004
     github_token = Column(EncryptedString, nullable=True)
     is_admin = Column(Boolean, default=False)

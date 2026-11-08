@@ -31,6 +31,10 @@ os.environ["CLOUDINARY_API_KEY"] = "test-key"
 os.environ["CLOUDINARY_API_SECRET"] = "test-secret"
 os.environ["GITHUB_CLIENT_ID"] = "test-client-id"
 os.environ["GITHUB_CLIENT_SECRET"] = "test-client-secret"
+# Real keys in backend/.env must never reach the tests: environment variables win
+# over .env, so these blank values keep email off unless a test fakes the provider
+for _name in ("RESEND_API_KEY", "MAIL_FROM_EMAIL"):
+    os.environ[_name] = ""
 os.environ["GITHUB_REDIRECT_URI"] = "http://api.test/auth/github/callback"
 os.environ["GITHUB_TOKEN_ENC_KEY"] = "8ZK7f1e0bW0n5x3oZr5yC3w0e8u9pQvB2s4D6f8H0jY="  # test-only Fernet key
 
@@ -374,6 +378,34 @@ def fake_github_http(monkeypatch):
 
     monkeypatch.setattr(httpx, "request", fake_request)
     return state
+
+
+@pytest.fixture
+def fake_resend(monkeypatch):
+    """Turns email on and fakes Resend's API. Other httpx.post calls go through."""
+    import httpx
+
+    from app.core.config import settings as app_settings
+    from app.services import email as email_service
+
+    monkeypatch.setattr(app_settings, "resend_api_key", "re_test_key")
+    monkeypatch.setattr(app_settings, "mail_from_email", "mail@nexus.test")
+    monkeypatch.setattr(app_settings, "mail_from_name", "NexusCode Test")
+    email_service.reset_state()
+    state = {"sent": [], "status": 200, "body": {"id": "email_1"}, "error": None}
+    real_post = httpx.post
+
+    def fake_post(url, *args, **kwargs):
+        if not str(url).startswith(email_service.RESEND_URL):
+            return real_post(url, *args, **kwargs)
+        if state["error"]:
+            raise state["error"]
+        state["sent"].append({"headers": kwargs.get("headers"), "json": kwargs.get("json")})
+        return httpx.Response(state["status"], json=state["body"], request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    yield state
+    email_service.reset_state()
 
 
 @pytest.fixture

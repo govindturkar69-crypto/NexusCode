@@ -13,6 +13,7 @@ function setup(routes = {}) {
   const fetchMock = stubRoutes({
     'GET /me': [200, { id: 1, username: 'alice', is_admin: false }],
     'GET /me/github': [200, NOT_CONNECTED],
+    'GET /me/email': [200, { email: null, email_verified: false, has_password: true, sending: { enabled: false, restricted: false, message: 'off' } }],
     ...routes,
   })
   render(

@@ -7,6 +7,7 @@ import Alert from "../components/ui/Alert";
 import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import EmailSection from "../components/EmailSection";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
 import Input from "../components/ui/Input";
 import Modal from "../components/ui/Modal";
@@ -240,6 +241,7 @@ function Settings() {
         {user && <p className="muted small">Signed in as <strong>{user.username}</strong></p>}
       </PageHeader>
       <div className="stack" style={{ gap: "2rem" }}>
+        <EmailSection />
         <PasswordSection />
         <GitHubSection />
         <DeleteAccountSection />

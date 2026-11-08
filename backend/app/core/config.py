@@ -32,6 +32,11 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
 
+    # Email (app/services/email.py). Off unless both of the first two are set.
+    resend_api_key: str | None = None
+    mail_from_email: str | None = None
+    mail_from_name: str = "NexusCode"
+
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None

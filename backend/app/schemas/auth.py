@@ -90,3 +90,45 @@ class DeletionPlan(BaseModel):
     deleted: list[PlannedProject]
     transferred: list[PlannedTransfer]
     left: list[PlannedProject]
+
+
+EMAIL_PATTERN = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]+$")
+
+
+def normalize_email(value: str) -> str:
+    """Trimmed and lowercased, so one address can't belong to two accounts."""
+    email = value.strip().lower()
+    if len(email) > 254 or not EMAIL_PATTERN.fullmatch(email) or ".." in email.split("@")[1]:
+        raise PydanticCustomError("email_invalid", "Enter a valid email address.")
+    return email
+
+
+class EmailUpdate(BaseModel):
+    email: str
+    # Required when the account has a password
+    current_password: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class EmailSending(BaseModel):
+    enabled: bool
+    restricted: bool
+    message: str | None
+
+
+class EmailOut(BaseModel):
+    email: str | None
+    email_verified: bool
+    has_password: bool
+    sending: EmailSending
+
+
+class AuthOptions(BaseModel):
+    email: bool
+    google: bool = False
+    github: bool = False
+

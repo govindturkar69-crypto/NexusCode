@@ -17,6 +17,7 @@ from app.core.security import decode_access_token
 LOGIN_LIMIT = "5/minute"
 SIGNUP_LIMIT = "3/hour"
 AI_LIMIT = "10/minute"
+TEST_EMAIL_LIMIT = "3/hour"
 
 
 def user_or_ip(request: Request) -> str:
