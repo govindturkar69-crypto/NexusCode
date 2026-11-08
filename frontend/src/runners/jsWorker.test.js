@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { blockNetwork } from './blockNetwork'
 import { workerMain, workerSource } from './jsWorker'
 
 // Runs the real worker code against a stand-in for the worker's global scope.
@@ -16,7 +17,7 @@ function boot(maxChars = 1000) {
     fetch: () => Promise.resolve('fetched'),
   }
   // Same names as in a worker, so the source runs unchanged
-  const run = new Function('self', 'performance', `(${workerMain.toString()})(${maxChars});`)
+  const run = new Function('self', 'performance', `(${workerMain.toString()})(${maxChars}, ${blockNetwork.toString()});`)
   run(scope, globalThis.performance)
   return { scope, messages, listeners }
 }
@@ -24,13 +25,14 @@ function boot(maxChars = 1000) {
 const output = (messages, stream) => messages.filter((m) => m.type === 'output' && (!stream || m.stream === stream)).map((m) => m.text).join('')
 const done = (messages) => messages.find((m) => m.type === 'done')
 
-async function execute(code, { maxChars, fileName = 'test.js', wait = 30 } = {}) {
+async function execute(code, { maxChars, fileName = 'test.js', wait = 30, offline = false } = {}) {
   const context = boot(maxChars)
-  // User code sees console, setTimeout etc. through the patched scope
-  const scoped = `const {console, setTimeout, clearTimeout, setInterval, clearInterval, fetch} = globalThis.__scope;\n${code}`
+  // User code sees console, setTimeout etc. through the patched scope. fetch is looked
+  // up when called, as in a worker, so an offline run sees the blocked one.
+  const scoped = `const {console, setTimeout, clearTimeout, setInterval, clearInterval} = globalThis.__scope;\nconst fetch = (...args) => globalThis.__scope.fetch(...args);\n${code}`
   globalThis.__scope = context.scope
   try {
-    await context.scope.onmessage({ data: { code: scoped, fileName } })
+    await context.scope.onmessage({ data: offline ? { code: scoped, fileName, offline } : { code: scoped, fileName } })
     await new Promise((resolve) => setTimeout(resolve, wait))
   } finally {
     delete globalThis.__scope
@@ -46,7 +48,7 @@ describe('jsWorker', () => {
   })
 
   it('builds a source that passes the cap in', () => {
-    expect(workerSource(5000)).toMatch(/\)\(5000\);$/)
+    expect(workerSource(5000)).toMatch(/\)\(5000, function blockNetwork/)
   })
 
   describe('console', () => {
@@ -174,5 +176,18 @@ describe('jsWorker', () => {
       expect(output(messages)).toHaveLength(50)
       expect(messages.filter((m) => m.type === 'truncated')).toHaveLength(1)
     })
+  })
+})
+
+describe('agent runs', () => {
+  it('have no network', async () => {
+    const code = "fetch('https://evil.test').then(() => console.log('sent'), (e) => console.log('blocked: ' + e.message))"
+    const { messages } = await execute(code, { offline: true })
+    expect(output(messages)).toBe('blocked: fetch: network access is turned off for code the agent runs.\n')
+  })
+
+  it('editor runs keep it', async () => {
+    const { messages } = await execute("fetch('https://example.test').then((r) => console.log(r))")
+    expect(output(messages)).toBe('fetched\n')
   })
 })

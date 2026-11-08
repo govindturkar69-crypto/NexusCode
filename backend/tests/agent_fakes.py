@@ -51,8 +51,21 @@ class FakeGemini:
             )
 
 
-def quota_error():
-    return errors.ClientError(429, {"error": {"code": 429, "message": "Resource exhausted", "status": "RESOURCE_EXHAUSTED"}})
+def quota_error(quota_id="GenerateRequestsPerDayPerProjectPerModel-FreeTier", retry="71461s"):
+    """A 429 shaped like Gemini's real one, which names the quota it hit."""
+    return errors.ClientError(429, {"error": {
+        "code": 429,
+        "message": "You exceeded your current quota",
+        "status": "RESOURCE_EXHAUSTED",
+        "details": [
+            {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{"quotaId": quota_id, "quotaValue": "20"}]},
+            {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": retry},
+        ],
+    }})
+
+
+def per_minute_error():
+    return quota_error("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "20s")
 
 
 def busy_error():

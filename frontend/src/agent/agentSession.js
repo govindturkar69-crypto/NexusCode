@@ -58,7 +58,8 @@ export class AgentSession {
       const files = await collectPythonFiles(paths, (p) => this.store.read(p), path, code);
       if (files.length) extra = { files, path };
     }
-    const handle = runner({ code, fileName: baseName(path), stdin, onOutput: () => {}, ...extra });
+    // The agent's code runs with the network off: it can't send project files anywhere
+    const handle = runner({ code, fileName: baseName(path), stdin, onOutput: () => {}, offline: true, ...extra });
     this.handle = handle;
     return handle.result.finally(() => {
       if (this.handle === handle) this.handle = null;

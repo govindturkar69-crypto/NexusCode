@@ -91,11 +91,24 @@ describe('runAgent', () => {
     expect(events.filter((e) => e.type === 'retry')).toHaveLength(2)
   })
 
-  it('does not retry when the quota is gone', async () => {
-    const { bodies } = stubServer([{ frames: [], status: 503, json: { detail: "The AI service's free daily quota has been reached." } }])
+  it('does not retry when the daily allowance is gone', async () => {
+    const detail = "The AI's free daily allowance is used up. The agent will work again when it resets."
+    const { bodies } = stubServer([{ frames: [], status: 503, json: { detail } }])
     const end = await runAgent({ projectId: 7, goal: 'g', tools: { execute: vi.fn() } })
-    expect(end.status).toBe('failed')
+    expect(end).toMatchObject({ status: 'failed', reason: detail })
     expect(bodies).toHaveLength(1)
+  })
+
+  it('waits longer and retries after a per-minute limit', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const limited = { frames: [], status: 503, json: { detail: 'The AI is getting too many requests right now. Trying again in a moment.' } }
+    const { bodies } = stubServer([limited, [frame('done', { status: 'finished', summary: 'ok' })]])
+    const promise = runAgent({ projectId: 7, goal: 'g', tools: { execute: vi.fn() } })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(bodies).toHaveLength(1) // still waiting: longer than a busy retry
+    await vi.advanceTimersByTimeAsync(15000)
+    expect((await promise).status).toBe('finished')
+    expect(bodies).toHaveLength(2)
   })
 
   it('retries a step that broke midway', async () => {

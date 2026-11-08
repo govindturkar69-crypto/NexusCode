@@ -20,6 +20,7 @@ import { apiFetch, apiStream, ApiError } from "../api/client";
 
 export const MAX_STEP_RETRIES = 2;
 const RETRY_DELAY_MS = 3000;
+const RATE_LIMIT_DELAY_MS = 15000;
 
 function wait(ms, signal) {
   return new Promise((resolve) => {
@@ -33,6 +34,10 @@ function wait(ms, signal) {
 
 export function startAgentRun(projectId, goal) {
   return apiFetch(`/ai/projects/${projectId}/agent/runs`, { method: "POST", body: { goal } });
+}
+
+export function fetchAgentQuota() {
+  return apiFetch("/ai/agent/quota");
 }
 
 export function stopAgentRun(runId) {
@@ -83,15 +88,18 @@ export async function runAgent({ projectId, goal, tools, onEvent = () => {}, sig
       } catch (err) {
         if (err.name === "AbortError" || signal?.aborted) return end({ status: "stopped", reason: "Stopped by you." });
         // 503 is Gemini busy or out of quota; the server left the step to be asked again
-        const quota = /quota/i.test(err.message);
-        outcome = { error: { detail: err.message, retryable: err instanceof ApiError && err.status === 503 && !quota } };
+        // A daily limit won't lift by retrying; a per-minute one or a busy server will
+        const daily = /quota|allowance/i.test(err.message);
+        outcome = { error: { detail: err.message, retryable: err instanceof ApiError && err.status === 503 && !daily } };
       }
       if (!outcome.error) break;
       if (!outcome.error.retryable || attempt >= MAX_STEP_RETRIES) {
         return end({ status: "failed", reason: outcome.error.detail });
       }
       onEvent({ type: "retry", attempt: attempt + 1, detail: outcome.error.detail });
-      await wait(RETRY_DELAY_MS * (attempt + 1), signal);
+      // Gemini's per-minute limits need longer than a busy blip
+      const tooMany = /too many requests/i.test(outcome.error.detail);
+      await wait((tooMany ? RATE_LIMIT_DELAY_MS : RETRY_DELAY_MS) * (attempt + 1), signal);
       if (signal?.aborted) return end({ status: "stopped", reason: "Stopped by you." });
     }
 

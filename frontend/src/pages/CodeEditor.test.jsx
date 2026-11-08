@@ -781,6 +781,7 @@ describe('CodeEditor', () => {
       const base = setup(role, {
         'POST /ai/projects/7/agent/runs': [201, { id: 5, status: 'running', limits: { max_steps: 8 } }],
         'POST /ai/agent/runs/5/accepted': [200, { id: 5 }],
+        'GET /ai/agent/quota': [200, { user_limit: 5, user_remaining: 5, total_limit: 20, total_remaining: 20, resets_at: '2026-11-09T00:00:00Z' }],
         ...routes,
       })
       const queue = [...steps]

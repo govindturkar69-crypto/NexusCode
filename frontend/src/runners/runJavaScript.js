@@ -17,10 +17,11 @@ function createWorkers() {
   ];
 }
 
-export function runJavaScript({ code, fileName, onOutput }) {
+// offline: no network for the code (the agent's runs)
+export function runJavaScript({ code, fileName, onOutput, offline = false }) {
   return startRun({
     createWorkers: createWorkers(),
-    send: (worker) => worker.postMessage({ code, fileName }),
+    send: (worker) => worker.postMessage(offline ? { code, fileName, offline } : { code, fileName }),
     onOutput,
   });
 }

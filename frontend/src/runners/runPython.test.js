@@ -46,6 +46,23 @@ describe('runPython', () => {
     expect(FakeWorker.instances[0].sent).toEqual([{ code: 'print(1)', fileName: 'a.py', stdin: 'x', files, path: 'main.py' }])
   })
 
+  it('agent runs say offline, and never share a worker with the editor', async () => {
+    const agentRun = runPython({ ...REQUEST, offline: true })
+    const agentWorker = FakeWorker.instances[0]
+    agentWorker.receive({ type: 'ready' })
+    expect(agentWorker.sent).toEqual([{ code: 'print(1)', fileName: 'a.py', stdin: 'x', offline: true }])
+    agentWorker.receive({ type: 'started' })
+    agentWorker.receive({ type: 'done', ok: true })
+    await agentRun.result
+    await Promise.resolve()
+    // The editor gets a fresh worker, not the one whose network is off
+    runPython(REQUEST)
+    expect(FakeWorker.instances).toHaveLength(2)
+    // The next agent run reuses the offline one
+    runPython({ ...REQUEST, offline: true })
+    expect(FakeWorker.instances).toHaveLength(2)
+  })
+
   it('reports download progress', () => {
     const onProgress = vi.fn()
     runPython({ ...REQUEST, onProgress })

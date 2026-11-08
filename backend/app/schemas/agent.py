@@ -49,3 +49,13 @@ class AgentAccepted(BaseModel):
     were saved through the normal file and task routes, with their own checks."""
     files: list[ProjectPath] = Field(default_factory=list, max_length=50)
     tasks: list[TaskTitleIn] = Field(default_factory=list, max_length=20)
+
+
+class AgentQuota(BaseModel):
+    user_limit: int
+    user_remaining: int
+    total_limit: int
+    total_remaining: int
+    resets_at: datetime
+    # False while Gemini itself has refused for the day
+    ai_available: bool = True

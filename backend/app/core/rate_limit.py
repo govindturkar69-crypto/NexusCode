@@ -17,6 +17,8 @@ from app.core.security import decode_access_token
 LOGIN_LIMIT = "5/minute"
 SIGNUP_LIMIT = "3/hour"
 AI_LIMIT = "10/minute"
+# One agent run is up to 8 steps, plus retries; starting a run uses AI_LIMIT
+AGENT_STEP_LIMIT = "30/minute"
 TEST_EMAIL_LIMIT = "3/hour"
 # Per IP. Small, because each request can send an email
 RESET_REQUEST_LIMIT = "5/hour"

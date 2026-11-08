@@ -8,6 +8,7 @@ from agent_fakes import (
     busy_error,
     call,
     parse_sse,
+    per_minute_error,
     quota_error,
     text,
     thought,
@@ -17,6 +18,13 @@ from conftest import add_member, auth
 from app.core.database import SessionLocal
 from app.models import ActivityModel, AgentRunModel
 from app.services import agent, ai
+
+
+@pytest.fixture(autouse=True)
+def fresh_gemini_limit():
+    agent.gemini_daily_limit.clear()
+    yield
+    agent.gemini_daily_limit.clear()
 
 
 @pytest.fixture
@@ -353,9 +361,13 @@ def test_different_failures_keep_going(client, owner, project, gemini):
 
 # ---- failures and stopping ----
 
-@pytest.mark.parametrize("error,detail", [(quota_error(), "quota"), (busy_error(), "busy")])
-def test_gemini_errors_are_503_and_the_step_can_be_retried(client, owner, project, gemini, error, detail):
-    gemini.script(*([error] * (1 if detail == "quota" else agent.MAX_RETRIES)), [text("ok")])
+@pytest.mark.parametrize("errors,detail", [
+    ([quota_error()], "allowance is used up"),
+    ([per_minute_error()], "too many requests"),
+    ([busy_error()] * agent.MAX_RETRIES, "busy"),
+])
+def test_gemini_errors_are_503_and_the_step_can_be_retried(client, owner, project, gemini, errors, detail):
+    gemini.script(*errors, [text("ok")])
     run_id = start(client, owner, project).json()["id"]
     r, _ = step(client, owner, run_id)
     assert r.status_code == 503 and detail in r.json()["detail"]
@@ -419,3 +431,110 @@ def test_deleting_an_account_keeps_its_runs_for_the_daily_total(client, owner, p
     assert client.post("/me/delete", json={"password": DEFAULT_PASSWORD}, headers=auth(eddie)).status_code == 204
     run = _run(run_id)
     assert run is not None and run.user_id is None
+
+
+# ---- daily quotas ----
+
+def _past_runs(username, count, project_id, *, steps=1, status="finished", created_at=None):
+    from app.models import UserModel
+
+    with SessionLocal() as db:
+        user_id = db.query(UserModel.id).filter(UserModel.username == username).scalar() if username else None
+        for _ in range(count):
+            run = AgentRunModel(project_id=project_id, user_id=user_id, goal="g", nonce="n", steps=steps, status=status)
+            if created_at is not None:
+                run.created_at = created_at
+            db.add(run)
+        db.commit()
+
+
+def test_quota_shows_what_is_left(client, owner, project):
+    data = client.get("/ai/agent/quota", headers=auth(owner)).json()
+    assert data["user_limit"] == data["user_remaining"] == agent.USER_DAILY_RUNS
+    assert data["total_limit"] == data["total_remaining"] == agent.TOTAL_DAILY_RUNS
+    assert data["ai_available"] is True
+    assert data["resets_at"].startswith((datetime.now(UTC) + timedelta(days=1)).strftime("%Y-%m-%d"))
+    assert client.get("/ai/agent/quota").status_code == 401
+
+
+def test_a_user_has_a_daily_number_of_runs(client, owner, project):
+    _past_runs("olivia", agent.USER_DAILY_RUNS, project)
+    assert client.get("/ai/agent/quota", headers=auth(owner)).json()["user_remaining"] == 0
+    r = start(client, owner, project)
+    assert r.status_code == 429 and f"all {agent.USER_DAILY_RUNS} of your agent runs" in r.json()["detail"] and "UTC" in r.json()["detail"]
+    with SessionLocal() as db:
+        assert db.query(AgentRunModel).count() == agent.USER_DAILY_RUNS
+
+
+def test_runs_gemini_never_answered_are_free(client, owner, project):
+    # Each start stops the previous run, which had no steps, so it costs nothing
+    for _ in range(agent.USER_DAILY_RUNS + 2):
+        assert start(client, owner, project).status_code == 201
+    assert client.get("/ai/agent/quota", headers=auth(owner)).json()["user_remaining"] == agent.USER_DAILY_RUNS - 1
+
+
+def test_a_running_run_counts(client, owner, project, gemini):
+    start(client, owner, project)
+    assert client.get("/ai/agent/quota", headers=auth(owner)).json()["user_remaining"] == agent.USER_DAILY_RUNS - 1
+
+
+def test_yesterdays_runs_do_not_count(client, owner, project):
+    _past_runs("olivia", agent.USER_DAILY_RUNS, project, created_at=datetime.now(UTC) - timedelta(days=1, hours=1))
+    assert start(client, owner, project).status_code == 201
+
+
+def test_the_daily_total_is_shared_by_everyone(client, owner, project, make_user):
+    _past_runs(None, agent.TOTAL_DAILY_RUNS, project)  # e.g. from accounts deleted since
+    newcomer = make_user("nina")
+    add_member("nina", project, "editor")
+    data = client.get("/ai/agent/quota", headers=auth(newcomer)).json()
+    assert data["user_remaining"] == agent.USER_DAILY_RUNS and data["total_remaining"] == 0
+    r = start(client, newcomer, project)
+    assert r.status_code == 429 and "limit for everyone" in r.json()["detail"]
+
+
+def test_a_refused_start_does_not_stop_the_current_run(client, owner, project, gemini):
+    first = start(client, owner, project).json()["id"]
+    with SessionLocal() as db:
+        db.get(AgentRunModel, first).steps = 1  # Gemini has answered it, so it counts even once stopped
+        db.commit()
+    _past_runs("olivia", agent.USER_DAILY_RUNS - 1, project)
+    assert start(client, owner, project).status_code == 429
+    assert _run(first).status == "running"
+
+
+def test_steps_have_their_own_rate_limit(client, owner, project, gemini, rate_limits):
+    """A run can take more steps a minute than the general AI limit (10) allows."""
+    run_id = start(client, owner, project).json()["id"]
+    client.post(f"/ai/agent/runs/{run_id}/stop", headers=auth(owner))
+    # 409 because the run has ended, which is fine: the point is that none is 429
+    codes = [step(client, owner, run_id)[0].status_code for _ in range(12)]
+    assert codes == [409] * 12
+
+
+def test_when_gemini_says_its_day_is_over_new_runs_are_turned_away(client, owner, project, gemini):
+    gemini.script(quota_error())
+    run_id = start(client, owner, project).json()["id"]
+    assert step(client, owner, run_id)[0].status_code == 503
+    assert client.get("/ai/agent/quota", headers=auth(owner)).json()["ai_available"] is False
+    r = start(client, owner, project)
+    assert r.status_code == 503 and "allowance is used up" in r.json()["detail"]
+    assert len(gemini.requests) == 1  # the new run never reached Gemini
+    assert _run(run_id).status == "running"  # and the refused start didn't stop the old one
+
+
+def test_a_per_minute_limit_does_not_block_the_day(client, owner, project, gemini):
+    gemini.script(per_minute_error())
+    run_id = start(client, owner, project).json()["id"]
+    assert step(client, owner, run_id)[0].status_code == 503
+    assert client.get("/ai/agent/quota", headers=auth(owner)).json()["ai_available"] is True
+
+
+def test_the_agent_uses_its_own_model(client, owner, project, gemini, monkeypatch):
+    seen = []
+    original = gemini.generate_content_stream
+    monkeypatch.setattr(ai.client.models, "generate_content_stream", lambda model, **kw: seen.append(model) or original(model, **kw))
+    gemini.script([text("ok")])
+    run_id = start(client, owner, project).json()["id"]
+    step(client, owner, run_id)
+    assert seen == [agent.AGENT_MODEL] and agent.AGENT_MODEL != ai.MODEL_NAME

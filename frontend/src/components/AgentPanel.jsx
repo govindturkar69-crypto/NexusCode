@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import { AgentSession } from "../agent/agentSession";
 import { describeTool } from "../agent/describeTool";
-import { runAgent, stopAgentRun } from "../agent/runAgent";
+import { fetchAgentQuota, runAgent, stopAgentRun } from "../agent/runAgent";
 import { describeRunResult, runResults } from "../agent/summary";
 import { useTheme } from "../theme/useTheme";
 import Alert from "./ui/Alert";
@@ -68,6 +68,29 @@ function TimelineItem({ item }) {
 }
 
 // The end of a run: what it changed (and whether that's been reviewed) and what passed
+function resetTime(iso) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+// How many runs are left today, for this user and for the whole server
+function QuotaLine({ quota }) {
+  if (!quota) return null;
+  if (quota.ai_available === false) {
+    return <p className="small text-danger" role="status">The AI's free daily allowance is used up. The agent will work again when it resets.</p>;
+  }
+  const out = quota.user_remaining === 0 || quota.total_remaining === 0;
+  if (out) {
+    const why = quota.user_remaining === 0 ? "You've used all your agent runs for today." : "The agent has reached today's limit for everyone.";
+    return <p className="small text-danger" role="status">{why} More at {resetTime(quota.resets_at)}.</p>;
+  }
+  return (
+    <p className="small muted" role="status">
+      {quota.user_remaining} of {quota.user_limit} runs left today
+      {quota.total_remaining < quota.user_remaining ? ` (only ${quota.total_remaining} left for everyone)` : ""}
+    </p>
+  );
+}
+
 function RunSummary({ timeline, entries, runId }) {
   const results = runResults(timeline);
   const changed = entries.filter((entry) => entry.runId === runId);
@@ -201,6 +224,16 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
   const [runId, setRunId] = useState(null);
   const maxSteps = useRef(8);
   const [session] = useState(() => new AgentSession());
+  const [quota, setQuota] = useState(null);
+  const refreshQuota = () => fetchAgentQuota().then(setQuota, () => {});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAgentQuota().then((data) => !cancelled && setQuota(data), () => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const store = session.store;
 
   useEffect(() => {
@@ -230,6 +263,7 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
       setRunId(event.run.id);
       maxSteps.current = event.run.limits?.max_steps ?? 8;
       session.startRun(event.run.id);
+      refreshQuota();
     } else if (event.type === "step") {
       add({ type: "step", step: event.step, maxSteps: maxSteps.current });
     } else if (event.type === "thought" || event.type === "text") {
@@ -268,12 +302,15 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
     setRunning(true);
     controller.current = new AbortController();
     try {
-      await runAgent({ projectId, goal: goal.trim(), tools: session.tools, onEvent, signal: controller.current.signal });
+      const result = await runAgent({ projectId, goal: goal.trim(), tools: session.tools, onEvent, signal: controller.current.signal });
+      // A run that failed here may still be open on the server: end it there too
+      if (result.status === "failed" && runIdRef.current) stopAgentRun(runIdRef.current).catch(() => {});
     } catch (err) {
       setError(err.message);
     } finally {
       setRunning(false);
       controller.current = null;
+      refreshQuota();
     }
   }
 
@@ -313,11 +350,12 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
             {running ? (
               <Button variant="danger" onClick={stop}>■ Stop</Button>
             ) : (
-              <Button type="submit" disabled={!goal.trim()}>▶ Start</Button>
+              <Button type="submit" disabled={!goal.trim() || quota?.user_remaining === 0 || quota?.total_remaining === 0 || quota?.ai_available === false}>▶ Start</Button>
             )}
           </div>
         </div>
-        <p className="hint">The agent writes files and runs Python and JavaScript in your browser. You review every change before it's saved.</p>
+        <QuotaLine quota={quota} />
+        <p className="hint">The agent writes files and runs Python and JavaScript in your browser, with no network access. You review every change before it's saved.</p>
       </form>
       <Alert onDismiss={() => setError("")}>{error}</Alert>
 

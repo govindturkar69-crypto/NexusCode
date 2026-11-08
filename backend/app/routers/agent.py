@@ -19,14 +19,16 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from google.genai import types
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
 from app.core.deps import _authorize, get_current_user, require_project_role
-from app.core.rate_limit import AI_LIMIT, limiter, user_or_ip
+from app.core.rate_limit import AGENT_STEP_LIMIT, AI_LIMIT, limiter, user_or_ip
 from app.models import AgentRunModel, ProjectModel, UserModel
 from app.schemas.agent import (
     AgentAccepted,
+    AgentQuota,
     AgentRunCreate,
     AgentRunOut,
     AgentStepRequest,
@@ -86,6 +88,39 @@ def _own_run(run_id: int, db: Session, user: UserModel, *, lock: bool = False) -
     return run
 
 
+def _day_start(now: datetime) -> datetime:
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _counted_runs(db: Session, since: datetime):
+    """Runs that count against today's quotas: any that Gemini answered at least
+    once, and any still going. A run stopped before its first step costs nothing."""
+    return db.query(AgentRunModel).filter(
+        AgentRunModel.created_at >= since,
+        or_(AgentRunModel.steps > 0, AgentRunModel.status == ACTIVE),
+    )
+
+
+def quota_for(db: Session, user: UserModel) -> dict:
+    now = datetime.now(UTC)
+    since = _day_start(now)
+    used_by_user = _counted_runs(db, since).filter(AgentRunModel.user_id == user.id).count()
+    used_total = _counted_runs(db, since).count()
+    return {
+        "user_limit": agent.USER_DAILY_RUNS,
+        "user_remaining": max(0, agent.USER_DAILY_RUNS - used_by_user),
+        "total_limit": agent.TOTAL_DAILY_RUNS,
+        "total_remaining": max(0, agent.TOTAL_DAILY_RUNS - used_total),
+        "resets_at": since + timedelta(days=1),
+        "ai_available": agent.gemini_daily_limit.blocked_until() is None,
+    }
+
+
+@router.get("/agent/quota", response_model=AgentQuota)
+def get_quota(db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    return quota_for(db, current_user)
+
+
 @router.post("/projects/{project_id}/agent/runs", status_code=201, response_model=AgentRunOut)
 @limiter.limit(AI_LIMIT, key_func=user_or_ip)
 def start_run(
@@ -95,9 +130,24 @@ def start_run(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
+    # Starts are counted one at a time, so two at once can't both take the last run
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(724001)"))
     # One run at a time per user: starting another ends the old one
     for old in db.query(AgentRunModel).filter(AgentRunModel.user_id == current_user.id, AgentRunModel.status == ACTIVE).with_for_update():
         _end(old, "stopped", "A newer run was started.")
+    db.flush()
+    if agent.gemini_daily_limit.blocked_until() is not None:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=agent.DAILY_LIMIT_MESSAGE)
+    quota = quota_for(db, current_user)
+    resets = quota["resets_at"].strftime("%H:%M UTC")
+    if quota["user_remaining"] == 0:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=f"You've used all {agent.USER_DAILY_RUNS} of your agent runs for today. More at {resets}.")
+    if quota["total_remaining"] == 0:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=f"The agent has reached today's limit for everyone on this server. It resets at {resets}.")
     run = AgentRunModel(project_id=project.id, user_id=current_user.id, goal=body.goal, nonce=secrets.token_hex(12))
     db.add(run)
     record(db, project.id, current_user.id, "agent_started", body.goal[:200])
@@ -166,7 +216,7 @@ def _ended_stream(run: AgentRunModel) -> StreamingResponse:
 
 
 @router.post("/agent/runs/{run_id}/step")
-@limiter.limit(AI_LIMIT, key_func=user_or_ip)
+@limiter.limit(AGENT_STEP_LIMIT, key_func=user_or_ip)
 def step(request: Request, run_id: int, body: AgentStepRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     """
     Streams one Gemini step as server-sent events:

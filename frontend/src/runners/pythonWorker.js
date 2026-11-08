@@ -2,6 +2,7 @@
 // file, and it fetches the self-hosted Pyodide files then (see vite.config.js).
 // A worker has no DOM and no localStorage, so no way to reach the login token.
 import { MAX_OUTPUT_CHARS } from "./runController";
+import { blockNetwork } from "./blockNetwork";
 import { describePythonError, exitWasClean } from "./pythonErrors";
 
 /* global __PYODIDE_BASE__, __PYODIDE_DOWNLOAD_BYTES__ */
@@ -132,7 +133,9 @@ for _p in (root, main_dir):
   return mainFull;
 }
 
-async function run(pyodide, { code, fileName, stdin, files, path }) {
+async function run(pyodide, { code, fileName, stdin, files, path, offline }) {
+  // Once off, it stays off: runPython keeps offline workers apart from the others
+  if (offline) blockNetwork(self);
   sent = 0;
   capped = false;
   pyodide.setStdout(outputSink("stdout"));

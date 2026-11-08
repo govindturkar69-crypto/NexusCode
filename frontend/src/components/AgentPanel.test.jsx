@@ -21,13 +21,16 @@ vi.mock('../runners/runPython', () => ({
 const RUN = { id: 5, status: 'running', limits: { max_steps: 8 } }
 
 // The server: run creation, scripted steps, stop and "accepted"
-function stubServer(steps) {
+const QUOTA = { user_limit: 5, user_remaining: 4, total_limit: 20, total_remaining: 15, resets_at: '2026-11-09T00:00:00Z' }
+
+function stubServer(steps, { quota = QUOTA } = {}) {
   const queue = [...steps]
   const requests = []
   const fetchMock = vi.fn((url, init = {}) => {
     const path = new URL(url, 'http://x').pathname
     requests.push({ path, body: init.body ? JSON.parse(init.body) : null })
     if (path === '/ai/projects/7/agent/runs') return jsonResponse(201, RUN)
+    if (path === '/ai/agent/quota') return jsonResponse(200, quota)
     if (path === '/ai/agent/runs/5/stop') return jsonResponse(200, { ...RUN, status: 'stopped' })
     if (path === '/ai/agent/runs/5/accepted') return jsonResponse(200, RUN)
     if (path === '/ai/agent/runs/5/step') {
@@ -281,6 +284,52 @@ describe('AgentPanel', () => {
     expect(await screen.findByText('■ Stopped')).toBeInTheDocument()
     expect(requests.some((r) => r.path === '/ai/agent/runs/5/stop')).toBe(true)
     expect(screen.getByRole('button', { name: '▶ Start' })).toBeInTheDocument()
+  })
+
+  it('shows how many runs are left today', async () => {
+    stubServer([])
+    setup()
+    expect(await screen.findByText('4 of 5 runs left today')).toBeInTheDocument()
+  })
+
+  it('warns when few runs are left for everyone', async () => {
+    stubServer([], { quota: { ...QUOTA, user_remaining: 5, total_remaining: 2 } })
+    setup()
+    expect(await screen.findByText('5 of 5 runs left today (only 2 left for everyone)')).toBeInTheDocument()
+  })
+
+  it('can not start when the quota is used up', async () => {
+    stubServer([], { quota: { ...QUOTA, user_remaining: 0 } })
+    setup()
+    expect(await screen.findByText(/You've used all your agent runs for today/)).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Goal'), 'Anything')
+    expect(screen.getByRole('button', { name: '▶ Start' })).toBeDisabled()
+  })
+
+  it("can not start when the server's daily total is used up", async () => {
+    stubServer([], { quota: { ...QUOTA, total_remaining: 0 } })
+    setup()
+    expect(await screen.findByText(/reached today's limit for everyone/)).toBeInTheDocument()
+  })
+
+  it("says so when the AI's own daily allowance is used up", async () => {
+    stubServer([], { quota: { ...QUOTA, ai_available: false } })
+    setup()
+    expect(await screen.findByText(/free daily allowance is used up/)).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Goal'), 'Anything')
+    expect(screen.getByRole('button', { name: '▶ Start' })).toBeDisabled()
+  })
+
+  it('runs the agent code with the network off', async () => {
+    vi.mocked(runPython).mockClear()
+    stubServer([
+      [frame('tool_call', { id: 'r1', name: 'run_file', args: { path: 'todo.py' } }), frame('done', { status: 'tool_calls' })],
+      [frame('done', { status: 'finished', summary: 'ok' })],
+    ])
+    setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    expect(vi.mocked(runPython).mock.calls[0][0]).toMatchObject({ offline: true, code: 'old code', fileName: 'todo.py' })
   })
 
   it('shows why a run could not start', async () => {

@@ -25,7 +25,7 @@ from google.genai import errors, types
 
 from app.models import TASK_PRIORITIES
 from app.services import ai
-from app.services.ai import MODEL_NAME, AIQuotaExceededError, AIServiceBusyError
+from app.services.ai import AIQuotaExceededError, AIServiceBusyError
 from app.services.code_paths import path_problem
 
 # ---- limits ----
@@ -44,6 +44,16 @@ MAX_LISTED_FILES = 500
 MAX_HISTORY_CHARS = 1_500_000
 MAX_RESULT_JSON_CHARS = 80_000  # one tool result, as the browser sends it
 REPEATED_FAILURE_LIMIT = 2  # the same failing run this many times in a row ends the run
+
+# The agent has its own model, so its free-tier allowance is separate from the one
+# the other AI features use (gemini-2.5-flash). On this project's key the free tier
+# is 20 requests a day per model.
+AGENT_MODEL = "gemini-3.5-flash-lite"
+
+# Daily quotas, per UTC day, sized to that: at most 8 Gemini calls a run, so 2 runs
+# is at most 16 calls. Raise these if the key's limit is higher (AI Studio, Rate limits).
+USER_DAILY_RUNS = 2
+TOTAL_DAILY_RUNS = 2
 
 REQUEST_TIMEOUT_MS = 90_000
 STEP_DEADLINE_SECONDS = 150
@@ -332,19 +342,63 @@ class StepInterrupted(Exception):
     """The reply failed after it started. The message is safe to show."""
 
 
+# ---- Gemini's own limits ----
+
+class _GeminiDailyLimit:
+    """Remembers that Gemini refused for the rest of its day, so new runs are turned
+    away straight away instead of failing on their first step."""
+
+    def __init__(self):
+        self.until = 0.0
+
+    def hit(self, retry_seconds: float) -> None:
+        self.until = time.time() + max(60.0, retry_seconds)
+
+    def blocked_until(self) -> float | None:
+        return self.until if time.time() < self.until else None
+
+    def clear(self) -> None:
+        self.until = 0.0
+
+
+gemini_daily_limit = _GeminiDailyLimit()
+DAILY_LIMIT_MESSAGE = "The AI's free daily allowance is used up. The agent will work again when it resets."
+
+
+def _quota_details(error: errors.ClientError) -> tuple[bool, float]:
+    """(is it a daily limit, seconds until Gemini says to retry) from a 429."""
+    daily, retry = False, 60.0
+    body = error.details if isinstance(error.details, dict) else {}
+    for detail in (body.get("error") or {}).get("details") or []:
+        kind = str(detail.get("@type", ""))
+        if "QuotaFailure" in kind:
+            daily = daily or any("PerDay" in str(v.get("quotaId", "")) for v in detail.get("violations") or [])
+        elif "RetryInfo" in kind:
+            try:
+                retry = float(str(detail.get("retryDelay", "60s")).rstrip("s"))
+            except ValueError:
+                pass
+    return daily, retry
+
+
 def _open_stream(contents: list[types.Content]):
     """Returns (first chunk, the rest). Quota and busy errors surface here, before
     anything has been streamed, so they can still be a normal HTTP error."""
     last_error = None
     for _attempt in range(MAX_RETRIES):
         try:
-            stream = ai.client.models.generate_content_stream(model=MODEL_NAME, contents=contents, config=generation_config())
+            stream = ai.client.models.generate_content_stream(model=AGENT_MODEL, contents=contents, config=generation_config())
             for chunk in stream:
                 return chunk, stream
             raise AIServiceBusyError("The AI service didn't send an answer. Please try again.")
         except errors.ClientError as e:
             if e.code == 429:
-                raise AIQuotaExceededError("The AI service's free daily quota has been reached. Please try again tomorrow.") from e
+                daily, retry = _quota_details(e)
+                if daily:
+                    gemini_daily_limit.hit(retry)
+                    raise AIQuotaExceededError(DAILY_LIMIT_MESSAGE) from e
+                # A per-minute limit: the same step works again shortly
+                raise AIServiceBusyError("The AI is getting too many requests right now. Trying again in a moment.") from e
             raise
         except errors.ServerError as e:
             last_error = e
