@@ -248,8 +248,8 @@ def clean_result(name: str, args: dict, raw: object, nonce: str) -> dict:
         lines = []
         for item in files[:MAX_LISTED_FILES]:
             if isinstance(item, dict) and isinstance(item.get("path"), str) and not path_problem(item["path"]):
-                size = item.get("size") if isinstance(item.get("size"), int) else 0
-                lines.append(f"{item['path']} ({size} chars)")
+                size = item.get("size")
+                lines.append(f"{item['path']} ({size} chars)" if isinstance(size, int) and size >= 0 else item["path"])
         listing = "\n".join(lines) if lines else "(the project has no files)"
         return {"file_count": len(lines), "files": fence(nonce, listing)}
 

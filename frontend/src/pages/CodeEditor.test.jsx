@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import CodeEditor from './CodeEditor'
 import AuthProvider from '../auth/AuthProvider'
 import { forgetPythonWorker } from '../runners/runPython'
-import { fakeJwt, inOneHour, stubRoutes } from '../test/helpers'
+import { fakeJwt, inOneHour, sseFrame, sseResponse, stubRoutes } from '../test/helpers'
 
 // Monaco can't run in jsdom; everything else here is the real page
 vi.mock('../editor/monacoSetup', () => ({}))
@@ -751,4 +751,77 @@ describe('CodeEditor', () => {
       expect(screen.queryByRole('button', { name: 'Apply to editor' })).not.toBeInTheDocument()
     })
   })
+
+  describe('the agent', () => {
+    // stubRoutes for everything, plus a scripted agent stream
+    function setupAgent(role, steps, routes = {}) {
+      const base = setup(role, {
+        'POST /ai/projects/7/agent/runs': [201, { id: 5, status: 'running', limits: { max_steps: 8 } }],
+        'POST /ai/agent/runs/5/accepted': [200, { id: 5 }],
+        ...routes,
+      })
+      const queue = [...steps]
+      const fetchMock = vi.fn((url, init) => {
+        if (new URL(url).pathname === '/ai/agent/runs/5/step') return sseResponse(queue.shift(), { signal: init.signal })
+        return base(url, init)
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      return { base, fetchMock }
+    }
+
+    it('is only offered to editors', async () => {
+      setup('viewer')
+      await screen.findByLabelText('Code')
+      expect(screen.queryByRole('button', { name: '🤖 Agent' })).not.toBeInTheDocument()
+    })
+
+    it('an accepted edit to an open file updates its tab, and a new file joins the tree', async () => {
+      const { base } = setupAgent(
+        'editor',
+        [
+          [
+            sseFrame('tool_call', { id: 'w1', name: 'write_file', args: { path: 'b.js', content: 'console.log(3)' } }),
+            sseFrame('tool_call', { id: 'w2', name: 'write_file', args: { path: 'lib/new.js', content: 'export const x = 1' } }),
+            sseFrame('done', { status: 'tool_calls' }),
+          ],
+          [sseFrame('done', { status: 'finished', summary: 'Done it.' })],
+        ],
+        {
+          'PUT /code-files/2': [200, { code_file: { ...B, updated_at: 'later' } }],
+          'POST /projects/7/code/files': [201, { code_file: summary(9, 'lib/new.js', 'javascript') }],
+        }
+      )
+      expect(await screen.findByLabelText('Code')).toHaveValue('console.log(2)')
+      await userEvent.click(screen.getByRole('button', { name: '🤖 Agent' }))
+      await userEvent.type(screen.getByLabelText('Goal'), 'Change the log')
+      await userEvent.click(screen.getByRole('button', { name: '▶ Start' }))
+      await screen.findByText('✅ Done')
+      // Nothing saved yet
+      expect(calls(base, 'PUT', '/code-files/2')).toHaveLength(0)
+      const list = screen.getByRole('list', { name: 'Changes to review' })
+      await userEvent.click(within(within(list).getByRole('listitem', { name: 'b.js (edit)' })).getByRole('button', { name: 'Accept' }))
+      await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('console.log(3)'))
+      expect(sent(base, 'PUT', '/code-files/2')).toEqual({ content: 'console.log(3)' })
+      await userEvent.click(within(within(list).getByRole('listitem', { name: 'lib/new.js (new file)' })).getByRole('button', { name: 'Accept' }))
+      expect(await within(tree()).findByRole('button', { name: 'new.js' })).toBeInTheDocument()
+      expect(sent(base, 'POST', '/projects/7/code/files')).toEqual({ path: 'lib/new.js', content: 'export const x = 1' })
+    })
+
+    it('the agent reads what is in the editor, unsaved text included', async () => {
+      const { fetchMock } = setupAgent('editor', [
+        [sseFrame('tool_call', { id: 'r1', name: 'read_file', args: { path: 'b.js' } }), sseFrame('done', { status: 'tool_calls' })],
+        [sseFrame('done', { status: 'finished', summary: 'ok' })],
+      ])
+      const editor = await screen.findByLabelText('Code')
+      await userEvent.clear(editor)
+      await userEvent.type(editor, 'typed')
+      await userEvent.click(screen.getByRole('button', { name: '🤖 Agent' }))
+      await userEvent.type(screen.getByLabelText('Goal'), 'Read it')
+      await userEvent.click(screen.getByRole('button', { name: '▶ Start' }))
+      await screen.findByText('✅ Done')
+      const steps = fetchMock.mock.calls.filter(([url]) => new URL(url).pathname === '/ai/agent/runs/5/step')
+      expect(JSON.parse(steps[1][1].body).results).toEqual([{ id: 'r1', result: { content: 'typed' } }])
+    })
+  })
 })
+

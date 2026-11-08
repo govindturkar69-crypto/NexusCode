@@ -1,0 +1,235 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import AgentPanel from './AgentPanel'
+import { jsonResponse, sseFrame as frame, sseResponse } from '../test/helpers'
+
+vi.mock('@monaco-editor/react', () => ({
+  DiffEditor: ({ original, modified }) => (
+    <div data-testid="diff">
+      <pre data-testid="original">{original}</pre>
+      <pre data-testid="modified">{modified}</pre>
+    </div>
+  ),
+}))
+
+vi.mock('../runners/runPython', () => ({
+  runPython: vi.fn(() => ({ result: Promise.resolve({ status: 'ok', output: [{ stream: 'stdout', text: 'OK\n' }], durationMs: 420 }), stop: vi.fn() })),
+}))
+
+const RUN = { id: 5, status: 'running', limits: { max_steps: 8 } }
+
+// The server: run creation, scripted steps, stop and "accepted"
+function stubServer(steps) {
+  const queue = [...steps]
+  const requests = []
+  const fetchMock = vi.fn((url, init = {}) => {
+    const path = new URL(url, 'http://x').pathname
+    requests.push({ path, body: init.body ? JSON.parse(init.body) : null })
+    if (path === '/ai/projects/7/agent/runs') return jsonResponse(201, RUN)
+    if (path === '/ai/agent/runs/5/stop') return jsonResponse(200, { ...RUN, status: 'stopped' })
+    if (path === '/ai/agent/runs/5/accepted') return jsonResponse(200, RUN)
+    if (path === '/ai/agent/runs/5/step') {
+      const next = queue.shift()
+      if (!next) throw new Error('unexpected step')
+      return sseResponse(next, { signal: init.signal })
+    }
+    throw new Error(`Unexpected fetch ${path}`)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return requests
+}
+
+function setup(props = {}) {
+  const project = new Map([['todo.py', 'old code']])
+  const deps = {
+    readLive: vi.fn(async (path) => project.get(path) ?? null),
+    applyFile: vi.fn(async (path, content) => {
+      const created = !project.has(path)
+      project.set(path, content)
+      return { fileId: 50, created }
+    }),
+    deleteFile: vi.fn(async () => project.delete('new.py')),
+    createTask: vi.fn(async () => ({})),
+  }
+  render(<AgentPanel projectId={7} files={[{ id: 1, path: 'todo.py', language: 'python' }]} {...deps} {...props} />)
+  return { project, deps }
+}
+
+async function startRun(goal = 'Build a todo CLI') {
+  await userEvent.type(screen.getByLabelText('Goal'), goal)
+  await userEvent.click(screen.getByRole('button', { name: '▶ Start' }))
+}
+
+const timeline = () => screen.getByRole('list', { name: 'Agent timeline' })
+const changes = () => screen.getByRole('list', { name: 'Changes to review' })
+
+const WRITE_AND_FINISH = [
+  [
+    frame('thought', { text: 'I will ' }),
+    frame('thought', { text: 'write the file.' }),
+    frame('tool_call', { id: 'c1', name: 'write_file', args: { path: 'todo.py', content: 'new code\nline 2' } }),
+    frame('done', { status: 'tool_calls', steps: 1 }),
+  ],
+  [frame('text', { text: 'Rewrote todo.py.' }), frame('done', { status: 'finished', summary: 'Rewrote todo.py; nothing was run.', steps: 2 })],
+]
+
+describe('AgentPanel', () => {
+  beforeEach(() => vi.useRealTimers())
+
+  it('shows the run step by step and ends with the summary', async () => {
+    const requests = stubServer(WRITE_AND_FINISH)
+    setup()
+    await startRun()
+    expect(await screen.findByText('✅ Done')).toBeInTheDocument()
+    const items = within(timeline()).getAllByRole('listitem').map((li) => li.textContent)
+    expect(items[0]).toBe('Step 1 of 8')
+    expect(items[1]).toContain('Reasoning')
+    expect(items[2]).toContain('Proposed a change to todo.py')
+    expect(items[3]).toBe('Step 2 of 8')
+    expect(items[4]).toBe('Rewrote todo.py.')
+    expect(screen.getByText('Rewrote todo.py; nothing was run.')).toBeInTheDocument()
+    // The agent was told the change is staged, not saved
+    const second = requests.filter((r) => r.path === '/ai/agent/runs/5/step')[1]
+    expect(second.body).toEqual({ results: [{ id: 'c1', result: { state: 'staged' } }] })
+    expect(requests.some((r) => r.body?.goal === 'Build a todo CLI')).toBe(true)
+  })
+
+  it('saves nothing until the change is accepted, and shows it as a diff', async () => {
+    stubServer(WRITE_AND_FINISH)
+    const { project, deps } = setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    expect(deps.applyFile).not.toHaveBeenCalled()
+    expect(project.get('todo.py')).toBe('old code')
+    const card = within(changes()).getByRole('listitem', { name: 'todo.py (edit)' })
+    expect(within(card).getByTestId('original')).toHaveTextContent('old code')
+    expect(within(card).getByTestId('modified')).toHaveTextContent('new code line 2')
+    await userEvent.click(within(card).getByRole('button', { name: 'Accept' }))
+    await waitFor(() => expect(project.get('todo.py')).toBe('new code\nline 2'))
+    expect(within(card).getByText(/Accepted/)).toBeInTheDocument()
+  })
+
+  it('a rejected change is never saved', async () => {
+    stubServer(WRITE_AND_FINISH)
+    const { deps } = setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    const card = within(changes()).getByRole('listitem', { name: 'todo.py (edit)' })
+    await userEvent.click(within(card).getByRole('button', { name: 'Reject' }))
+    expect(within(card).getByText(/Rejected/)).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Accept' })).not.toBeInTheDocument()
+    expect(deps.applyFile).not.toHaveBeenCalled()
+  })
+
+  it('an accepted change can be undone', async () => {
+    stubServer(WRITE_AND_FINISH)
+    const { project } = setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    const card = within(changes()).getByRole('listitem', { name: 'todo.py (edit)' })
+    await userEvent.click(within(card).getByRole('button', { name: 'Accept' }))
+    await userEvent.click(await within(card).findByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(project.get('todo.py')).toBe('old code'))
+    expect(within(card).getByText(/Undone/)).toBeInTheDocument()
+  })
+
+  it('records what was kept in the activity feed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const requests = stubServer(WRITE_AND_FINISH)
+    setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    await userEvent.click(within(changes()).getByRole('button', { name: 'Accept' }))
+    await vi.advanceTimersByTimeAsync(2000)
+    await waitFor(() => expect(requests.find((r) => r.path === '/ai/agent/runs/5/accepted')?.body).toEqual({ files: ['todo.py'], tasks: [] }))
+  })
+
+  it('with auto-accept on, changes are saved as the agent makes them', async () => {
+    const requests = stubServer(WRITE_AND_FINISH)
+    const { project } = setup()
+    await userEvent.click(screen.getByRole('checkbox', { name: /without asking/ }))
+    await startRun()
+    await screen.findByText('✅ Done')
+    expect(project.get('todo.py')).toBe('new code\nline 2')
+    const second = requests.filter((r) => r.path === '/ai/agent/runs/5/step')[1]
+    expect(second.body.results[0].result).toEqual({ state: 'saved' })
+  })
+
+  it('shows the closing message once, as the summary', async () => {
+    stubServer([[frame('text', { text: 'All done.' }), frame('done', { status: 'finished', summary: 'All done.' })]])
+    setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    expect(screen.getAllByText('All done.')).toHaveLength(1)
+    expect(within(timeline()).queryByText('All done.')).not.toBeInTheDocument()
+  })
+
+  it('auto-accept is off by default', () => {
+    stubServer([])
+    setup()
+    expect(screen.getByRole('checkbox', { name: /without asking/ })).not.toBeChecked()
+  })
+
+  it('a change over a file the user edited needs Overwrite', async () => {
+    stubServer(WRITE_AND_FINISH)
+    const { project } = setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    project.set('todo.py', 'my own edit')
+    await userEvent.click(within(changes()).getByRole('button', { name: 'Accept' }))
+    expect(await within(changes()).findByRole('alert')).toHaveTextContent('changed since the agent read it')
+    expect(project.get('todo.py')).toBe('my own edit')
+    await userEvent.click(within(changes()).getByRole('button', { name: 'Overwrite' }))
+    await waitFor(() => expect(project.get('todo.py')).toBe('new code\nline 2'))
+  })
+
+  it('runs code in the browser and shows whether it passed', async () => {
+    stubServer([
+      [frame('tool_call', { id: 'r1', name: 'run_file', args: { path: 'todo.py' } }), frame('done', { status: 'tool_calls' })],
+      [frame('done', { status: 'finished', summary: 'Ran it.' })],
+    ])
+    setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    expect(within(timeline()).getByText(/Ran todo.py: passed in 420 ms/)).toBeInTheDocument()
+  })
+
+  it('shows calls the server refused, and tasks to review', async () => {
+    stubServer([
+      [
+        frame('tool_rejected', { id: 'x', name: 'read_file', error: "Invalid path '../x': '..' can't be used" }),
+        frame('tool_call', { id: 't1', name: 'add_task', args: { title: 'Write docs', priority: 'low' } }),
+        frame('done', { status: 'tool_calls' }),
+      ],
+      [frame('done', { status: 'finished', summary: 'ok' })],
+    ])
+    const { deps } = setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    expect(within(timeline()).getByText(/Refused read_file/)).toBeInTheDocument()
+    const task = within(changes()).getByRole('listitem', { name: 'Task Write docs' })
+    await userEvent.click(within(task).getByRole('button', { name: 'Add to board' }))
+    await waitFor(() => expect(deps.createTask).toHaveBeenCalledWith({ title: 'Write docs', description: null, priority: 'low' }))
+  })
+
+  it('Stop ends the run', async () => {
+    const held = [frame('text', { text: 'Thinking about it' })]
+    held.hold = true
+    const requests = stubServer([held])
+    setup()
+    await startRun()
+    await screen.findByText('Thinking about it')
+    await userEvent.click(screen.getByRole('button', { name: '■ Stop' }))
+    expect(await screen.findByText('■ Stopped')).toBeInTheDocument()
+    expect(requests.some((r) => r.path === '/ai/agent/runs/5/stop')).toBe(true)
+    expect(screen.getByRole('button', { name: '▶ Start' })).toBeInTheDocument()
+  })
+
+  it('shows why a run could not start', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse(403, { detail: 'This action needs the editor role in this project.' })))
+    setup()
+    await startRun()
+    expect(await screen.findByText(/needs the editor role/)).toBeInTheDocument()
+  })
+})

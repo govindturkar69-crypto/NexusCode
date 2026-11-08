@@ -8,6 +8,7 @@ import { runnerFor, UNSUPPORTED_MESSAGE } from "../runners/runnerFor";
 import { useCodeRunner } from "../runners/useCodeRunner";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
+import AgentPanel from "../components/AgentPanel";
 import AIPanel from "../components/AIPanel";
 import FileTree from "../components/FileTree";
 import PathDialog from "../components/PathDialog";
@@ -53,11 +54,13 @@ function CodeEditor() {
   const [deleting, setDeleting] = useState(false);
   const [showPush, setShowPush] = useState(false);
   const [pushed, setPushed] = useState(null);
+  const [showAgent, setShowAgent] = useState(false);
 
   const [showPreview, setShowPreview] = useState(false);
   const [previewRuns, setPreviewRuns] = useState(0);
   const [stdin, setStdin] = useState("");
   const previewPanel = useRef(null);
+  const agentPanel = useRef(null);
   const runner = useCodeRunner();
   const [saveCount, setSaveCount] = useState(0);
 
@@ -100,6 +103,11 @@ function CodeEditor() {
     [loadContent]
   );
 
+  const filesRef = useRef(files);
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
   const openIdsRef = useRef(openIds);
   useEffect(() => {
     openIdsRef.current = openIds;
@@ -122,6 +130,44 @@ function CodeEditor() {
     }
     return savedCopies.current.get(key);
   }, []);
+
+  // ---- for the agent: it reads the project as the editor shows it, and saves only what the user accepts ----
+
+  const readForAgent = useCallback(
+    (path) => {
+      const file = filesRef.current.find((f) => f.path === path);
+      return file ? readFileForPreview(file) : Promise.resolve(null);
+    },
+    [readFileForPreview]
+  );
+
+  const sortByPath = (list) => [...list].sort((a, b) => a.path.localeCompare(b.path));
+
+  const applyForAgent = useCallback(
+    async (path, content) => {
+      const existing = filesRef.current.find((f) => f.path === path);
+      if (existing) {
+        // The user saw and accepted this version, so a pending autosave mustn't overwrite it
+        forget(existing.id);
+        const data = await apiFetch(`/code-files/${existing.id}`, { method: "PUT", body: { content } });
+        const updated = { ...existing, ...data.code_file };
+        filesRef.current = filesRef.current.map((f) => (f.id === existing.id ? updated : f));
+        setFiles(filesRef.current);
+        if (contentsRef.current[existing.id] !== undefined) {
+          contentsRef.current = { ...contentsRef.current, [existing.id]: content };
+          setContents((prev) => ({ ...prev, [existing.id]: content }));
+        }
+        setSaveCount((count) => count + 1);
+        return { fileId: existing.id, created: false };
+      }
+      const data = await apiFetch(`/projects/${projectId}/code/files`, { method: "POST", body: { path, content } });
+      filesRef.current = sortByPath([...filesRef.current, data.code_file]);
+      setFiles(filesRef.current);
+      setEmptyFolders((prev) => prev.filter((folder) => !isInFolder(path, folder)));
+      return { fileId: data.code_file.id, created: true };
+    },
+    [projectId, forget]
+  );
 
   const closeTabs = useCallback((ids) => {
     const closing = new Set(ids);
@@ -259,6 +305,24 @@ function CodeEditor() {
     setFiles((prev) => prev.filter((file) => !gone.has(file.id)));
   }
 
+  function toggleAgent() {
+    const opening = !showAgent;
+    setShowAgent(opening);
+    // It opens below the editor, so bring it into view
+    if (opening) requestAnimationFrame(() => agentPanel.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }));
+  }
+
+  function deleteForAgent(fileId) {
+    return apiFetch(`/code-files/${fileId}`, { method: "DELETE" }).then(() => {
+      filesRef.current = filesRef.current.filter((file) => file.id !== fileId);
+      removeLocally([fileId]);
+    });
+  }
+
+  function createTaskForAgent(task) {
+    return apiFetch(`/projects/${projectId}/tasks`, { method: "POST", body: task });
+  }
+
   function confirmDelete() {
     setDeleting(true);
     setError("");
@@ -342,6 +406,11 @@ function CodeEditor() {
                 </>
               )}
             </span>
+            {canEdit && (
+              <Button variant={showAgent ? "primary" : "ghost"} aria-pressed={showAgent} onClick={toggleAgent} disabled={loadState !== "ready"}>
+                🤖 Agent
+              </Button>
+            )}
             {isOwner && (
               <Button onClick={() => { setPushed(null); setShowPush(true); }} disabled={loadState !== "ready" || files.length === 0}>
                 🐙 Push to GitHub
@@ -491,6 +560,20 @@ function CodeEditor() {
           />
         </div>
       </div>
+
+      {showAgent && canEdit && (
+        <div ref={agentPanel}>
+        <AgentPanel
+          projectId={projectId}
+          files={files}
+          readLive={readForAgent}
+          applyFile={applyForAgent}
+          deleteFile={deleteForAgent}
+          createTask={createTaskForAgent}
+          onClose={() => setShowAgent(false)}
+        />
+        </div>
+      )}
 
       {dialog?.kind === "new-file" && (
         <PathDialog
