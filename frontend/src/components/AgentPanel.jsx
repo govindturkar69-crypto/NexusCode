@@ -3,6 +3,7 @@ import { DiffEditor } from "@monaco-editor/react";
 import { AgentSession } from "../agent/agentSession";
 import { describeTool } from "../agent/describeTool";
 import { runAgent, stopAgentRun } from "../agent/runAgent";
+import { describeRunResult, runResults } from "../agent/summary";
 import { useTheme } from "../theme/useTheme";
 import Alert from "./ui/Alert";
 import Button from "./ui/Button";
@@ -64,6 +65,48 @@ function TimelineItem({ item }) {
     );
   }
   return null;
+}
+
+// The end of a run: what it changed (and whether that's been reviewed) and what passed
+function RunSummary({ timeline, entries, runId }) {
+  const results = runResults(timeline);
+  const changed = entries.filter((entry) => entry.runId === runId);
+  const unsupported = results.filter((result) => result.status === "unsupported");
+  if (results.length === 0 && changed.length === 0) return null;
+  return (
+    <div className="agent-summary small">
+      {changed.length > 0 && (
+        <>
+          <h4 className="agent-summary__title">Changed</h4>
+          <ul aria-label="Files changed in this run">
+            {changed.map((entry) => (
+              <li key={entry.key}>
+                <span className="mono">{entry.path}</span> <span className="muted">· {entry.before === null ? "new" : "edited"} · {STATUS_TEXT[entry.status]}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {results.length > unsupported.length && (
+        <>
+          <h4 className="agent-summary__title">Ran</h4>
+          <ul aria-label="Run results">
+            {results.filter((r) => r.status !== "unsupported").map((result) => (
+              <li key={result.path} className={result.status === "ok" ? "text-success" : "text-danger"}>
+                {result.status === "ok" ? "✔" : "✖"} <span className="mono">{result.path}</span> {describeRunResult(result)}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {unsupported.length > 0 && (
+        <p className="muted" role="note">
+          {unsupported.map((r) => r.path).join(", ")} can't run in the browser. The agent can run Python and JavaScript;
+          run other languages on your own machine.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function ChangeCard({ entry, store, files, theme }) {
@@ -155,6 +198,7 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
   const [error, setError] = useState("");
   const controller = useRef(null);
   const runIdRef = useRef(null);
+  const [runId, setRunId] = useState(null);
   const maxSteps = useRef(8);
   const [session] = useState(() => new AgentSession());
   const store = session.store;
@@ -183,6 +227,7 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
   function onEvent(event) {
     if (event.type === "run") {
       runIdRef.current = event.run.id;
+      setRunId(event.run.id);
       maxSteps.current = event.run.limits?.max_steps ?? 8;
       session.startRun(event.run.id);
     } else if (event.type === "step") {
@@ -289,6 +334,7 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
               <strong>{endText.icon} {endText.title}</strong>
               {end.reason && <p className="small">{end.reason}</p>}
               {end.summary && <p className="small agent-text">{end.summary}</p>}
+              <RunSummary timeline={timeline} entries={store.entries} runId={runId} />
             </div>
           )}
         </div>

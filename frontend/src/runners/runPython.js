@@ -10,7 +10,9 @@ export function forgetPythonWorker() {
   warmWorker = null;
 }
 
-export function runPython({ code, fileName, stdin, onOutput, onProgress }) {
+// files: optional [{ path, content }], the project's .py files, so `import` finds
+// them. path is this file's project path. Without files, the code runs on its own.
+export function runPython({ code, fileName, stdin, onOutput, onProgress, files, path }) {
   const existingWorker = warmWorker;
   warmWorker = null;
   let usedWorker = null;
@@ -19,7 +21,7 @@ export function runPython({ code, fileName, stdin, onOutput, onProgress }) {
     createWorkers: [() => new Worker(new URL("./pythonWorker.js", import.meta.url), { type: "module" })],
     send: (worker) => {
       usedWorker = worker;
-      worker.postMessage({ code, fileName, stdin });
+      worker.postMessage(files?.length ? { code, fileName, stdin, files, path } : { code, fileName, stdin });
     },
     onOutput,
     onProgress,

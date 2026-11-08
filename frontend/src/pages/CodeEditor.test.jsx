@@ -530,6 +530,29 @@ describe('CodeEditor', () => {
       expect(FakeWorker.instances[0].message).toEqual({ code: 'print(input())', fileName: 'main.py', stdin: 'Ada' })
     })
 
+    it('Python brings the other .py files along, so imports work', async () => {
+      const LIB = summary(8, 'pkg/lib.py', 'python')
+      setup('editor', {
+        ...only(PY, LIB, MD),
+        'GET /code-files/3': body(PY, 'from pkg.lib import x'),
+        'GET /code-files/8': body(LIB, 'x = 1'),
+      })
+      const editor = await screen.findByLabelText('Code')
+      await userEvent.type(editor, '\nprint(x)')
+      await run()
+      expect(await screen.findByText(/ran main\.py/)).toBeInTheDocument()
+      expect(FakeWorker.instances[0].message).toEqual({
+        code: 'from pkg.lib import x\nprint(x)',
+        fileName: 'main.py',
+        stdin: '',
+        path: 'main.py',
+        files: [
+          { path: 'main.py', content: 'from pkg.lib import x\nprint(x)' },
+          { path: 'pkg/lib.py', content: 'x = 1' },
+        ],
+      })
+    })
+
     it('no worker is created until Run is pressed, so Pyodide stays lazy', async () => {
       setup('editor', { ...only(PY), 'GET /code-files/3': body(PY, 'x') })
       await screen.findByLabelText('Code')

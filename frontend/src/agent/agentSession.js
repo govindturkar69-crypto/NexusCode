@@ -2,6 +2,7 @@ import { createAgentTools } from "./agentTools";
 import { ChangeStore } from "./changeStore";
 import { reportAccepted } from "./runAgent";
 import { runJavaScript } from "../runners/runJavaScript";
+import { collectPythonFiles } from "../runners/pythonProject";
 import { runPython } from "../runners/runPython";
 
 const RUNNERS = { python: runPython, javascript: runJavaScript };
@@ -48,18 +49,20 @@ export class AgentSession {
     this.store.runId = runId;
   }
 
-  runCode(path, code, kind, stdin) {
+  async runCode(path, code, kind, stdin) {
     const runner = (this.deps.runners ?? RUNNERS)[kind];
-    const handle = runner({ code, fileName: baseName(path), stdin, onOutput: () => {}, ...this.runOptions(path, kind) });
+    let extra = {};
+    if (kind === "python") {
+      // The agent's versions of the other .py files, pending changes included
+      const paths = this.store.listPaths(this.deps.files ?? []).map((file) => file.path);
+      const files = await collectPythonFiles(paths, (p) => this.store.read(p), path, code);
+      if (files.length) extra = { files, path };
+    }
+    const handle = runner({ code, fileName: baseName(path), stdin, onOutput: () => {}, ...extra });
     this.handle = handle;
     return handle.result.finally(() => {
       if (this.handle === handle) this.handle = null;
     });
-  }
-
-  // Extra options for a runner, such as other project files (see item 3)
-  runOptions() {
-    return {};
   }
 
   stopCode() {

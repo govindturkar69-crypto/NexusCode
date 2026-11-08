@@ -502,3 +502,6 @@ textarea.input { resize: vertical; font-family: var(--font-mono); }
 .agent-end { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-3); margin-top: var(--space-3); }
 .agent-end--finished { border-color: var(--color-success); }
 .agent-end--failed, .agent-end--stuck { border-color: var(--color-danger); }
+.agent-summary { border-top: 1px solid var(--color-border); margin-top: var(--space-2); padding-top: var(--space-2); }
+.agent-summary ul { list-style: none; margin: 0 0 var(--space-2); padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.agent-summary__title { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-subtle); margin: var(--space-2) 0 var(--space-1); }

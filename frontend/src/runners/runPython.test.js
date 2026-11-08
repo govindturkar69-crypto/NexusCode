@@ -39,6 +39,13 @@ describe('runPython', () => {
     expect(worker.sent).toEqual([{ code: 'print(1)', fileName: 'a.py', stdin: 'x' }])
   })
 
+  it('sends project files for imports when given, and only then', () => {
+    const files = [{ path: 'main.py', content: 'import lib' }, { path: 'lib.py', content: 'x = 1' }]
+    runPython({ ...REQUEST, files, path: 'main.py' })
+    FakeWorker.instances[0].receive({ type: 'ready' })
+    expect(FakeWorker.instances[0].sent).toEqual([{ code: 'print(1)', fileName: 'a.py', stdin: 'x', files, path: 'main.py' }])
+  })
+
   it('reports download progress', () => {
     const onProgress = vi.fn()
     runPython({ ...REQUEST, onProgress })

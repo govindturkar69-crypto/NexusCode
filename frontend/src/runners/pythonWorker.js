@@ -15,7 +15,13 @@ self.addEventListener("unhandledrejection", (event) => event.preventDefault());
 let sent = 0;
 let capped = false;
 
-function emit(stream, text) {
+// Project files for a run live here, in Pyodide's in-memory filesystem. Nothing
+// leaves the worker, and the folder is emptied before every run.
+const PROJECT_DIR = "/home/pyodide/project";
+
+function emit(stream, rawText) {
+  // Tracebacks name files by their project path, not the folder they run in
+  const text = rawText?.replaceAll(`${PROJECT_DIR}/`, "");
   if (capped || !text) return;
   const room = MAX_OUTPUT_CHARS - sent;
   const piece = text.length > room ? text.slice(0, room) : text;
@@ -79,17 +85,79 @@ function stdinFrom(text) {
   };
 }
 
-async function run(pyodide, { code, fileName, stdin }) {
+// Puts the run's project files in place and makes them importable, like running the
+// file from the project's root folder. Modules from an earlier run are forgotten,
+// so an import always sees this run's version of a file.
+function prepareProject(pyodide, files, mainPath) {
+  const setup = pyodide.toPy({ root: PROJECT_DIR });
+  try {
+    pyodide.runPython(
+      `
+import importlib, os, shutil, sys
+for _name, _module in list(sys.modules.items()):
+    if (getattr(_module, "__file__", None) or "").startswith(root + "/"):
+        del sys.modules[_name]
+sys.path[:] = [p for p in sys.path if p != root and not p.startswith(root + "/")]
+shutil.rmtree(root, ignore_errors=True)
+os.makedirs(root, exist_ok=True)
+os.chdir(root)
+importlib.invalidate_caches()
+`,
+      { globals: setup }
+    );
+  } finally {
+    setup.destroy();
+  }
+  if (!files || files.length === 0) return null;
+  for (const file of files) {
+    const fullPath = `${PROJECT_DIR}/${file.path}`;
+    pyodide.FS.mkdirTree(fullPath.slice(0, fullPath.lastIndexOf("/")));
+    pyodide.FS.writeFile(fullPath, file.content);
+  }
+  const mainFull = `${PROJECT_DIR}/${mainPath}`;
+  const paths = pyodide.toPy({ root: PROJECT_DIR, main_dir: mainFull.slice(0, mainFull.lastIndexOf("/")) });
+  try {
+    // The script's own folder first, as `python path/to/file.py` does, then the project root
+    pyodide.runPython(
+      `
+import sys
+for _p in (root, main_dir):
+    sys.path.insert(0, _p)
+`,
+      { globals: paths }
+    );
+  } finally {
+    paths.destroy();
+  }
+  return mainFull;
+}
+
+async function run(pyodide, { code, fileName, stdin, files, path }) {
   sent = 0;
   capped = false;
   pyodide.setStdout(outputSink("stdout"));
   pyodide.setStderr(outputSink("stderr"));
   pyodide.setStdin(stdinFrom(stdin));
-  const globals = pyodide.toPy({ __name__: "__main__", __file__: fileName });
+  const mainFull = prepareProject(pyodide, files, path);
+  const runName = mainFull ?? fileName;
+  // A real __main__ module, fresh for each run. Code that looks itself up through
+  // sys.modules["__main__"] needs it: unittest.main() finds the tests that way.
+  const scope = pyodide.toPy({ run_name: runName });
+  const globals = pyodide.runPython(
+    `
+import sys, types
+saved_main = sys.modules.get("__main__")
+module = types.ModuleType("__main__")
+module.__file__ = run_name
+sys.modules["__main__"] = module
+module.__dict__
+`,
+    { globals: scope }
+  );
   post({ type: "started" });
   let ok = true;
   try {
-    await pyodide.runPythonAsync(code, { globals, filename: fileName });
+    await pyodide.runPythonAsync(code, { globals, filename: runName });
   } catch (error) {
     if (error.type === "SystemExit") {
       ok = exitWasClean(error.message);
@@ -101,6 +169,8 @@ async function run(pyodide, { code, fileName, stdin }) {
     }
   } finally {
     globals.destroy();
+    pyodide.runPython('import sys\nif saved_main is not None:\n    sys.modules["__main__"] = saved_main', { globals: scope });
+    scope.destroy();
   }
   pyodide.runPython("import sys; sys.stdout.flush(); sys.stderr.flush()");
   if (!capped) post({ type: "done", ok });

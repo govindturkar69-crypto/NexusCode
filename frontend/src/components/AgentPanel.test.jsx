@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AgentPanel from './AgentPanel'
+import { runPython } from '../runners/runPython'
 import { jsonResponse, sseFrame as frame, sseResponse } from '../test/helpers'
 
 vi.mock('@monaco-editor/react', () => ({
@@ -193,6 +194,62 @@ describe('AgentPanel', () => {
     await startRun()
     await screen.findByText('✅ Done')
     expect(within(timeline()).getByText(/Ran todo.py: passed in 420 ms/)).toBeInTheDocument()
+  })
+
+  it('a failing run is fixed and run again, and the summary says what passed', async () => {
+    const outcome = (status, stream, text) => ({ result: Promise.resolve({ status, output: [{ stream, text }], durationMs: 30 }), stop: vi.fn() })
+    vi.mocked(runPython)
+      .mockImplementationOnce(() => outcome('error', 'stderr', 'AssertionError: 4 != 5'))
+      .mockImplementationOnce(() => outcome('ok', 'stdout', 'OK'))
+    const requests = stubServer([
+      [
+        frame('tool_call', { id: 'w1', name: 'write_file', args: { path: 'calc.py', content: 'def add(a, b):\n    return a - b' } }),
+        frame('tool_call', { id: 'w2', name: 'write_file', args: { path: 'test_calc.py', content: 'import calc' } }),
+        frame('tool_call', { id: 'r1', name: 'run_file', args: { path: 'test_calc.py' } }),
+        frame('done', { status: 'tool_calls' }),
+      ],
+      [
+        frame('thought', { text: 'add subtracts; fix it' }),
+        frame('tool_call', { id: 'w3', name: 'write_file', args: { path: 'calc.py', content: 'def add(a, b):\n    return a + b' } }),
+        frame('tool_call', { id: 'r2', name: 'run_file', args: { path: 'test_calc.py' } }),
+        frame('done', { status: 'tool_calls' }),
+      ],
+      [frame('done', { status: 'finished', summary: 'Fixed add; tests pass.' })],
+    ])
+    setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    // The failure went back to the agent, and its fix was what ran next
+    const steps = requests.filter((r) => r.path === '/ai/agent/runs/5/step')
+    expect(steps[1].body.results[2].result).toMatchObject({ status: 'error', stderr: 'AssertionError: 4 != 5' })
+    const secondRun = vi.mocked(runPython).mock.calls.at(-1)[0]
+    expect(secondRun.files).toEqual([
+      { path: 'test_calc.py', content: 'import calc' },
+      { path: 'calc.py', content: 'def add(a, b):\n    return a + b' },
+      { path: 'todo.py', content: 'old code' },
+    ])
+    expect(within(timeline()).getByText(/Ran test_calc.py: error/)).toBeInTheDocument()
+    expect(within(timeline()).getByText(/Ran test_calc.py: passed/)).toBeInTheDocument()
+    // One change per file, holding the latest version
+    const files = screen.getByRole('list', { name: 'Files changed in this run' })
+    expect(within(files).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'calc.py · new · Waiting for review',
+      'test_calc.py · new · Waiting for review',
+    ])
+    expect(screen.getByRole('list', { name: 'Run results' })).toHaveTextContent('test_calc.py passed on run 2, after 1 failed')
+    expect(within(changes()).getAllByRole('listitem', { name: /calc\.py \(new file\)/ })).toHaveLength(2)
+  })
+
+  it('says plainly when a file can not run in the browser', async () => {
+    stubServer([
+      [frame('tool_call', { id: 'r1', name: 'run_file', args: { path: 'Main.java' } }), frame('done', { status: 'tool_calls' })],
+      [frame('done', { status: 'finished', summary: 'Wrote Main.java; run it with javac.' })],
+    ])
+    setup()
+    await startRun()
+    await screen.findByText('✅ Done')
+    expect(within(timeline()).getByText(/Couldn't run Main.java/)).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent("Main.java can't run in the browser")
   })
 
   it('shows calls the server refused, and tasks to review', async () => {

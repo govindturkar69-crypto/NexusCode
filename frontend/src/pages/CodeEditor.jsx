@@ -4,6 +4,7 @@ import Editor from "@monaco-editor/react";
 import { apiFetch } from "../api/client";
 import { baseName, buildTree, isInFolder, renameFolderPath } from "../editor/fileTree";
 import { isHtmlFile } from "../editor/preview";
+import { collectPythonFiles } from "../runners/pythonProject";
 import { runnerFor, UNSUPPORTED_MESSAGE } from "../runners/runnerFor";
 import { useCodeRunner } from "../runners/useCodeRunner";
 import { useAutosave } from "../editor/useAutosave";
@@ -366,6 +367,13 @@ function CodeEditor() {
       setShowPreview(true);
       setPreviewRuns((count) => count + 1);
       requestAnimationFrame(() => previewPanel.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }));
+    } else if (activeRunner === "python") {
+      // Other .py files come along, so imports between project files work
+      const file = activeFile;
+      const code = contents[activeId];
+      collectPythonFiles(files.map((f) => f.path), (path) => readForAgent(path), file.path, code)
+        .catch(() => [])
+        .then((projectFiles) => runner.run(file, code, "python", stdin, projectFiles.length ? { files: projectFiles, path: file.path } : {}));
     } else {
       runner.run(activeFile, contents[activeId], activeRunner, stdin);
     }
