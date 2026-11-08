@@ -1,10 +1,11 @@
 import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import CodeEditor from './CodeEditor'
 import AuthProvider from '../auth/AuthProvider'
+import { forgetPythonWorker } from '../runners/runPython'
 import { fakeJwt, inOneHour, stubRoutes } from '../test/helpers'
 
 // Monaco can't run in jsdom; everything else here is the real page
@@ -36,7 +37,6 @@ function setup(role = 'owner', routes = {}) {
     'GET /projects/7/code/files': [200, { code_files: [B, A] }],
     'GET /code-files/1': body(A, 'print(1)'),
     'GET /code-files/2': body(B, 'console.log(2)'),
-    'GET /run/info': [200, { enabled: true, languages: ['python', 'javascript'], remaining_today: 9 }],
     ...routes,
   })
   render(
@@ -98,7 +98,6 @@ describe('CodeEditor', () => {
         'GET /projects/7': [200, { project: { id: 7, name: 'P', role: 'owner' } }],
         'GET /projects/7/code/files': [200, { code_files: [B, A] }],
         'GET /code-files/2': body(B, 'console.log(2)'),
-        'GET /run/info': [200, { enabled: true, languages: [], remaining_today: 0 }],
       })
       render(
         <StrictMode>
@@ -435,47 +434,266 @@ describe('CodeEditor', () => {
     })
   })
 
+  describe('preview', () => {
+    const PAGE = summary(10, 'index.html', 'html')
+    const CSS = summary(11, 'site.css', 'css')
+    const previewRoutes = {
+      'GET /projects/7/code/files': [200, { code_files: [PAGE, CSS] }],
+      'GET /code-files/10': body(PAGE, '<link rel="stylesheet" href="site.css"><p>page v1</p>'),
+      'GET /code-files/11': body(CSS, 'p { color: red }'),
+    }
+    const frame = () => screen.getByTitle('Project preview')
+
+    it('is offered only when the project has an html file', async () => {
+      setup('editor')
+      await screen.findByLabelText('Code')
+      expect(screen.queryByRole('button', { name: /Preview/ })).not.toBeInTheDocument()
+    })
+
+    it('renders the project, reading unopened files from the server', async () => {
+      const fetchMock = setup('viewer', previewRoutes)
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Preview/ }))
+      await waitFor(() => expect(frame().getAttribute('srcdoc')).toContain('page v1'))
+      expect(frame().getAttribute('srcdoc')).toContain('p { color: red }')
+      expect(frame().getAttribute('sandbox')).toBe('allow-scripts')
+      expect(calls(fetchMock, 'GET', '/code-files/11')).toHaveLength(1)
+    })
+
+    it('refreshes after a save, with the new text', async () => {
+      setup('editor', { ...previewRoutes, 'PUT /code-files/10': [200, { code_file: PAGE }] })
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Preview/ }))
+      await waitFor(() => expect(frame().getAttribute('srcdoc')).toContain('page v1'))
+      await userEvent.type(screen.getByLabelText('Code'), 'EDITED')
+      expect(frame().getAttribute('srcdoc')).not.toContain('EDITED')
+      await waitFor(() => expect(frame().getAttribute('srcdoc')).toContain('EDITED'), { timeout: 3000 })
+    })
+
+    it('can be closed', async () => {
+      setup('viewer', previewRoutes)
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Preview/ }))
+      await waitFor(() => expect(frame()).toBeInTheDocument())
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+      expect(screen.queryByTitle('Project preview')).not.toBeInTheDocument()
+    })
+  })
+
   describe('running', () => {
-    const RESULT = { status: 'Accepted', succeeded: true, timed_out: false, stdout: 'ran!', stderr: '', compile_output: '', exit_code: 0, time_seconds: 0.1, memory_kb: 1, truncated: false, remaining_today: 8 }
+    class FakeWorker {
+      static instances = []
+      constructor(url, options) { this.url = String(url); this.options = options; FakeWorker.instances.push(this); queueMicrotask(() => this.onmessage?.({ data: { type: 'ready' } })) }
+      postMessage(message) {
+        this.message = message
+        this.onmessage?.({ data: { type: 'started' } })
+        if (FakeWorker.hang) return
+        this.onmessage?.({ data: { type: 'output', stream: 'stdout', text: `ran ${message.fileName}\n` } })
+        this.onmessage?.({ data: { type: 'done', ok: true } })
+      }
+      terminate() { this.terminated = true }
+    }
+    const PY = summary(3, 'main.py', 'python')
+    const MD = summary(4, 'notes.md', 'markdown')
+    const CSS = summary(5, 'site.css', 'css')
+    const PAGE = summary(6, 'index.html', 'html')
 
-    it('saves first, runs the open file, and updates what is left', async () => {
-      const fetchMock = setup('editor', {
-        'PUT /code-files/2': [200, { code_file: B }],
-        'POST /code-files/2/run': [200, RESULT],
+    beforeEach(() => {
+      FakeWorker.instances = []
+      FakeWorker.hang = false
+      vi.stubGlobal('Worker', FakeWorker)
+      forgetPythonWorker()
+    })
+
+    const only = (...files) => ({ 'GET /projects/7/code/files': [200, { code_files: files }] })
+    const run = () => userEvent.click(screen.getByRole('button', { name: /Run/ }))
+
+    it('JavaScript runs what is in the editor, sending nothing to the server', async () => {
+      const fetchMock = setup('editor')
+      const editor = await screen.findByLabelText('Code')
+      await userEvent.type(editor, ' // new')
+      fetchMock.mockClear()
+      await run()
+      expect(await screen.findByText(/ran b\.js/)).toBeInTheDocument()
+      expect(FakeWorker.instances[0].message).toEqual({ code: 'console.log(2) // new', fileName: 'b.js' })
+      expect(FakeWorker.instances[0].url).toMatch(/^data:text\/javascript/)
+      expect(fetchMock.mock.calls.filter(([url]) => url.includes('/run'))).toEqual([])
+    })
+
+    it('Python gets a module worker and the stdin box', async () => {
+      setup('editor', { ...only(PY), 'GET /code-files/3': body(PY, 'print(input())') })
+      await screen.findByLabelText('Code')
+      await userEvent.type(screen.getByLabelText('Input (stdin)'), 'Ada')
+      await run()
+      expect(await screen.findByText(/ran main\.py/)).toBeInTheDocument()
+      expect(FakeWorker.instances[0].options).toEqual({ type: 'module' })
+      expect(FakeWorker.instances[0].message).toEqual({ code: 'print(input())', fileName: 'main.py', stdin: 'Ada' })
+    })
+
+    it('no worker is created until Run is pressed, so Pyodide stays lazy', async () => {
+      setup('editor', { ...only(PY), 'GET /code-files/3': body(PY, 'x') })
+      await screen.findByLabelText('Code')
+      expect(FakeWorker.instances).toHaveLength(0)
+    })
+
+    it('only Python files get the stdin box', async () => {
+      setup('editor')
+      await screen.findByLabelText('Code')
+      expect(screen.queryByLabelText('Input (stdin)')).not.toBeInTheDocument()
+    })
+
+    it('other languages get a friendly message and a disabled button', async () => {
+      setup('editor', { ...only(MD), 'GET /code-files/4': body(MD, '# hi') })
+      await screen.findByLabelText('Code')
+      expect(screen.getByRole('button', { name: /Run/ })).toBeDisabled()
+      expect(screen.getByText(/can't run in the browser/)).toBeInTheDocument()
+    })
+
+    it('Run on an html file opens the preview', async () => {
+      setup('viewer', { ...only(PAGE), 'GET /code-files/6': body(PAGE, '<p>my page</p>') })
+      await screen.findByLabelText('Code')
+      expect(screen.queryByTitle('Project preview')).not.toBeInTheDocument()
+      await run()
+      await waitFor(() => expect(screen.getByTitle('Project preview').getAttribute('srcdoc')).toContain('my page'))
+      expect(FakeWorker.instances).toHaveLength(0)
+    })
+
+    it('Run on a stylesheet previews the page it belongs to', async () => {
+      setup('editor', { ...only(CSS, PAGE), 'GET /code-files/5': body(CSS, 'p{color:red}'), 'GET /code-files/6': body(PAGE, '<link rel="stylesheet" href="site.css"><p>x</p>') })
+      await screen.findByLabelText('Code')
+      await run()
+      await waitFor(() => expect(screen.getByTitle('Project preview').getAttribute('srcdoc')).toContain('p{color:red}'))
+    })
+
+    it('the Preview button stays available while working on a script', async () => {
+      const JS = summary(7, 'app.js', 'javascript')
+      setup('editor', { ...only(JS, PAGE), 'GET /code-files/7': body(JS, 'x'), 'GET /code-files/6': body(PAGE, '<p>x</p>') })
+      await screen.findByLabelText('Code')
+      await userEvent.click(screen.getByRole('button', { name: /Preview/ }))
+      await waitFor(() => expect(screen.getByTitle('Project preview')).toBeInTheDocument())
+      expect(FakeWorker.instances).toHaveLength(0)
+    })
+
+    describe('roles', () => {
+      it.each(['viewer', 'editor', 'owner'])('a %s can run code', async (role) => {
+        setup(role)
+        await screen.findByLabelText('Code')
+        await run()
+        expect(await screen.findByText(/ran b\.js/)).toBeInTheDocument()
       })
-      await userEvent.type(await screen.findByLabelText('Code'), '!')
-      expect(await screen.findByText('9 runs left today')).toBeInTheDocument()
-      await userEvent.click(screen.getByRole('button', { name: '▶ Run' }))
-      expect(await screen.findByText('ran!')).toBeInTheDocument()
-      expect(screen.getByText('8 runs left today')).toBeInTheDocument()
-      const order = fetchMock.mock.calls.filter(([, init]) => ['PUT', 'POST'].includes(init?.method)).map(([url, init]) => `${init.method} ${new URL(url).pathname}`)
-      expect(order).toEqual(['PUT /code-files/2', 'POST /code-files/2/run'])
+
+      it('running as a viewer saves nothing', async () => {
+        const fetchMock = setup('viewer')
+        await screen.findByLabelText('Code')
+        await run()
+        await screen.findByText(/ran b\.js/)
+        expect(fetchMock.mock.calls.filter(([, init]) => ['PUT', 'PATCH', 'POST', 'DELETE'].includes(init?.method))).toEqual([])
+      })
     })
 
-    it('does not run if the file could not be saved', async () => {
-      const fetchMock = setup('editor', { 'PUT /code-files/2': [500, { detail: 'Disk full' }] })
-      await userEvent.type(await screen.findByLabelText('Code'), '!')
-      await userEvent.click(await screen.findByRole('button', { name: '▶ Run' }))
-      expect(await screen.findByText(/Couldn't save your changes first: Disk full/)).toBeInTheDocument()
-      expect(calls(fetchMock, 'POST', '/code-files/2/run')).toHaveLength(0)
+    describe('Ctrl+Enter', () => {
+      it.each([['Control', '{Control>}{Enter}{/Control}'], ['Cmd', '{Meta>}{Enter}{/Meta}']])('%s+Enter runs the file', async (_name, keys) => {
+        setup('editor')
+        await screen.findByLabelText('Code')
+        await userEvent.keyboard(keys)
+        expect(await screen.findByText(/ran b\.js/)).toBeInTheDocument()
+      })
+
+      it('Enter alone does not run', async () => {
+        setup('editor')
+        await screen.findByLabelText('Code')
+        await userEvent.keyboard('{Enter}')
+        expect(FakeWorker.instances).toHaveLength(0)
+      })
+
+      it('does nothing for a file that cannot run', async () => {
+        setup('editor', { ...only(MD), 'GET /code-files/4': body(MD, '# hi') })
+        await screen.findByLabelText('Code')
+        await userEvent.keyboard('{Control>}{Enter}{/Control}')
+        expect(FakeWorker.instances).toHaveLength(0)
+      })
+
+      it('is left alone while a dialog is open', async () => {
+        setup('editor')
+        await screen.findByLabelText('Code')
+        await userEvent.click(await screen.findByRole('button', { name: '+ File' }))
+        await screen.findByRole('dialog')
+        await userEvent.keyboard('{Control>}{Enter}{/Control}')
+        expect(FakeWorker.instances).toHaveLength(0)
+      })
+
+      it('stops listening when leaving the page', async () => {
+        const remove = vi.spyOn(window, 'removeEventListener')
+        setup('editor')
+        await screen.findByLabelText('Code')
+        cleanup()
+        expect(remove).toHaveBeenCalledWith('keydown', expect.any(Function), true)
+      })
     })
 
-    it('output stays with its file when switching tabs', async () => {
-      setup('editor', { 'POST /code-files/2/run': [200, RESULT] })
+    describe('output', () => {
+      it('Clear empties the panel', async () => {
+        setup('editor')
+        await screen.findByLabelText('Code')
+        await run()
+        await screen.findByText(/ran b\.js/)
+        await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+        expect(screen.queryByText(/ran b\.js/)).not.toBeInTheDocument()
+        expect(screen.queryByRole('region', { name: 'Run output' })).not.toBeInTheDocument()
+      })
+
+      it('each file keeps its own output across tab switches', async () => {
+        const JS2 = summary(8, 'c.js', 'javascript')
+        setup('editor', { ...only(B, JS2), 'GET /code-files/8': body(JS2, 'y') })
+        await screen.findByLabelText('Code')
+        await run()
+        await screen.findByText(/ran b\.js/)
+        await userEvent.click(within(tree()).getByRole('button', { name: 'c.js' }))
+        await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('y'))
+        expect(screen.queryByText(/ran b\.js/)).not.toBeInTheDocument()
+        await userEvent.click(screen.getByRole('tab', { name: /b\.js/ }))
+        expect(await screen.findByText(/ran b\.js/)).toBeInTheDocument()
+      })
+
+      it('Stop ends a run and terminates the worker', async () => {
+        FakeWorker.hang = true
+        setup('editor')
+        await screen.findByLabelText('Code')
+        await run()
+        await userEvent.click(await screen.findByRole('button', { name: /Stop/ }))
+        expect(await screen.findByText(/^Stopped/)).toBeInTheDocument()
+        expect(FakeWorker.instances[0].terminated).toBe(true)
+      })
+
+      it('running another file stops the first', async () => {
+        FakeWorker.hang = true
+        const JS2 = summary(8, 'c.js', 'javascript')
+        setup('editor', { ...only(B, JS2), 'GET /code-files/8': body(JS2, 'y') })
+        await screen.findByLabelText('Code')
+        await run()
+        await waitFor(() => expect(FakeWorker.instances).toHaveLength(1))
+        await userEvent.click(within(tree()).getByRole('button', { name: 'c.js' }))
+        await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('y'))
+        await run()
+        expect(FakeWorker.instances[0].terminated).toBe(true)
+        expect(FakeWorker.instances).toHaveLength(2)
+      })
+
+      it('leaving the page stops the run', async () => {
+        FakeWorker.hang = true
+        setup('editor')
+        await screen.findByLabelText('Code')
+        await run()
+        await waitFor(() => expect(FakeWorker.instances).toHaveLength(1))
+        cleanup()
+        expect(FakeWorker.instances[0].terminated).toBe(true)
+      })
+    })
+
+    it('shows no daily-run wording anywhere', async () => {
+      setup('editor')
       await screen.findByLabelText('Code')
-      await userEvent.click(await screen.findByRole('button', { name: '▶ Run' }))
-      expect(await screen.findByText('ran!')).toBeInTheDocument()
-      await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
-      await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('print(1)'))
-      expect(screen.queryByText('ran!')).not.toBeInTheDocument()
-    })
-
-    it('viewers get no Run button and never ask for run info', async () => {
-      const fetchMock = setup('viewer')
-      await screen.findByText('View only')
-      await screen.findByLabelText('Code')
-      expect(screen.queryByRole('button', { name: '▶ Run' })).not.toBeInTheDocument()
-      expect(calls(fetchMock, 'GET', '/run/info')).toHaveLength(0)
+      expect(screen.queryByText(/runs? left/i)).not.toBeInTheDocument()
     })
   })
 

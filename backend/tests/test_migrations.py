@@ -335,3 +335,51 @@ def test_0009_adds_and_removes_code_runs(scratch_engine):
         command.downgrade(config, "0008_multi_file_code")
     assert "code_runs" not in inspect(scratch_engine).get_table_names()
 
+
+def test_history_has_a_single_head_ending_in_0010():
+    from alembic.script import ScriptDirectory
+
+    assert ScriptDirectory.from_config(alembic_config()).get_heads() == ["0010_drop_code_runs"]
+
+
+def _downgrade(eng, revision):
+    config = alembic_config()
+    with eng.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, revision)
+
+
+def test_0010_drops_code_runs_from_a_database_already_at_0009(scratch_engine):
+    """Production already ran 0009, and may hold rows."""
+    _upgrade(scratch_engine, "0009_code_runs")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'x')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (10, 'a', 1)"))
+        conn.execute(text("INSERT INTO code_files (project_id, path, language, content) VALUES (10, 'a.py', 'python', 'kept')"))
+        conn.execute(text("INSERT INTO code_runs (project_id, user_id) VALUES (10, 1)"))
+    _upgrade(scratch_engine)
+    assert _version(scratch_engine) == "0010_drop_code_runs"
+    assert "code_runs" not in inspect(scratch_engine).get_table_names()
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT content FROM code_files")).scalar() == "kept"
+
+
+def test_0010_works_from_a_database_that_never_had_0009(scratch_engine):
+    _upgrade(scratch_engine, "0008_multi_file_code")
+    assert "code_runs" not in inspect(scratch_engine).get_table_names()
+    _upgrade(scratch_engine)
+    assert _version(scratch_engine) == "0010_drop_code_runs"
+    assert "code_runs" not in inspect(scratch_engine).get_table_names()
+
+
+def test_0010_downgrade_recreates_the_empty_table(scratch_engine):
+    _upgrade(scratch_engine)
+    _downgrade(scratch_engine, "0009_code_runs")
+    assert _version(scratch_engine) == "0009_code_runs"
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM code_runs")).scalar() == 0
+    indexes = {ix["name"] for ix in inspect(scratch_engine).get_indexes("code_runs")}
+    assert {"ix_code_runs_project_id", "ix_code_runs_user_id", "ix_code_runs_created_at"} <= indexes
+    _upgrade(scratch_engine)
+    assert "code_runs" not in inspect(scratch_engine).get_table_names()
+

@@ -1,111 +1,88 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import RunPanel from './RunPanel'
-import { stubRoutes } from '../test/helpers'
 
-const FILE = { id: 3, path: 'main.py', language: 'python' }
-const INFO = { enabled: true, languages: ['python', 'javascript'], remaining_today: 5 }
-const RESULT = {
-  status: 'Accepted', succeeded: true, timed_out: false, stdout: 'hello\n', stderr: '', compile_output: '',
-  exit_code: 0, time_seconds: 0.01, memory_kb: 100, truncated: false, remaining_today: 4,
+const idle = { output: [], outcome: null }
+
+function setup(props) {
+  const onClear = vi.fn()
+  const view = render(<RunPanel result={idle} running={false} loading={null} onClear={onClear} {...props} />)
+  return { onClear, ...view }
 }
-
-function setup({ routes = {}, ...props } = {}) {
-  const fetchMock = stubRoutes(routes)
-  const handlers = { beforeRun: vi.fn(() => Promise.resolve()), onRemaining: vi.fn() }
-  render(<RunPanel file={FILE} info={INFO} {...handlers} {...props} />)
-  return { fetchMock, ...handlers }
-}
-
-const clickRun = () => userEvent.click(screen.getByRole('button', { name: '▶ Run' }))
 
 describe('RunPanel', () => {
-  it('runs after saving and shows output, exit code and time', async () => {
-    const { fetchMock, beforeRun, onRemaining } = setup({ routes: { 'POST /code-files/3/run': [200, RESULT] } })
-    expect(screen.getByText('5 runs left today')).toBeInTheDocument()
-    await clickRun()
-    expect(await screen.findByText(/Accepted · exit code 0 · 0.01s/)).toBeInTheDocument()
-    expect(screen.getByText('hello')).toBeInTheDocument()
-    expect(beforeRun).toHaveBeenCalledTimes(1)
-    expect(onRemaining).toHaveBeenCalledWith(4)
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ stdin: '' })
-  })
-
-  it('sends program input', async () => {
-    const { fetchMock } = setup({ routes: { 'POST /code-files/3/run': [200, RESULT] } })
-    await userEvent.click(screen.getByRole('button', { name: 'Input' }))
-    await userEvent.type(screen.getByLabelText('Program input (stdin)'), '42')
-    await clickRun()
-    await screen.findByText(/Accepted/)
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ stdin: '42' })
-  })
-
-  it('shows stderr and a failed status', async () => {
-    setup({ routes: { 'POST /code-files/3/run': [200, { ...RESULT, succeeded: false, status: 'Runtime Error (NZEC)', exit_code: 1, stdout: '', stderr: 'Traceback' }] } })
-    await clickRun()
-    expect(await screen.findByText(/Runtime Error \(NZEC\) · exit code 1/)).toHaveClass('text-danger')
-    expect(screen.getByText('Traceback')).toHaveClass('text-danger')
-  })
-
-  it('shows compiler errors when there is no exit code or time', async () => {
-    setup({ routes: { 'POST /code-files/3/run': [200, { ...RESULT, succeeded: false, status: 'Compilation Error', exit_code: null, time_seconds: null, stdout: '', compile_output: 'bad syntax' }] } })
-    await clickRun()
-    expect(await screen.findByText('Compilation Error')).toBeInTheDocument()
-    expect(screen.getByText('bad syntax')).toBeInTheDocument()
-  })
-
-  it('says when there was no output, and when it was cut short', async () => {
-    setup({ routes: { 'POST /code-files/3/run': [[200, { ...RESULT, stdout: '' }], [200, { ...RESULT, truncated: true }]] } })
-    await clickRun()
-    expect(await screen.findByText('No output.')).toBeInTheDocument()
-    await clickRun()
-    expect(await screen.findByText(/cut short/)).toBeInTheDocument()
-  })
-
-  it('shows server errors such as the daily limit', async () => {
-    setup({ routes: { 'POST /code-files/3/run': [429, { detail: "You've used your 15 code runs for today." }] } })
-    await clickRun()
-    expect(await screen.findByRole('alert')).toHaveTextContent('15 code runs')
-  })
-
-  it('does not run if saving failed', async () => {
-    const { fetchMock } = setup({ beforeRun: vi.fn(() => Promise.reject(new Error('Could not save'))) })
-    await clickRun()
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save')
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('disables Run for file types it cannot run', () => {
-    setup({ file: { ...FILE, language: 'markdown' } })
-    expect(screen.getByRole('button', { name: '▶ Run' })).toBeDisabled()
-    expect(screen.getByText("This file type can't be run.")).toBeInTheDocument()
-  })
-
-  it('disables Run when the server has no key', () => {
-    setup({ info: { ...INFO, enabled: false } })
-    expect(screen.getByRole('button', { name: '▶ Run' })).toBeDisabled()
-    expect(screen.getByText(/isn't set up/)).toBeInTheDocument()
-  })
-
-  it('disables Run with none left today', () => {
-    setup({ info: { ...INFO, remaining_today: 0 } })
-    expect(screen.getByRole('button', { name: '▶ Run' })).toBeDisabled()
-    expect(screen.getByText('0 runs left today')).toBeInTheDocument()
-  })
-
-  it('shows Running while waiting', async () => {
-    let finish
-    const beforeRun = vi.fn(() => new Promise((resolve) => { finish = resolve }))
-    setup({ beforeRun, routes: { 'POST /code-files/3/run': [200, RESULT] } })
-    await clickRun()
-    expect(screen.getByRole('button', { name: 'Running...' })).toBeDisabled()
-    finish()
-    await waitFor(() => expect(screen.getByRole('button', { name: '▶ Run' })).toBeEnabled())
-  })
-
-  it('renders nothing until the info has loaded', () => {
-    const { container } = render(<RunPanel file={FILE} info={null} beforeRun={vi.fn()} onRemaining={vi.fn()} />)
+  it('takes no space before anything has run', () => {
+    const { container } = setup()
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('shows Running while running, with no Clear or Copy', () => {
+    setup({ running: true })
+    expect(screen.getByText('Running...')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument()
+  })
+
+  it('shows download progress for the first Python run', () => {
+    setup({ running: true, loading: { stage: 'download', received: 3_000_000, total: 12_000_000 } })
+    expect(screen.getByText(/Downloading Python, only needed once: 3.0 of 12.0 MB/)).toBeInTheDocument()
+    const bar = screen.getByRole('progressbar')
+    expect(bar).toHaveAttribute('value', '3000000')
+    expect(bar).toHaveAttribute('max', '12000000')
+  })
+
+  it('then that Python is starting', () => {
+    setup({ running: true, loading: { stage: 'starting' } })
+    expect(screen.getByText('Starting Python...')).toBeInTheDocument()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['ok', 'Finished', 'text-success'],
+    ['error', 'Failed', 'text-danger'],
+    ['timeout', /10 second limit/, 'text-danger'],
+    ['output-limit', /100 KB limit/, 'text-danger'],
+    ['stopped', 'Stopped', 'muted'],
+    ['crashed', /runner failed/, 'text-danger'],
+  ])('describes the status %s', (status, text, tone) => {
+    setup({ result: { output: [], outcome: { status, durationMs: 12 } } })
+    expect(screen.getByText(text instanceof RegExp ? text : new RegExp(`^${text}`))).toHaveClass(tone)
+  })
+
+  it.each([[12.4, '12 ms'], [999, '999 ms'], [1234, '1.23 s'], [10004, '10.00 s']])('formats %s as %s', (durationMs, text) => {
+    setup({ result: { output: [], outcome: { status: 'ok', durationMs } } })
+    expect(screen.getByText(new RegExp(text))).toBeInTheDocument()
+  })
+
+  it('marks stderr, renders output as text', () => {
+    setup({ result: { output: [{ stream: 'stdout', text: '<b>out</b>' }, { stream: 'stderr', text: 'bad' }], outcome: { status: 'ok', durationMs: 1 } } })
+    expect(screen.getByText('<b>out</b>')).toBeInTheDocument()
+    expect(screen.getByText('bad')).toHaveClass('text-danger')
+  })
+
+  it('says when there was no output, only on success', () => {
+    const { rerender } = setup({ result: { output: [], outcome: { status: 'ok', durationMs: 1 } } })
+    expect(screen.getByText('No output.')).toBeInTheDocument()
+    rerender(<RunPanel result={{ output: [], outcome: { status: 'stopped', durationMs: 1 } }} running={false} loading={null} onClear={vi.fn()} />)
+    expect(screen.queryByText('No output.')).not.toBeInTheDocument()
+  })
+
+  it('Copy copies stdout and stderr together', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText')
+    setup({ result: { output: [{ stream: 'stdout', text: 'a\n' }, { stream: 'stderr', text: 'b\n' }], outcome: { status: 'ok', durationMs: 1 } } })
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(writeText).toHaveBeenCalledWith('a\nb\n')
+  })
+
+  it('has no Copy when there is nothing to copy', () => {
+    setup({ result: { output: [], outcome: { status: 'ok', durationMs: 1 } } })
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
+  })
+
+  it('Clear asks to clear', async () => {
+    const { onClear } = setup({ result: { output: [{ stream: 'stdout', text: 'a' }], outcome: { status: 'ok', durationMs: 1 } } })
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(onClear).toHaveBeenCalled()
   })
 })
