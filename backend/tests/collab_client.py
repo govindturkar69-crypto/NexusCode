@@ -16,6 +16,7 @@ from pycrdt import (
     handle_sync_message,
 )
 
+from app.routers import collab as collab_router
 from app.services.collab import (
     MESSAGE_SESSION,
     TEXT_NAME,
@@ -33,6 +34,7 @@ def ticket_for(client, token, project_id):
 
 class YClient:
     def __init__(self, client, token, project_id, file_id, *, ticket=None, sync=True):
+        self._client = client
         ticket = ticket or ticket_for(client, token, project_id)
         self._context = client.websocket_connect(f"/ws/code-files/{file_id}?ticket={ticket}")
         self.ws = self._context.__enter__()
@@ -51,6 +53,7 @@ class YClient:
             # Refused or closed straight away: leave the socket's context, or the
             # test client waits for it forever
             self._context.__exit__(None, None, None)
+            self.settle()
             raise
 
     def handshake(self):
@@ -95,6 +98,13 @@ class YClient:
 
     def close(self):
         self._context.__exit__(None, None, None)
+        self.settle()
+
+    def settle(self):
+        """The test client cancels the server's handler when a socket closes, which
+        uvicorn doesn't. Wait for its clean-up (saving included) to finish, as it
+        would in a real server, before the test looks at the database."""
+        self._client.portal.call(collab_router.collab.settle)
 
     def __enter__(self):
         return self
