@@ -880,11 +880,18 @@ describe('CodeEditor', () => {
       return setup(role, routes)
     }
 
+    // The editor can appear in the same render that opens the tab, before the effect
+    // that opens its live session has run (it did on a slow CI runner), so wait for it
+    async function liveSession(fileId) {
+      await waitFor(() => expect(fakeCollab.sessions.get(fileId)).toBeDefined())
+      return fakeCollab.sessions.get(fileId)
+    }
+
     it('opens a live session for each open tab, and closes it with the tab', async () => {
       liveSetup()
       await screen.findByLabelText('Code')
+      expect(await liveSession(2)).toMatchObject({ projectId: '7' })
       expect([...fakeCollab.sessions.keys()]).toEqual([2])
-      expect(fakeCollab.sessions.get(2)).toMatchObject({ projectId: '7' })
       await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
       await waitFor(() => expect([...fakeCollab.sessions.keys()]).toEqual([2, 1]))
       const b = fakeCollab.sessions.get(2)
@@ -907,7 +914,7 @@ describe('CodeEditor', () => {
     it("everyone's changes reach the editor's copy, which Run reads", async () => {
       liveSetup()
       await screen.findByLabelText('Code')
-      const session = fakeCollab.sessions.get(2)
+      const session = await liveSession(2)
       act(() => session.text.insert(0, 'console.log("from bob")'))
       await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('console.log("from bob")'))
     })
@@ -915,7 +922,7 @@ describe('CodeEditor', () => {
     it("shows who else is in the file, with their cursors' colours and names", async () => {
       liveSetup()
       await screen.findByLabelText('Code')
-      const { awareness } = fakeCollab.sessions.get(2)
+      const { awareness } = await liveSession(2)
       act(() => {
         awareness.states.set(901, { user: { name: 'bob', color: '#16a34a', role: 'editor' } })
         awareness.states.set(902, { user: { name: 'vera', color: '#2563eb', role: 'viewer' } })
@@ -945,27 +952,30 @@ describe('CodeEditor', () => {
         window.dispatchEvent(event)
         return event.defaultPrevented
       }
+      const session = await liveSession(2)
       expect(leave()).toBe(false)
-      act(() => fakeCollab.sessions.get(2).set({ status: 'disconnected', unsynced: true }))
+      act(() => session.set({ status: 'disconnected', unsynced: true }))
       expect(leave()).toBe(true)
-      act(() => fakeCollab.sessions.get(2).set({ status: 'connected', unsynced: false }))
+      act(() => session.set({ status: 'connected', unsynced: false }))
       expect(leave()).toBe(false)
     })
 
     it('waits, read-only, until the first sync', async () => {
       fakeCollab.mode = 'connecting'
       setup('owner')
-      const editor = await screen.findByLabelText('Code')
-      expect(editor).toHaveAttribute('readonly')
-      expect(screen.getByText('Connecting to live editing...')).toBeInTheDocument()
-      act(() => fakeCollab.sessions.get(2).set({ synced: true, status: 'connected', role: 'editor' }))
+      await screen.findByLabelText('Code')
+      const session = await liveSession(2)
+      expect(await screen.findByText('Connecting to live editing...')).toBeInTheDocument()
+      expect(screen.getByLabelText('Code')).toHaveAttribute('readonly')
+      act(() => session.set({ synced: true, status: 'connected', role: 'editor' }))
       await waitFor(() => expect(screen.getByLabelText('Code')).not.toHaveAttribute('readonly'))
     })
 
     it('keeps working offline, and says so', async () => {
       liveSetup()
       await screen.findByLabelText('Code')
-      act(() => fakeCollab.sessions.get(2).set({ status: 'disconnected' }))
+      const session = await liveSession(2)
+      act(() => session.set({ status: 'disconnected' }))
       expect(await screen.findByText("Offline: your changes will sync when you're back")).toBeInTheDocument()
       expect(screen.getByLabelText('Code')).not.toHaveAttribute('readonly')
     })
@@ -980,7 +990,8 @@ describe('CodeEditor', () => {
     it('falls back to normal saving when the server ends live editing', async () => {
       const fetchMock = liveSetup('editor', { 'PUT /code-files/2': [200, { code_file: B }] })
       const editor = await screen.findByLabelText('Code')
-      act(() => fakeCollab.sessions.get(2).set({ closed: { code: 4013, message: 'You have too many files open for live editing.' } }))
+      const session = await liveSession(2)
+      act(() => session.set({ closed: { code: 4013, message: 'You have too many files open for live editing.' } }))
       expect(await screen.findByRole('note')).toHaveTextContent('Live editing stopped: You have too many files open')
       await userEvent.type(editor, '!')
       await waitFor(() => expect(calls(fetchMock, 'PUT', '/code-files/2').length).toBeGreaterThan(0), { timeout: 3000 })
@@ -999,7 +1010,7 @@ describe('CodeEditor', () => {
       ]
       vi.stubGlobal('fetch', vi.fn((url, init) => (new URL(url).pathname === '/ai/agent/runs/5/step' ? sseResponse(steps.shift(), { signal: init.signal }) : base(url, init))))
       await screen.findByLabelText('Code')
-      const session = fakeCollab.sessions.get(2)
+      const session = await liveSession(2)
       act(() => session.text.insert(0, 'console.log(2)'))
       await userEvent.click(screen.getByRole('button', { name: '🤖 Agent' }))
       await userEvent.type(screen.getByLabelText('Goal'), 'Change it')
