@@ -487,3 +487,26 @@ def test_0014_adds_an_empty_agent_runs_table_and_removes_it(scratch_engine):
     _downgrade(scratch_engine, "0013_oauth_identities")
     assert "agent_runs" not in inspect(scratch_engine).get_table_names()
     _upgrade(scratch_engine, "0014_agent_runs")
+
+
+def test_0015_adds_an_empty_yjs_table_and_removes_it(scratch_engine):
+    _upgrade(scratch_engine, "0014_agent_runs")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'h1')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (1, 'P', 1)"))
+        conn.execute(text("INSERT INTO code_files (id, project_id, path, content, language) VALUES (1, 1, 'a.py', 'x = 1', 'python')"))
+    _upgrade(scratch_engine, "0015_code_file_yjs")
+    with scratch_engine.begin() as conn:
+        # Nothing is backfilled up front: documents are made when files are first opened
+        assert conn.execute(text("SELECT count(*) FROM code_file_yjs")).scalar() == 0
+        assert conn.execute(text("SELECT content FROM code_files WHERE id = 1")).scalar() == "x = 1"
+        conn.execute(text("INSERT INTO code_file_yjs (code_file_id, state) VALUES (1, :s)"), {"s": b"\x00\x00"})
+    with scratch_engine.connect() as conn:
+        with pytest.raises(Exception, match="(?i)unique|primary|constraint"):
+            conn.execute(text("INSERT INTO code_file_yjs (code_file_id, state) VALUES (1, :s)"), {"s": b"\x00"})
+        conn.rollback()
+    _downgrade(scratch_engine, "0014_agent_runs")
+    assert "code_file_yjs" not in inspect(scratch_engine).get_table_names()
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT content FROM code_files WHERE id = 1")).scalar() == "x = 1"
+    _upgrade(scratch_engine, "0015_code_file_yjs")

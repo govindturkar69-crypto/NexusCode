@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_project_role, role_at_least
 from app.models import ProjectMemberModel, ProjectModel, TaskModel, UserModel
+from app.routers import collab
 from app.schemas.members import (
     MemberAdd,
     MemberListResponse,
@@ -118,6 +119,8 @@ def change_role(
     member.role = body.role
     db.commit()
     db.refresh(member)
+    # Open live-editing connections get the new role straight away
+    collab.set_role(project.id, user_id, member.role)
     publish(project.id, "role_changed")
     return {"member": _member_out(member, member.user.username)}
 
@@ -153,5 +156,6 @@ def remove_member(
     # They lose live access right away, not on their next message
     anyio.from_thread.run(manager.kick, project_id, user_id)
     anyio.from_thread.run(video_manager.kick, project_id, user_id)
+    collab.set_role(project_id, user_id, None)
     publish(project_id, "member_left" if leaving else "member_removed")
     return Response(status_code=204)

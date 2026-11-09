@@ -77,6 +77,13 @@ export default defineConfig({
     __PYODIDE_BASE__: JSON.stringify(PYODIDE_BASE),
     __PYODIDE_DOWNLOAD_BYTES__: PYODIDE_DOWNLOAD_BYTES,
   },
+  resolve: {
+    alias: [
+      // y-monaco imports Monaco's API by its pre-0.50 path. Since 0.50 Monaco's exports
+      // map that path elsewhere; this is the same module our Monaco setup loads.
+      { find: /^monaco-editor\/esm\/vs\/editor\/editor\.api\.js$/, replacement: 'monaco-editor/editor/editor.api.js' },
+    ],
+  },
   // The Python worker imports Pyodide at run time, which needs a module worker
   worker: { format: 'es' },
   build: {
