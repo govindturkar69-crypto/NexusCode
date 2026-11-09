@@ -6,22 +6,45 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import CodeEditor from './CodeEditor'
 import AuthProvider from '../auth/AuthProvider'
 import { forgetPythonWorker } from '../runners/runPython'
+import { MonacoBinding } from 'y-monaco'
+import { fakeCollab, resetFakeCollab } from '../test/fakeCollab'
 import { fakeJwt, inOneHour, sseFrame, sseResponse, stubRoutes } from '../test/helpers'
 
 // Monaco can't run in jsdom; everything else here is the real page
 vi.mock('../editor/monacoSetup', () => ({}))
-vi.mock('@monaco-editor/react', () => ({
-  DiffEditor: () => <div data-testid="diff" />,
-  default: ({ value, onChange, language, path, options }) => (
-    <textarea
-      aria-label="Code"
-      data-language={language}
-      data-path={path}
-      readOnly={options.readOnly}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  ),
+vi.mock('@monaco-editor/react', async () => {
+  const { useEffect } = await import('react')
+  const fakeEditor = { getModel: () => ({ fake: 'model' }) }
+  function FakeEditor({ value, defaultValue, onChange, onMount, language, path, options }) {
+    useEffect(() => {
+      onMount?.(fakeEditor)
+    }, [onMount])
+    return (
+      <textarea
+        aria-label="Code"
+        data-language={language}
+        data-path={path}
+        data-live={value === undefined ? 'yes' : 'no'}
+        readOnly={options.readOnly}
+        value={value ?? defaultValue ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    )
+  }
+  return { DiffEditor: () => <div data-testid="diff" />, default: FakeEditor }
+})
+// Live editing: a fake session per file (see src/test/fakeCollab.js), and no real Monaco binding
+vi.mock('../collab/collabSession', async (importOriginal) => {
+  const actual = await importOriginal()
+  const { makeFakeSession } = await import('../test/fakeCollab')
+  return { ...actual, createCollabSession: (options) => makeFakeSession(options) }
+})
+vi.mock('y-monaco', () => ({
+  MonacoBinding: vi.fn(function MonacoBinding(ytext, model) {
+    this.ytext = ytext
+    this.model = model
+    this.destroy = vi.fn()
+  }),
 }))
 
 const summary = (id, path, language = 'python') => ({ id, path, language, project_id: 7, created_at: '', updated_at: '' })
@@ -58,7 +81,10 @@ const tree = () => screen.getByRole('navigation', { name: 'Project files' })
 const tabs = () => screen.getAllByRole('tab').map((t) => t.textContent.replace(' ●', ''))
 
 describe('CodeEditor', () => {
-  beforeEach(() => vi.useRealTimers())
+  beforeEach(() => {
+    vi.useRealTimers()
+    resetFakeCollab()
+  })
 
   describe('opening files', () => {
     it('shows the tree and opens the first file', async () => {
@@ -845,6 +871,103 @@ describe('CodeEditor', () => {
       await screen.findByText('✅ Done')
       const steps = fetchMock.mock.calls.filter(([url]) => new URL(url).pathname === '/ai/agent/runs/5/step')
       expect(JSON.parse(steps[1][1].body).results).toEqual([{ id: 'r1', result: { content: 'typed' } }])
+    })
+  })
+
+  describe('live editing', () => {
+    function liveSetup(role = 'owner', routes = {}) {
+      fakeCollab.mode = 'live'
+      return setup(role, routes)
+    }
+
+    it('opens a live session for each open tab, and closes it with the tab', async () => {
+      liveSetup()
+      await screen.findByLabelText('Code')
+      expect([...fakeCollab.sessions.keys()]).toEqual([2])
+      expect(fakeCollab.sessions.get(2)).toMatchObject({ projectId: '7' })
+      await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
+      await waitFor(() => expect([...fakeCollab.sessions.keys()]).toEqual([2, 1]))
+      const b = fakeCollab.sessions.get(2)
+      await userEvent.click(screen.getByRole('button', { name: 'Close b.js' }))
+      await waitFor(() => expect(b.destroy).toHaveBeenCalled())
+    })
+
+    it('binds the editor to the live text, and typing is saved by Yjs, not autosave', async () => {
+      const fetchMock = liveSetup()
+      const editor = await screen.findByLabelText('Code')
+      await waitFor(() => expect(MonacoBinding).toHaveBeenCalled())
+      expect(MonacoBinding.mock.calls.at(-1)[0]).toBe(fakeCollab.sessions.get(2).text)
+      expect(editor).toHaveAttribute('data-live', 'yes')
+      expect(screen.getByText('Live: changes save as you type')).toBeInTheDocument()
+      await userEvent.type(editor, '!')
+      await new Promise((resolve) => setTimeout(resolve, 1300))
+      expect(calls(fetchMock, 'PUT', '/code-files/2')).toHaveLength(0)
+    })
+
+    it("everyone's changes reach the editor's copy, which Run reads", async () => {
+      liveSetup()
+      await screen.findByLabelText('Code')
+      const session = fakeCollab.sessions.get(2)
+      act(() => session.text.insert(0, 'console.log("from bob")'))
+      await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('console.log("from bob")'))
+    })
+
+    it('waits, read-only, until the first sync', async () => {
+      fakeCollab.mode = 'connecting'
+      setup('owner')
+      const editor = await screen.findByLabelText('Code')
+      expect(editor).toHaveAttribute('readonly')
+      expect(screen.getByText('Connecting to live editing...')).toBeInTheDocument()
+      act(() => fakeCollab.sessions.get(2).set({ synced: true, status: 'connected', role: 'editor' }))
+      await waitFor(() => expect(screen.getByLabelText('Code')).not.toHaveAttribute('readonly'))
+    })
+
+    it('keeps working offline, and says so', async () => {
+      liveSetup()
+      await screen.findByLabelText('Code')
+      act(() => fakeCollab.sessions.get(2).set({ status: 'disconnected' }))
+      expect(await screen.findByText("Offline: your changes will sync when you're back")).toBeInTheDocument()
+      expect(screen.getByLabelText('Code')).not.toHaveAttribute('readonly')
+    })
+
+    it('the server saying "viewer" makes the editor read-only, even if the page thought otherwise', async () => {
+      fakeCollab.role = 'viewer'
+      liveSetup('editor')
+      await screen.findByLabelText('Code')
+      await waitFor(() => expect(screen.getByLabelText('Code')).toHaveAttribute('readonly'))
+    })
+
+    it('falls back to normal saving when the server ends live editing', async () => {
+      const fetchMock = liveSetup('editor', { 'PUT /code-files/2': [200, { code_file: B }] })
+      const editor = await screen.findByLabelText('Code')
+      act(() => fakeCollab.sessions.get(2).set({ closed: { code: 4013, message: 'You have too many files open for live editing.' } }))
+      expect(await screen.findByRole('note')).toHaveTextContent('Live editing stopped: You have too many files open')
+      await userEvent.type(editor, '!')
+      await waitFor(() => expect(calls(fetchMock, 'PUT', '/code-files/2').length).toBeGreaterThan(0), { timeout: 3000 })
+    })
+
+    it("an accepted agent change to a live file goes into the shared document, not a REST save", async () => {
+      fakeCollab.mode = 'live'
+      const base = setup('editor', {
+        'POST /ai/projects/7/agent/runs': [201, { id: 5, status: 'running', limits: { max_steps: 8 } }],
+        'POST /ai/agent/runs/5/accepted': [200, { id: 5 }],
+        'GET /ai/agent/quota': [200, { user_limit: 2, user_remaining: 2, total_limit: 2, total_remaining: 2, resets_at: '2026-11-09T00:00:00Z' }],
+      })
+      const steps = [
+        [sseFrame('tool_call', { id: 'w1', name: 'write_file', args: { path: 'b.js', content: 'console.log(3)' } }), sseFrame('done', { status: 'tool_calls' })],
+        [sseFrame('done', { status: 'finished', summary: 'ok' })],
+      ]
+      vi.stubGlobal('fetch', vi.fn((url, init) => (new URL(url).pathname === '/ai/agent/runs/5/step' ? sseResponse(steps.shift(), { signal: init.signal }) : base(url, init))))
+      await screen.findByLabelText('Code')
+      const session = fakeCollab.sessions.get(2)
+      act(() => session.text.insert(0, 'console.log(2)'))
+      await userEvent.click(screen.getByRole('button', { name: '🤖 Agent' }))
+      await userEvent.type(screen.getByLabelText('Goal'), 'Change it')
+      await userEvent.click(screen.getByRole('button', { name: '▶ Start' }))
+      await screen.findByText('✅ Done')
+      await userEvent.click(within(screen.getByRole('list', { name: 'Changes to review' })).getByRole('button', { name: 'Accept' }))
+      await waitFor(() => expect(session.text.toString()).toBe('console.log(3)'))
+      expect(calls(base, 'PUT', '/code-files/2')).toHaveLength(0)
     })
   })
 })
