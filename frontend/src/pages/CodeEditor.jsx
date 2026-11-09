@@ -6,6 +6,7 @@ import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 import { CollabFiles } from "../collab/collabFiles";
 import { replaceText } from "../collab/collabSession";
+import { describePeople } from "../collab/presence";
 import { baseName, buildTree, isInFolder, renameFolderPath } from "../editor/fileTree";
 import { isHtmlFile } from "../editor/preview";
 import { collectPythonFiles } from "../runners/pythonProject";
@@ -173,6 +174,17 @@ function CodeEditor() {
   }, [collab, projectId, user?.username, onCollabText, openIds]);
 
   useEffect(() => () => collab.destroyAll(), [collab]);
+
+  // Edits made offline live only in this tab until the server is back
+  useEffect(() => {
+    function onBeforeUnload(event) {
+      if (!collab.hasUnsynced()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [collab]);
 
   const activeLive = activeId !== null && collab.isLive(activeId);
 
@@ -429,6 +441,7 @@ function CodeEditor() {
   const activeSave = activeId === null ? { status: "saved", error: "" } : autosave.state(activeId);
   const saveStatus = SAVE_STATUS[activeSave.status];
   const activeLiveState = liveStatus(activeId === null ? null : collab.stateFor(activeId));
+  const activePeople = activeId === null ? [] : collab.people(activeId);
   const activeRunner = activeFile ? runnerFor(activeFile.path, { hasHtml }) : null;
   const runningHere = activeId !== null && runner.runningFileId === activeId;
 
@@ -547,10 +560,16 @@ function CodeEditor() {
               const file = filesById.get(id);
               if (!file) return null;
               const fileStatus = autosave.state(id).status;
+              const others = collab.people(id);
               return (
                 <span key={id} className={`editor-tab ${id === activeId ? "editor-tab--active" : ""}`}>
                   <button type="button" role="tab" aria-selected={id === activeId} title={file.path} className="editor-tab__name" onClick={() => setActiveId(id)}>
                     {baseName(file.path)}
+                    {others.length > 0 && (
+                      <span className="editor-tab__people" title={describePeople(others)} aria-label={`${others.length} other ${others.length === 1 ? "person" : "people"} here`}>
+                        {" "}👥{others.length}
+                      </span>
+                    )}
                     {fileStatus !== "saved" && (
                       <span className={`editor-tab__dot ${fileStatus === "error" ? "text-danger" : ""}`} aria-label={SAVE_STATUS[fileStatus].text}> ●</span>
                     )}
@@ -561,6 +580,19 @@ function CodeEditor() {
             })}
           </div>
           {activeLoaded && activeLiveState.notice && <p className="hint" role="note" style={{ padding: "0 1rem" }}>{activeLiveState.notice}</p>}
+          {activeLive && activePeople.length > 0 && (
+            <div className="presence-bar" aria-label="People in this file">
+              {activePeople.map((person) => (
+                <span key={person.name} className="presence-bar__person" title={person.role === "viewer" ? `${person.name} is viewing` : `${person.name} is editing`}>
+                  <span className="presence-bar__dot" style={{ background: person.color }} aria-hidden="true" />
+                  {person.name}
+                  {person.role === "viewer" && <span className="muted"> (viewing)</span>}
+                </span>
+              ))}
+              <span className="muted small">{activePeople.filter((p) => p.role === "editor").length > 0 ? `${activePeople.length + 1} people editing` : ""}</span>
+            </div>
+          )}
+          {activeLive && <style>{collab.cursorStyles(activeId)}</style>}
           {activeLoaded && (
             <div className="run-bar">
               {runningHere ? (
@@ -602,7 +634,8 @@ function CodeEditor() {
               onChange={handleCodeChange}
               onMount={(editor) => setEditorInstance(editor)}
               theme={theme === "dark" ? "vs-dark" : "light"}
-              options={{ fontSize: 14, minimap: { enabled: false }, readOnly: !canEdit || activeLiveState.readOnly }}
+              // Room above the first line for other people's name labels
+              options={{ fontSize: 14, minimap: { enabled: false }, padding: { top: 18 }, readOnly: !canEdit || activeLiveState.readOnly }}
             />
           ) : (
             <p role="status" className="muted" style={{ padding: "1rem" }}>

@@ -243,3 +243,27 @@ def test_session_message_format():
     from pycrdt import Decoder
 
     assert json.loads(Decoder(data[1:]).read_var_string()) == {"role": "viewer", "username": "vera"}
+
+
+@pytest.mark.parametrize("color,expected", [
+    ("#16a34a", "#16a34a"),
+    ("red; } body { display: none", "#888888"),
+    ("#fff", "#888888"),
+    (None, "#888888"),
+    (12, "#888888"),
+])
+def test_only_plain_hex_colours_reach_other_people(client, owner, project, code_file, make_user, color, expected):
+    eddie = member(client, make_user, project, "eddie", "editor")
+    with YClient(client, owner, project, code_file) as alice, YClient(client, eddie, project, code_file) as bob:
+        bob.set_awareness(55, 1, {"user": {"name": "eddie", "color": color}})
+        alice.receive()
+        assert alice.awareness[55]["user"]["color"] == expected
+
+
+def test_awareness_comes_back_to_the_sender_too(client, owner, project, code_file):
+    """Browsers treat 30 s of silence as a dead connection, so a lone editor's own
+    awareness renewals are echoed back."""
+    with YClient(client, owner, project, code_file) as alice:
+        alice.set_awareness(66, 1, {"user": {"name": "olivia"}})
+        alice.receive()
+        assert alice.awareness[66]["user"]["name"] == "olivia"

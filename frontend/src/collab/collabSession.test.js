@@ -30,6 +30,11 @@ function fakeServer({ content = '', role = 'editor', closeWith = null } = {}) {
         encoding.writeVarUint(session, MESSAGE_SESSION)
         encoding.writeVarString(session, JSON.stringify({ role, username: 'olivia' }))
         this.deliver(encoding.toUint8Array(session))
+        // Like the backend: ask for what the browser has that we don't (offline edits)
+        const step1 = encoding.createEncoder()
+        encoding.writeVarUint(step1, 0)
+        syncProtocol.writeSyncStep1(step1, serverDoc)
+        this.deliver(encoding.toUint8Array(step1))
       }, 0)
     }
     deliver(bytes) {
@@ -106,6 +111,25 @@ describe('createCollabSession', () => {
     await until(session, (s) => s.closed !== null)
     expect(session.getState().closed.code).toBe(code)
     expect(session.provider.shouldConnect).toBe(false)
+  })
+
+  it('remembers edits made offline until a reconnect has synced them', async () => {
+    const server = fakeServer({ content: 'x' })
+    const session = open(server)
+    await until(session, (s) => s.synced)
+    server.sockets[0].close(1006)
+    await until(session, (s) => s.status !== 'connected')
+    session.text.insert(1, ' offline')
+    expect(session.getState().unsynced).toBe(true)
+    await until(session, (s) => s.status === 'connected' && !s.unsynced)
+    await vi.waitFor(() => expect(server.serverDoc.getText('content').toString()).toBe('x offline'))
+  })
+
+  it('edits while connected are never "unsynced"', async () => {
+    const session = open(fakeServer({ content: 'x' }))
+    await until(session, (s) => s.synced)
+    session.text.insert(1, 'y')
+    expect(session.getState().unsynced).toBe(false)
   })
 
   it('reconnects after an ordinary drop', async () => {

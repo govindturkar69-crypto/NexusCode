@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 
 // Stand-in for createCollabSession in page tests. mode "off" behaves like a
@@ -29,7 +30,7 @@ export function makeFakeSession({ fileId, projectId, username }) {
     username,
     doc,
     text,
-    awareness: { on() {}, off() {}, setLocalStateField() {}, getStates: () => new Map() },
+    awareness: new Awareness(doc),
     provider: {},
     getState: () => state,
     subscribe(listener) {

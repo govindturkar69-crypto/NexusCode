@@ -912,6 +912,46 @@ describe('CodeEditor', () => {
       await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('console.log("from bob")'))
     })
 
+    it("shows who else is in the file, with their cursors' colours and names", async () => {
+      liveSetup()
+      await screen.findByLabelText('Code')
+      const { awareness } = fakeCollab.sessions.get(2)
+      act(() => {
+        awareness.states.set(901, { user: { name: 'bob', color: '#16a34a', role: 'editor' } })
+        awareness.states.set(902, { user: { name: 'vera', color: '#2563eb', role: 'viewer' } })
+        awareness.emit('change', [{ added: [901, 902], updated: [], removed: [] }, 'remote'])
+      })
+      const bar = await screen.findByLabelText('People in this file')
+      expect(bar).toHaveTextContent('bob')
+      expect(bar).toHaveTextContent('vera (viewing)')
+      expect(bar).toHaveTextContent('3 people editing')
+      expect(screen.getByLabelText('2 other people here')).toBeInTheDocument()
+      const css = document.querySelector('style')?.textContent ?? ''
+      expect(css).toContain('.yRemoteSelectionHead-901::after { content: "bob"')
+      expect(css).toContain('#16a34a')
+      act(() => {
+        awareness.states.delete(901)
+        awareness.states.delete(902)
+        awareness.emit('change', [{ added: [], updated: [], removed: [901, 902] }, 'remote'])
+      })
+      await waitFor(() => expect(screen.queryByLabelText('People in this file')).not.toBeInTheDocument())
+    })
+
+    it('warns before leaving while offline edits have not reached the server', async () => {
+      liveSetup()
+      await screen.findByLabelText('Code')
+      const leave = () => {
+        const event = new Event('beforeunload', { cancelable: true })
+        window.dispatchEvent(event)
+        return event.defaultPrevented
+      }
+      expect(leave()).toBe(false)
+      act(() => fakeCollab.sessions.get(2).set({ status: 'disconnected', unsynced: true }))
+      expect(leave()).toBe(true)
+      act(() => fakeCollab.sessions.get(2).set({ status: 'connected', unsynced: false }))
+      expect(leave()).toBe(false)
+    })
+
     it('waits, read-only, until the first sync', async () => {
       fakeCollab.mode = 'connecting'
       setup('owner')

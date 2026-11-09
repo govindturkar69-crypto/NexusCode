@@ -1,4 +1,5 @@
 import { createCollabSession } from "./collabSession";
+import { cursorStyles, peopleIn, peopleSignature } from "./presence";
 
 /**
  * The live sessions for the files open in the editor: one per open tab, created
@@ -13,6 +14,7 @@ export class CollabFiles {
     this.create = create;
     this.sessions = new Map();
     this.unsubscribes = new Map();
+    this.peopleSignatures = new Map();
     this.config = {};
     this.version = 0;
     this.listeners = new Set();
@@ -53,9 +55,20 @@ export class CollabFiles {
       const offState = session.subscribe(() => this.notify());
       const onText = () => this.config.onText?.(fileId, session.text.toString());
       session.text.observe(onText);
+      // Re-render when someone arrives or leaves, not on every cursor move
+      const onAwareness = () => {
+        const signature = peopleSignature(peopleIn(session.awareness));
+        if (signature !== this.peopleSignatures.get(fileId)) {
+          this.peopleSignatures.set(fileId, signature);
+          this.notify();
+        }
+      };
+      session.awareness.on("change", onAwareness);
       this.unsubscribes.set(fileId, () => {
         offState();
         session.text.unobserve(onText);
+        session.awareness.off("change", onAwareness);
+        this.peopleSignatures.delete(fileId);
       });
       this.sessions.set(fileId, session);
       changed = true;
@@ -75,6 +88,20 @@ export class CollabFiles {
   isLive(fileId) {
     const state = this.stateFor(fileId);
     return Boolean(state?.synced && !state.closed);
+  }
+
+  // The other people in a file: [{ clientId, name, color, role }]
+  people(fileId) {
+    return peopleIn(this.sessions.get(fileId)?.awareness);
+  }
+
+  cursorStyles(fileId) {
+    return cursorStyles(this.sessions.get(fileId)?.awareness);
+  }
+
+  // Some file has edits made offline that haven't reached the server
+  hasUnsynced() {
+    return [...this.sessions.values()].some((session) => session.getState().unsynced);
   }
 
   destroyAll() {

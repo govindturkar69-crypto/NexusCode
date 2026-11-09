@@ -24,6 +24,7 @@ work goes to a worker thread.
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 from fastapi import WebSocket
@@ -106,6 +107,8 @@ def encode_awareness(entries: list[tuple[int, int, str]]) -> bytes:
 def awareness_message(update: bytes) -> bytes:
     return write_var_uint(YMessageType.AWARENESS) + write_var_bytes(update)
 
+
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 # The client id that writes a file's starting text into its new document
 BACKFILL_CLIENT_ID = 1
@@ -312,7 +315,8 @@ class CollabManager:
         if not isinstance(data, dict):
             data = {}
         user = data.get("user") if isinstance(data.get("user"), dict) else {}
-        color = user.get("color") if isinstance(user.get("color"), str) and len(user["color"]) <= 32 else "#888888"
+        # It ends up in other people's CSS, so only a plain #rrggbb gets through
+        color = user.get("color") if isinstance(user.get("color"), str) and HEX_COLOR.match(user["color"]) else "#888888"
         data["user"] = {"name": conn.username, "color": color, "role": conn.role}
         return json.dumps(data)
 

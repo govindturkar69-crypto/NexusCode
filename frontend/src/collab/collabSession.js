@@ -30,11 +30,12 @@ export function colorFor(name) {
 /**
  * Opens a file's live document. Returns
  *   { doc, text, awareness, provider, getState(), subscribe(fn), destroy() }
- * where the state is { status, synced, role, username, closed }:
+ * where the state is { status, synced, role, username, closed, unsynced }:
  *   status   "connecting" | "connected" | "disconnected"
  *   synced   the first full sync has happened (the text is the server's)
  *   role     "editor" | "viewer", as the server says
  *   closed   { code, message } when the server ended it for good
+ *   unsynced edits were made while disconnected and haven't reached the server yet
  */
 export function createCollabSession({ projectId, fileId, username, Socket, url = `${wsBase()}/ws/code-files` }) {
   const doc = new Y.Doc();
@@ -46,7 +47,7 @@ export function createCollabSession({ projectId, fileId, username, Socket, url =
     maxBackoffTime: 10000,
   });
 
-  let state = { status: "connecting", synced: false, role: null, username: null, closed: null };
+  let state = { status: "connecting", synced: false, role: null, username: null, closed: null, unsynced: false };
   const listeners = new Set();
   const set = (changes) => {
     state = { ...state, ...changes };
@@ -59,7 +60,12 @@ export function createCollabSession({ projectId, fileId, username, Socket, url =
   };
   provider.on("status", ({ status }) => set({ status }));
   provider.on("sync", (synced) => {
-    if (synced && !state.synced) set({ synced: true });
+    // A sync after reconnecting exchanges everything both sides were missing
+    if (synced && (!state.synced || state.unsynced)) set({ synced: true, unsynced: false });
+  });
+  doc.on("update", (_update, origin) => {
+    // The provider applies other people's changes; anything else is typed here
+    if (origin !== provider && state.status !== "connected" && !state.unsynced) set({ unsynced: true });
   });
   provider.on("connection-close", (event) => {
     const message = PERMANENT_CLOSES[event?.code];
