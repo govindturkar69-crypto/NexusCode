@@ -9,6 +9,7 @@ can edit, viewers receive the document read-only. Anyone else, and any file id
 that doesn't exist, gets the same refusal (close code 1008 before the socket is
 accepted), so file ids can't be probed.
 """
+import asyncio
 import logging
 
 import anyio
@@ -159,10 +160,11 @@ async def collab_socket(websocket: WebSocket, code_file_id: int):
     except CollabError as e:
         await collab.close(conn, e.code, e.reason)
     finally:
-        await collab.leave(room, conn)
+        # Shielded: a cancelled handler still saves and cleans up its room
+        await asyncio.shield(collab.leave_soon(room, conn))
 
 
 async def shutdown() -> None:
     """Saves every open document and tells browsers to reconnect later."""
-    await collab.flush_all()
+    await collab.settle()
     await collab.close_where(lambda room, conn: True, CLOSE_GOING_AWAY, "The server is restarting.")

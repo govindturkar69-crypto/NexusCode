@@ -255,3 +255,49 @@ def test_the_starting_document_is_saved_as_soon_as_a_file_is_opened(client, owne
 def test_backfill_is_the_same_for_the_same_text():
     assert collab_service.backfill_update("abc") == collab_service.backfill_update("abc")
     assert collab_service.backfill_update("abc") != collab_service.backfill_update("abd")
+
+
+# ---- a save already in progress ----
+
+@pytest.fixture
+def slow_saves(monkeypatch):
+    """Every save takes a while, so a debounced save is still writing when the next
+    flush comes along (what a slow CI runner did by chance)."""
+    import time
+
+    manager = collab_router.collab
+    real_save = manager._save
+
+    def slow(file_id, text, state):
+        time.sleep(0.3)
+        real_save(file_id, text, state)
+
+    monkeypatch.setattr(manager, "_save", slow)
+
+
+def test_leaving_waits_for_a_save_already_in_progress(client, owner, project, code_file, slow_saves):
+    with YClient(client, owner, project, code_file) as alice:
+        alice.edit(0, "# typed\n")
+        # A round trip, then a pause: the debounced save starts and is still writing
+        alice.set_awareness(1, 1, {})
+        alice.receive()
+        client.portal.call(asyncio_sleep, 0.05)
+    # Leaving finished only once the text was saved
+    assert content_of(code_file) == "# typed\nprint('hi')\n"
+    assert text_of_state(saved_state(code_file)) == "# typed\nprint('hi')\n"
+
+
+def test_shutdown_waits_for_a_save_already_in_progress(client, owner, project, code_file, slow_saves):
+    with YClient(client, owner, project, code_file) as alice:
+        alice.edit(0, "# before shutdown\n")
+        alice.set_awareness(1, 1, {})
+        alice.receive()
+        client.portal.call(asyncio_sleep, 0.05)
+        client.portal.call(collab_router.shutdown)
+        assert content_of(code_file) == "# before shutdown\nprint('hi')\n"
+
+
+async def asyncio_sleep(seconds):
+    import asyncio
+
+    await asyncio.sleep(seconds)

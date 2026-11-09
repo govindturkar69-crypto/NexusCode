@@ -190,6 +190,8 @@ class Room:
     awareness: dict[int, tuple[int, str, Connection]] = field(default_factory=dict)
     dirty: bool = False
     save_task: asyncio.Task | None = None
+    # One save at a time, and a flush waits for a save already in progress
+    save_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     @property
     def text(self) -> Text:
@@ -221,6 +223,8 @@ class CollabManager:
         self.rooms: dict[int, Room] = {}
         self._loading: dict[int, asyncio.Lock] = {}
         self._watchdog: asyncio.Task | None = None
+        # Clean-ups of connections that have ended, still saving
+        self._leaving: set[asyncio.Task] = set()
 
     # ---- rooms ----
 
@@ -281,6 +285,21 @@ class CollabManager:
         if not room.connections:
             await self.flush(room)
             self._unload_if_idle(room)
+
+    def leave_soon(self, room: Room, conn: Connection) -> asyncio.Task:
+        """Runs leave() as its own task, so it finishes (and saves) even if the
+        connection's handler is cancelled meanwhile. settle() waits for it."""
+        task = asyncio.get_running_loop().create_task(self.leave(room, conn))
+        self._leaving.add(task)
+        task.add_done_callback(self._leaving.discard)
+        return task
+
+    async def settle(self) -> None:
+        """Waits for connections that have ended to finish leaving, then saves
+        whatever is still unsaved, so the database is up to date."""
+        while self._leaving:
+            await asyncio.gather(*list(self._leaving), return_exceptions=True)
+        await self.flush_all()
 
     # ---- messages ----
 
@@ -417,19 +436,24 @@ class CollabManager:
             await asyncio.sleep(SAVE_DELAY_SECONDS)
         except asyncio.CancelledError:
             return
-        await self.flush(room)
+        # Shielded: a newer change reschedules by cancelling this task, which may
+        # stop the wait but never a save that has started
+        await asyncio.shield(self.flush(room))
 
     async def flush(self, room: Room) -> None:
-        """Writes the room's text (and state) now, if it changed."""
-        if not room.dirty:
-            return
-        room.dirty = False
-        text, state = str(room.text), room.doc.get_update()
-        try:
-            await run_in_threadpool(self._save, room.file_id, text, state)
-        except Exception:
-            room.dirty = True
-            logger.exception("Couldn't save collaborative file %s", room.file_id)
+        """Writes the room's text (and state) now, if it changed. If a save is
+        already running, this waits for it first, so when flush returns, everything
+        up to now is in the database (leaving, shutdown and readers rely on that)."""
+        async with room.save_lock:
+            if not room.dirty:
+                return
+            room.dirty = False
+            text, state = str(room.text), room.doc.get_update()
+            try:
+                await run_in_threadpool(self._save, room.file_id, text, state)
+            except Exception:
+                room.dirty = True
+                logger.exception("Couldn't save collaborative file %s", room.file_id)
 
     async def flush_all(self) -> None:
         for room in list(self.rooms.values()):
