@@ -132,6 +132,14 @@ describe('createCollabSession', () => {
     expect(session.getState().unsynced).toBe(false)
   })
 
+  it('asks to be reloaded, not reconnected, when the server refused its changes', async () => {
+    const server = fakeServer({ closeWith: 4005 })
+    const session = open(server)
+    await until(session, (s) => s.resync === true)
+    expect(session.getState().closed).toBeNull()
+    expect(session.provider.shouldConnect).toBe(false)
+  })
+
   it('reconnects after an ordinary drop', async () => {
     const server = fakeServer({ content: 'x' })
     const session = open(server)

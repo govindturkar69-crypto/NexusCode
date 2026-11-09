@@ -10,6 +10,7 @@ import { ticketedSocketClass } from "./ticketedSocket";
 
 export const TEXT_NAME = "content";
 export const MESSAGE_SESSION = 100;
+export const CLOSE_RESYNC = 4005;
 
 // Close codes from the server that mean "don't try again": reconnecting can't fix them
 export const PERMANENT_CLOSES = {
@@ -36,6 +37,7 @@ export function colorFor(name) {
  *   role     "editor" | "viewer", as the server says
  *   closed   { code, message } when the server ended it for good
  *   unsynced edits were made while disconnected and haven't reached the server yet
+ *   resync   the server refused changes this copy has: throw it away and open afresh
  */
 export function createCollabSession({ projectId, fileId, username, Socket, url = `${wsBase()}/ws/code-files` }) {
   const doc = new Y.Doc();
@@ -68,9 +70,16 @@ export function createCollabSession({ projectId, fileId, username, Socket, url =
     if (origin !== provider && state.status !== "connected" && !state.unsynced) set({ unsynced: true });
   });
   provider.on("connection-close", (event) => {
-    const message = PERMANENT_CLOSES[event?.code];
-    if (message) {
+    if (event?.code === CLOSE_RESYNC) {
       provider.disconnect();
+      set({ resync: true, status: "disconnected" });
+      return;
+    }
+    const fallback = PERMANENT_CLOSES[event?.code];
+    if (fallback) {
+      provider.disconnect();
+      // The server's own reason is more specific (which limit, say), when it gives one
+      const message = typeof event.reason === "string" && event.reason ? event.reason : fallback;
       set({ closed: { code: event.code, message }, status: "disconnected" });
     }
   });

@@ -136,12 +136,15 @@ def test_simultaneous_edits_converge(client, owner, project, code_file, make_use
     assert content_of(code_file) == "Aprint('hi')\nB"
 
 
-def test_a_viewers_changes_are_ignored(client, owner, project, code_file, make_user):
+def test_a_viewers_changes_are_refused(client, owner, project, code_file, make_user):
     viewer = member(client, make_user, project, "vera", "viewer")
     with YClient(client, owner, project, code_file) as alice, YClient(client, viewer, project, code_file) as vera:
         vera.edit(0, "HACKED ")
-        alice.edit(0, "ok ")  # something the viewer will receive, so we know the server moved on
-        vera.receive()
+        # Refused, and the viewer's browser is told to reload its copy
+        with pytest.raises(WebSocketDisconnect) as info:
+            vera.receive()
+        assert info.value.code == collab_service.CLOSE_RESYNC
+        alice.edit(0, "ok ")
         room = collab_router.collab.rooms[code_file]
         assert str(room.text) == "ok print('hi')\n"
     assert content_of(code_file) == "ok print('hi')\n"

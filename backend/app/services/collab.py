@@ -25,6 +25,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 
 from fastapi import WebSocket
@@ -54,11 +55,30 @@ MESSAGE_SESSION = 100
 
 SAVE_DELAY_SECONDS = 2.0  # quiet time before the text is written to the database
 
+# Limits. A document is at most MAX_CODE_FILE_CHARS of text. One message can carry a
+# whole document's state (a browser reconnecting), which with its history can be
+# bigger than the text, hence the room above it.
+MAX_MESSAGE_BYTES = 8_000_000
+# Per connection: typing sends an update and a cursor move per keystroke, so this is
+# far above any person, and far below a script flooding the room
+RATE_MESSAGES_PER_SECOND = 60
+RATE_MESSAGES_BURST = 240
+RATE_BYTES_PER_SECOND = 256_000
+RATE_BYTES_BURST = MAX_MESSAGE_BYTES
+MAX_CONNECTIONS_PER_USER = 10
+MAX_CONNECTIONS_PER_PROJECT = 50
+# A backstop for role changes made some other way than the member routes
+ROLE_RECHECK_SECONDS = 60
+
 # Close codes the browser understands (4000-4999 are for applications)
 CLOSE_NO_ACCESS = 4001
 CLOSE_BAD_MESSAGE = 4002
 CLOSE_ROLE_CHANGED = 4003
 CLOSE_FILE_DELETED = 4004
+# The browser has changes the server won't take (it isn't allowed to edit): it
+# must throw its copy away and load the document again, or its later changes,
+# which build on the refused ones, could never be applied
+CLOSE_RESYNC = 4005
 CLOSE_RATE_LIMITED = 4008
 CLOSE_TOO_LARGE = 4009
 CLOSE_TOO_MANY = 4013
@@ -124,6 +144,25 @@ def backfill_update(content: str) -> bytes:
     return doc.get_update()
 
 
+class TokenBucket:
+    """Allows `rate` per second on average, and bursts up to `capacity`."""
+
+    def __init__(self, rate: float, capacity: float):
+        self.rate = rate
+        self.capacity = capacity
+        self.tokens = capacity
+        self.updated = time.monotonic()
+
+    def take(self, amount: float = 1) -> bool:
+        now = time.monotonic()
+        self.tokens = min(self.capacity, self.tokens + (now - self.updated) * self.rate)
+        self.updated = now
+        if amount > self.tokens:
+            return False
+        self.tokens -= amount
+        return True
+
+
 @dataclass(eq=False)
 class Connection:
     websocket: WebSocket
@@ -133,6 +172,8 @@ class Connection:
     file_id: int
     role: str  # "editor" (also owners) or "viewer"
     client_ids: set[int] = field(default_factory=set)
+    messages: TokenBucket = field(default_factory=lambda: TokenBucket(RATE_MESSAGES_PER_SECOND, RATE_MESSAGES_BURST))
+    data: TokenBucket = field(default_factory=lambda: TokenBucket(RATE_BYTES_PER_SECOND, RATE_BYTES_BURST))
 
     @property
     def can_edit(self) -> bool:
@@ -170,13 +211,16 @@ class CollabManager:
     can share one manager:
       load(file_id)                 -> (project id, Yjs state bytes or None, content) or None
       save(file_id, text, state)    writes the text (and the state) to the database
+      roles(pairs)                  -> {(project id, user id): "editor" | "viewer" | None}
     """
 
-    def __init__(self, load, save):
+    def __init__(self, load, save, roles=None):
         self._load = load
         self._save = save
+        self._roles = roles
         self.rooms: dict[int, Room] = {}
         self._loading: dict[int, asyncio.Lock] = {}
+        self._watchdog: asyncio.Task | None = None
 
     # ---- rooms ----
 
@@ -210,8 +254,17 @@ class CollabManager:
     def connections_for_project(self, project_id: int) -> int:
         return sum(len(room.connections) for room in self.rooms.values() if room.project_id == project_id)
 
+    def too_many(self, user_id: int, project_id: int) -> str | None:
+        """Why another connection isn't allowed, or None."""
+        if self.connections_for_user(user_id) >= MAX_CONNECTIONS_PER_USER:
+            return f"You have too many files open live (at most {MAX_CONNECTIONS_PER_USER})."
+        if self.connections_for_project(project_id) >= MAX_CONNECTIONS_PER_PROJECT:
+            return "Too many people are editing this project live right now."
+        return None
+
     async def join(self, room: Room, conn: Connection) -> None:
         room.connections.add(conn)
+        self._ensure_watchdog()
         await self._send(conn, session_message(conn.role, conn.username))
         # Our state vector, so the browser sends what we're missing (edits made offline)
         await self._send(conn, create_sync_message(room.doc))
@@ -234,6 +287,10 @@ class CollabManager:
     async def receive(self, room: Room, conn: Connection, message: bytes) -> None:
         if not message:
             raise CollabError(CLOSE_BAD_MESSAGE, "Empty message.")
+        if len(message) > MAX_MESSAGE_BYTES:
+            raise CollabError(CLOSE_TOO_LARGE, "That change is too large.")
+        if not conn.messages.take() or not conn.data.take(len(message)):
+            raise CollabError(CLOSE_RATE_LIMITED, "Too many changes too quickly.")
         kind = message[0]
         try:
             if kind == YMessageType.SYNC:
@@ -263,7 +320,11 @@ class CollabManager:
             raise CollabError(CLOSE_BAD_MESSAGE, "Unknown sync message.")
         update = Decoder(message[2:]).read_message()
         if not conn.can_edit:
-            # A viewer's browser answers our sync request too; there's nothing to take from it
+            # A viewer's browser answers our sync request too, normally with nothing
+            # new. Anything new (typed just before being made a viewer) is refused, and
+            # the browser reloads the document.
+            if self._is_news(room, update):
+                raise CollabError(CLOSE_RESYNC, "You can't edit this file now, so it was reloaded.")
             return
         before = room.doc.get_state()
         self.check_size(room, update)
@@ -273,6 +334,16 @@ class CollabManager:
         room.dirty = True
         self._schedule_save(room)
         await self._broadcast(room, create_update_message(update), skip=conn)
+
+    @staticmethod
+    def _is_news(room: Room, update: bytes) -> bool:
+        """Would this update change the document? Tried on a copy, because a sync
+        reply always repeats its deletions even when they're nothing new."""
+        trial = Doc()
+        trial.apply_update(room.doc.get_update())
+        before_state, before_text = trial.get_state(), str(trial.get(TEXT_NAME, type=Text))
+        trial.apply_update(update)
+        return trial.get_state() != before_state or str(trial.get(TEXT_NAME, type=Text)) != before_text
 
     def check_size(self, room: Room, update: bytes) -> None:
         """Refuses an update that would make the text too long. An update can't add
@@ -374,6 +445,54 @@ class CollabManager:
         for room in list(self.rooms.values()):
             if room.project_id == project_id:
                 await self.flush(room)
+
+    # ---- roles changing while people are connected ----
+
+    async def set_role(self, project_id: int, user_id: int, role: str | None) -> None:
+        """role: "editor", "viewer", or None (no longer a member). Applies to open
+        connections at once: they're told their new role, or closed."""
+        for room in list(self.rooms.values()):
+            if room.project_id != project_id:
+                continue
+            for conn in list(room.connections):
+                if conn.user_id != user_id:
+                    continue
+                if role is None:
+                    await self.close(conn, CLOSE_NO_ACCESS, "You no longer have access to this project.")
+                elif conn.role != role:
+                    conn.role = role
+                    await self._send(conn, session_message(role, conn.username))
+
+    async def remove_user(self, user_id: int) -> None:
+        """The account is gone: close all of its connections."""
+        for room in list(self.rooms.values()):
+            for conn in list(room.connections):
+                if conn.user_id == user_id:
+                    await self.close(conn, CLOSE_NO_ACCESS, "This account was deleted.")
+
+    async def recheck_roles(self) -> None:
+        """Checks every open connection's role against the database."""
+        if self._roles is None:
+            return
+        pairs = {(conn.project_id, conn.user_id) for room in self.rooms.values() for conn in room.connections}
+        if not pairs:
+            return
+        roles = await run_in_threadpool(self._roles, pairs)
+        for (project_id, user_id), role in roles.items():
+            await self.set_role(project_id, user_id, role)
+
+    def _ensure_watchdog(self) -> None:
+        if self._roles is None or (self._watchdog and not self._watchdog.done()):
+            return
+        self._watchdog = asyncio.get_running_loop().create_task(self._watch_roles())
+
+    async def _watch_roles(self) -> None:
+        while self.rooms:
+            await asyncio.sleep(ROLE_RECHECK_SECONDS)
+            try:
+                await self.recheck_roles()
+            except Exception:
+                logger.exception("Couldn't recheck collaborative editing roles")
 
     def _unload_if_idle(self, room: Room) -> None:
         if room.connections or room.dirty or self.rooms.get(room.file_id) is not room:

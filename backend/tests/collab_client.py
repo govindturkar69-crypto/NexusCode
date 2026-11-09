@@ -41,11 +41,17 @@ class YClient:
         self.updates = []
         self.awareness = {}
         self.doc.observe(lambda event: self.updates.append(event.update))
-        first = self.ws.receive_bytes()
-        assert first[0] == MESSAGE_SESSION, first[:4]
-        self.session = json.loads(Decoder(first[1:]).read_var_string())
-        if sync:
-            self.handshake()
+        try:
+            first = self.ws.receive_bytes()
+            assert first[0] == MESSAGE_SESSION, first[:4]
+            self.session = json.loads(Decoder(first[1:]).read_var_string())
+            if sync:
+                self.handshake()
+        except BaseException:
+            # Refused or closed straight away: leave the socket's context, or the
+            # test client waits for it forever
+            self._context.__exit__(None, None, None)
+            raise
 
     def handshake(self):
         # The server asks for what it's missing; then we ask for everything it has

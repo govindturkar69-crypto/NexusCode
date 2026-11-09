@@ -22,6 +22,7 @@ from app.models import CodeFileModel, CodeFileYjsModel, UserModel
 from app.services.collab import (
     CLOSE_FILE_DELETED,
     CLOSE_GOING_AWAY,
+    CLOSE_TOO_MANY,
     CollabError,
     CollabManager,
     Connection,
@@ -57,7 +58,22 @@ def save_file(file_id: int, text: str, state: bytes) -> None:
         db.commit()
 
 
-collab = CollabManager(load_file, save_file)
+def current_roles(pairs: set[tuple[int, int]]) -> dict[tuple[int, int], str | None]:
+    """The live role ("editor" or "viewer") of each (project, user), or None if they
+    aren't a member any more."""
+    with SessionLocal() as db:
+        out = {}
+        for project_id, user_id in pairs:
+            role = project_role(db, project_id, user_id)
+            out[(project_id, user_id)] = None if role is None else live_role(role)
+        return out
+
+
+def live_role(role: str) -> str:
+    return "editor" if role_at_least(role, "editor") else "viewer"
+
+
+collab = CollabManager(load_file, save_file, current_roles)
 
 
 # For plain `def` routes, which run in a worker thread: these hop onto the event loop
@@ -82,6 +98,15 @@ def drop_project(project_id: int) -> None:
     anyio.from_thread.run(collab.drop_project, project_id)
 
 
+def set_role(project_id: int, user_id: int, role: str | None) -> None:
+    """After a member's role changes (role) or they're removed (None)."""
+    anyio.from_thread.run(collab.set_role, project_id, user_id, None if role is None else live_role(role))
+
+
+def remove_user(user_id: int) -> None:
+    anyio.from_thread.run(collab.remove_user, user_id)
+
+
 def _authorize(ticket: str | None, file_id: int) -> tuple[int, str, int, str] | None:
     """(user id, username, project id, role) for a valid ticket of a member of the
     file's project, or None. role is "editor" (editors and owners) or "viewer"."""
@@ -98,7 +123,7 @@ def _authorize(ticket: str | None, file_id: int) -> tuple[int, str, int, str] | 
         role = project_role(db, code_file.project_id, user.id) if user else None
         if role is None:
             return None
-        return user.id, user.username, code_file.project_id, "editor" if role_at_least(role, "editor") else "viewer"
+        return user.id, user.username, code_file.project_id, live_role(role)
 
 
 @router.websocket("/ws/code-files/{code_file_id}")
@@ -109,6 +134,11 @@ async def collab_socket(websocket: WebSocket, code_file_id: int):
         return
     user_id, username, project_id, role = member
     await websocket.accept()
+    # Accepted first, so the browser can read why it's turned away
+    too_many = collab.too_many(user_id, project_id)
+    if too_many:
+        await websocket.close(code=CLOSE_TOO_MANY, reason=too_many)
+        return
     room = await collab.room(code_file_id)
     if room is None:
         await websocket.close(code=CLOSE_FILE_DELETED, reason="This file was deleted.")

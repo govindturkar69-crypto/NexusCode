@@ -60,6 +60,20 @@ describe('CollabFiles', () => {
     expect(fakeCollab.sessions.size).toBe(0)
   })
 
+  it('starts a file afresh when the server says its copy must be reloaded', async () => {
+    const { collab } = files()
+    collab.setOpen([4])
+    const first = collab.get(4)
+    first.text.insert(0, 'refused edit')
+    first.set({ resync: true })
+    expect(collab.isLive(4)).toBe(false)
+    await Promise.resolve()
+    expect(first.destroy).toHaveBeenCalled()
+    const second = collab.get(4)
+    expect(second).not.toBe(first)
+    expect(second.text.toString()).toBe('')
+  })
+
   it('destroyAll closes everything', () => {
     const { collab } = files()
     collab.setOpen([1, 2])
