@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -202,6 +203,23 @@ class CodeFileModel(TimestampMixin, Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
 
     project = relationship("ProjectModel", back_populates="code_files")
+    # Its live-editing document, once someone has opened it (see services/collab.py)
+    yjs = relationship("CodeFileYjsModel", cascade="all, delete-orphan", uselist=False)
+
+
+class CodeFileYjsModel(Base):
+    """A code file's collaborative-editing document (a Yjs update holding its whole
+    state), so it survives restarts and Render cold starts. code_files.content
+    holds the same text and is what everything else reads; this keeps the history
+    that lets browsers that were offline merge their changes cleanly. Created the
+    first time a file is opened live, from its content."""
+
+    __tablename__ = "code_file_yjs"
+
+    code_file_id = Column(Integer, ForeignKey("code_files.id", ondelete="CASCADE"), primary_key=True)
+    state = Column(LargeBinary, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
 
 class AuthTokenModel(Base):
     """Single-use password reset and email verification tokens. Only the hash is stored."""

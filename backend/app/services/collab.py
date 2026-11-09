@@ -9,9 +9,17 @@ limits), and write the text back to code_files.content so everything else that
 reads files (GitHub push, the AI, the agent, Run) sees the latest version.
 
 Rooms live in this process's memory and are loaded on first use: from the file's
-saved Yjs state, or, the first time a file is opened, from code_files.content.
-That's the lazy backfill. Everything here runs on the event loop; database work
-goes to a worker thread.
+saved Yjs state (code_file_yjs), or, the first time a file is opened, from
+code_files.content. That's the lazy backfill. A room is saved 2 s after the last
+change, when the last person leaves (and then unloaded), and on shutdown. Saving
+the Yjs state, not just the text, is what lets a browser that was offline, or
+connected across a restart, merge its changes into the same document instead of
+a rebuilt one.
+
+Other writers (the REST save used when live editing isn't available, the legacy
+single-file API) go through replace_text, so their change lands in the document
+and reaches everyone who's live. Everything here runs on the event loop; database
+work goes to a worker thread.
 """
 import asyncio
 import json
@@ -99,6 +107,20 @@ def awareness_message(update: bytes) -> bytes:
     return write_var_uint(YMessageType.AWARENESS) + write_var_bytes(update)
 
 
+# The client id that writes a file's starting text into its new document
+BACKFILL_CLIENT_ID = 1
+
+
+def backfill_update(content: str) -> bytes:
+    """The update that puts `content` into an empty document. Always made by the same
+    client id, so it's the same bytes for the same text: if a document had to be
+    rebuilt from the text (its saved state lost), a browser still holding the old
+    one sees items it already has, and the text isn't doubled."""
+    doc = Doc(client_id=BACKFILL_CLIENT_ID)
+    doc.get(TEXT_NAME, type=Text).insert(0, content)
+    return doc.get_update()
+
+
 @dataclass(eq=False)
 class Connection:
     websocket: WebSocket
@@ -171,10 +193,12 @@ class CollabManager:
             if state:
                 doc.apply_update(state)
             elif content:
-                # First open: the saved text becomes the start of the document
-                room.text.insert(0, content)
+                # First open: the saved text becomes the start of the document, and is
+                # saved straight away
+                doc.apply_update(backfill_update(content))
                 room.dirty = True
             self.rooms[file_id] = room
+            await self.flush(room)
             return room
 
     def connections_for_user(self, user_id: int) -> int:
@@ -199,9 +223,8 @@ class CollabManager:
         if gone:
             await self._broadcast(room, awareness_message(encode_awareness(gone)), skip=conn)
         if not room.connections:
-            # Saved now; the room stays loaded, so a browser that reconnects later
-            # continues the same document (see unload in the persistence layer)
             await self.flush(room)
+            self._unload_if_idle(room)
 
     # ---- messages ----
 
@@ -336,6 +359,71 @@ class CollabManager:
     async def flush_all(self) -> None:
         for room in list(self.rooms.values()):
             await self.flush(room)
+
+    async def flush_file(self, file_id: int) -> None:
+        room = self.rooms.get(file_id)
+        if room is not None:
+            await self.flush(room)
+
+    async def flush_project(self, project_id: int) -> None:
+        """Before something reads the project's files from the database."""
+        for room in list(self.rooms.values()):
+            if room.project_id == project_id:
+                await self.flush(room)
+
+    def _unload_if_idle(self, room: Room) -> None:
+        if room.connections or room.dirty or self.rooms.get(room.file_id) is not room:
+            return
+        if room.save_task and not room.save_task.done():
+            room.save_task.cancel()
+        del self.rooms[room.file_id]
+
+    # ---- changes from outside the editor ----
+
+    async def replace_text(self, file_id: int, text: str) -> bool:
+        """Makes the file's text `text`, through its document, changing only the part
+        that differs so other people's cursors stay put. Saved before returning.
+        False if the file doesn't exist."""
+        room = await self.room(file_id)
+        if room is None:
+            return False
+        current = str(room.text)
+        if current != text:
+            start = 0
+            while start < len(current) and start < len(text) and current[start] == text[start]:
+                start += 1
+            end = 0
+            while end < len(current) - start and end < len(text) - start and current[-1 - end] == text[-1 - end]:
+                end += 1
+            before = room.doc.get_state()
+            with room.doc.transaction(origin="server"):
+                if len(current) - start - end > 0:
+                    del room.text[start:len(current) - end]
+                inserted = text[start:len(text) - end]
+                if inserted:
+                    room.text.insert(start, inserted)
+            room.dirty = True
+            await self._broadcast(room, create_update_message(room.doc.get_update(before)))
+        await self.flush(room)
+        self._unload_if_idle(room)
+        return True
+
+    # ---- files that went away ----
+
+    async def drop_files(self, file_ids: list[int]) -> None:
+        """The files were deleted: their editors are told, and nothing more is saved."""
+        for file_id in file_ids:
+            room = self.rooms.pop(file_id, None)
+            if room is None:
+                continue
+            room.dirty = False
+            if room.save_task and not room.save_task.done():
+                room.save_task.cancel()
+            for conn in list(room.connections):
+                await self.close(conn, CLOSE_FILE_DELETED, "This file was deleted.")
+
+    async def drop_project(self, project_id: int) -> None:
+        await self.drop_files([file_id for file_id, room in self.rooms.items() if room.project_id == project_id])
 
     # ---- closing ----
 

@@ -10,6 +10,7 @@ from app.core.deps import (
     require_project_role,
 )
 from app.models import ProjectMemberModel, ProjectModel, UserModel
+from app.routers import collab
 from app.routers.files import delete_project_assets
 from app.schemas.project import (
     ProjectCreate,
@@ -69,6 +70,8 @@ def get_project(
 def delete_project(project: ProjectModel = Depends(require_project_role("owner")), db: Session = Depends(get_db)):
     # Rows go via ORM cascade; uploaded assets have to be removed from Cloudinary
     delete_project_assets(project)
+    project_id = project.id
     db.delete(project)
     db.commit()
+    collab.drop_project(project_id)
     return Response(status_code=204)

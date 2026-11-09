@@ -11,13 +11,14 @@ accepted), so file ids can't be probed.
 """
 import logging
 
+import anyio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 
 from app.core.database import SessionLocal
 from app.core.deps import project_role, role_at_least
 from app.core.security import consume_ws_ticket
-from app.models import CodeFileModel, UserModel
+from app.models import CodeFileModel, CodeFileYjsModel, UserModel
 from app.services.collab import (
     CLOSE_FILE_DELETED,
     CLOSE_GOING_AWAY,
@@ -31,25 +32,54 @@ router = APIRouter(tags=["collab"])
 
 
 def load_file(file_id: int):
-    """(project id, saved Yjs state, content) for a room, or None if the file is gone."""
+    """(project id, saved Yjs state or None, content) for a room, or None if the file is gone."""
     with SessionLocal() as db:
         code_file = db.get(CodeFileModel, file_id)
         if code_file is None:
             return None
-        return code_file.project_id, None, code_file.content or ""
+        saved = db.get(CodeFileYjsModel, file_id)
+        return code_file.project_id, (saved.state if saved else None), code_file.content or ""
 
 
 def save_file(file_id: int, text: str, state: bytes) -> None:
+    """Writes the document and its text together, so they never disagree."""
     with SessionLocal() as db:
         code_file = db.get(CodeFileModel, file_id)
         if code_file is None:
             return  # deleted meanwhile
+        saved = db.get(CodeFileYjsModel, file_id)
+        if saved is None:
+            db.add(CodeFileYjsModel(code_file_id=file_id, state=state))
+        else:
+            saved.state = state
         if code_file.content != text:
             code_file.content = text
-            db.commit()
+        db.commit()
 
 
 collab = CollabManager(load_file, save_file)
+
+
+# For plain `def` routes, which run in a worker thread: these hop onto the event loop
+
+def replace_text(file_id: int, text: str) -> bool:
+    return anyio.from_thread.run(collab.replace_text, file_id, text)
+
+
+def flush_project(project_id: int) -> None:
+    anyio.from_thread.run(collab.flush_project, project_id)
+
+
+def flush_file(file_id: int) -> None:
+    anyio.from_thread.run(collab.flush_file, file_id)
+
+
+def drop_files(file_ids: list[int]) -> None:
+    anyio.from_thread.run(collab.drop_files, file_ids)
+
+
+def drop_project(project_id: int) -> None:
+    anyio.from_thread.run(collab.drop_project, project_id)
 
 
 def _authorize(ticket: str | None, file_id: int) -> tuple[int, str, int, str] | None:
