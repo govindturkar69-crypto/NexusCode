@@ -28,8 +28,8 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
-from app.core.database import SessionLocal, build_database_url  # noqa: E402
 from app.core.config import settings  # noqa: E402
+from app.core.database import SessionLocal, build_database_url  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.models import (  # noqa: E402
     ActivityModel,
