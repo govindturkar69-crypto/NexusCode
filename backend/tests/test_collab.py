@@ -145,6 +145,8 @@ def test_a_viewers_changes_are_refused(client, owner, project, code_file, make_u
             vera.receive()
         assert info.value.code == collab_service.CLOSE_RESYNC
         alice.edit(0, "ok ")
+        # Nobody else is left to receive it, so wait for the server to apply it
+        alice.round_trip()
         room = collab_router.collab.rooms[code_file]
         assert str(room.text) == "ok print('hi')\n"
     assert content_of(code_file) == "ok print('hi')\n"
