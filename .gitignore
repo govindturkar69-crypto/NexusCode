@@ -16,3 +16,8 @@ frontend/dist/
 backend/.coverage
 backend/htmlcov/
 frontend/coverage/
+
+# Safety nets: never commit env files or database dumps from anywhere
+.env
+**/.env
+*.dump

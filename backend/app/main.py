@@ -117,6 +117,15 @@ async def log_requests(request: Request, call_next):
         raise
     duration_ms = round((time.perf_counter() - start) * 1000, 1)
     response.headers["X-Request-ID"] = request_id
+    # Security headers on every API response (the frontend sets its own via Vercel).
+    # This is a JSON API, so these don't change how any client reads a response.
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    # HSTS only when the request actually came over HTTPS (behind Render's proxy
+    # the scheme comes from X-Forwarded-Proto via --proxy-headers)
+    if request.url.scheme == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     # Health checks run every 30 s; keep them out of the normal log level
     level = logging.DEBUG if request.url.path == "/health" else logging.INFO
     access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})

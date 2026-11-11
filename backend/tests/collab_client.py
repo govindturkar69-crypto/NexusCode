@@ -87,6 +87,13 @@ class YClient:
         for update in self.updates[start:]:
             self.ws.send_bytes(create_update_message(update))
 
+    def round_trip(self):
+        """Waits until the server has handled everything this client sent. It reads
+        one socket's messages in order, so once it answers a sync request sent after
+        them, they've all been applied."""
+        self.ws.send_bytes(create_sync_message(self.doc))
+        self.receive_until_synced()
+
     def delete(self, index, length):
         start = len(self.updates)
         del self.text[index:index + length]

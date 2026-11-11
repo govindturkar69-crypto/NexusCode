@@ -91,3 +91,19 @@ def test_configure_logging_formats(fmt):
     finally:
         root.handlers, _ = before
         root.setLevel(before[1])
+
+
+def test_security_headers_on_every_response(client):
+    for path in ("/", "/health", "/does-not-exist"):
+        r = client.get(path)
+        assert r.headers["X-Content-Type-Options"] == "nosniff", path
+        assert r.headers["X-Frame-Options"] == "DENY", path
+        assert r.headers["Referrer-Policy"] == "strict-origin-when-cross-origin", path
+
+
+def test_hsts_only_over_https(client):
+    # The TestClient speaks http, so no HSTS...
+    assert "Strict-Transport-Security" not in client.get("/").headers
+    # ...but an https request (as Render's proxy forwards) gets it
+    https = client.get("https://testserver/")
+    assert https.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"

@@ -8,6 +8,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -21,6 +22,7 @@ from app.core.deps import (
     require_project_role,
     role_at_least,
 )
+from app.core.rate_limit import WS_TICKET_LIMIT, limiter, user_or_ip
 from app.core.security import WS_TICKET_TTL_SECONDS, consume_ws_ticket, create_ws_ticket
 from app.models import MessageModel, ProjectMemberModel, ProjectModel, UserModel
 from app.schemas.project import MessageListResponse, WsTicketRequest, WsTicketResponse
@@ -96,7 +98,8 @@ async def _authorize_websocket(websocket: WebSocket, project_id: int) -> tuple[i
 
 
 @router.post("/ws-ticket", response_model=WsTicketResponse)
-def issue_ws_ticket(body: WsTicketRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+@limiter.limit(WS_TICKET_LIMIT, key_func=user_or_ip)
+def issue_ws_ticket(request: Request, body: WsTicketRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     """Trade the login token for a 30-second, single-use ticket for one project's sockets."""
     if project_role(db, body.project_id, current_user.id) is None:
         raise HTTPException(status_code=404, detail="Project not found")

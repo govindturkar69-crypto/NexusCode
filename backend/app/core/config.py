@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     db_sslmode: str | None = None
 
     gemini_api_key: str | None = None
+    # Optional separate key for the coding agent, so its small daily quota doesn't
+    # eat into the other AI features. Falls back to gemini_api_key when unset.
+    agent_gemini_api_key: str | None = None
 
     # Email (app/services/email.py). Off unless both of the first two are set.
     resend_api_key: str | None = None

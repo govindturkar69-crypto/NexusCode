@@ -391,7 +391,7 @@ def _open_stream(contents: list[types.Content], final: bool = False):
     last_error = None
     for _attempt in range(MAX_RETRIES):
         try:
-            stream = ai.client.models.generate_content_stream(model=AGENT_MODEL, contents=contents, config=generation_config(final))
+            stream = ai.agent_client.models.generate_content_stream(model=AGENT_MODEL, contents=contents, config=generation_config(final))
             for chunk in stream:
                 return chunk, stream
             raise AIServiceBusyError("The AI service didn't send an answer. Please try again.")
