@@ -20,7 +20,7 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 | Feature | Description |
 |---|---|
 | 🔐 **Secure Authentication** | Username and password, or sign in with Google or GitHub (OAuth with PKCE). Password reset and email verification by email, and signing out other devices. JWT auth with bcrypt password hashing, protected routes |
-| 👤 **Private Workspaces** | Each project belongs to one user; projects can't be shared with teammates yet |
+| 👥 **Team Projects & Roles** | Projects are shared with members as owner, editor or viewer; the role gates every action, in the REST API and on live WebSocket connections |
 | 📈 **Project Management (Kanban)** | Drag-and-drop task board (`@hello-pangea/dnd`) with live status sync |
 | 💻 **Online Code Editor** | Monaco Editor (the engine behind VS Code) with a file tree, tabs, per-file auto-save and language from the file extension |
 | 👥 **Live Collaborative Editing** | Edit the same file together in real time with Yjs: named cursors in each person's colour, who's here, offline edits that sync later, and documents that survive restarts ([details](#-live-collaborative-editing)) |
@@ -61,9 +61,10 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 
 **Infrastructure**
 - Docker (containerized backend)
-- Render (backend + managed PostgreSQL)
+- Render (backend)
+- Supabase (managed PostgreSQL, with row-level security)
 - Vercel (frontend static hosting)
-- No CI/CD pipeline yet
+- GitHub Actions CI (ruff + pytest on SQLite and Postgres, eslint + Vitest + vite build)
 
 ---
 
@@ -409,8 +410,6 @@ wsl -d Ubuntu -- bash -lc "cd /mnt/c/path/to/NexusCode/backend && python3 -m ven
 
 - Live editing keeps its rooms in one process's memory, so the backend must run as a single instance (as it does on Render's free tier).
 - Video meetings are 1:1 and use public STUN only (no TURN server), so calls can fail on strict networks.
-- No database migrations yet (tables are created on startup); schema changes need manual SQL.
-- No automated tests or CI/CD pipeline yet.
 - JavaScript runs one file on its own (no imports of other project files), and third-party Python packages aren't available.
 - The agent's free-tier quota is small (2 runs a day), and it can only run Python and JavaScript.
 - No light theme toggle yet (dark theme only).
