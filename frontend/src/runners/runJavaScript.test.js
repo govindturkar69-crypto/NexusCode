@@ -42,13 +42,15 @@ describe('runJavaScript', () => {
 
 // dynamic import() can't be stubbed, so only these headers stop it reaching the network
 describe('agent worker CSP in vercel.json', () => {
-  const rules = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf-8')).headers
+  // Paths are relative to the Vitest cwd (the frontend root), which is robust
+  // across environments where import.meta.url isn't a file:// URL.
+  const rules = JSON.parse(readFileSync('vercel.json', 'utf-8')).headers
   const policyFor = (name) =>
     rules.find(({ source }) => source === `/assets/${name}-(.*)`)?.headers.find(({ key }) => key === 'Content-Security-Policy')?.value
 
   it('covers both agent workers, by the names Vite gives their files', () => {
     for (const name of ['agentJsWorker', 'agentPythonWorker']) {
-      readFileSync(new URL(`./${name}.js`, import.meta.url))
+      readFileSync(`src/runners/${name}.js`)
       expect(policyFor(name)).toMatch(/default-src 'none'/)
     }
   })
