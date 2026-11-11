@@ -30,7 +30,7 @@ def fresh_gemini_limit():
 @pytest.fixture
 def gemini(monkeypatch):
     fake = FakeGemini()
-    monkeypatch.setattr(ai.client.models, "generate_content_stream", fake.generate_content_stream)
+    monkeypatch.setattr(ai.agent_client.models, "generate_content_stream", fake.generate_content_stream)
     monkeypatch.setattr(agent, "RETRY_SECONDS", 0)
     return fake
 
@@ -533,7 +533,7 @@ def test_a_per_minute_limit_does_not_block_the_day(client, owner, project, gemin
 def test_the_agent_uses_its_own_model(client, owner, project, gemini, monkeypatch):
     seen = []
     original = gemini.generate_content_stream
-    monkeypatch.setattr(ai.client.models, "generate_content_stream", lambda model, **kw: seen.append(model) or original(model, **kw))
+    monkeypatch.setattr(ai.agent_client.models, "generate_content_stream", lambda model, **kw: seen.append(model) or original(model, **kw))
     gemini.script([text("ok")])
     run_id = start(client, owner, project).json()["id"]
     step(client, owner, run_id)
@@ -556,3 +556,19 @@ def test_the_first_prompt_states_the_step_budget(client, owner, project, gemini)
     run_id = start(client, owner, project).json()["id"]
     step(client, owner, run_id)
     assert f"at most {agent.MAX_STEPS} replies" in gemini.requests[0][0][0].parts[0].text
+
+
+def test_agent_uses_its_own_key_when_set(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "gemini_api_key", "shared-key")
+    monkeypatch.setattr(settings, "agent_gemini_api_key", "agent-only-key")
+    assert ai.resolve_agent_api_key() == "agent-only-key"
+
+
+def test_agent_falls_back_to_the_shared_key(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "gemini_api_key", "shared-key")
+    monkeypatch.setattr(settings, "agent_gemini_api_key", None)
+    assert ai.resolve_agent_api_key() == "shared-key"

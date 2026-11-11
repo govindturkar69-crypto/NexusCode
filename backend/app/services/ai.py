@@ -7,6 +7,18 @@ from app.core.config import settings
 
 client = genai.Client(api_key=settings.gemini_api_key)
 
+
+def resolve_agent_api_key() -> str | None:
+    """The key the coding agent uses: its own AGENT_GEMINI_API_KEY when set, else
+    the shared GEMINI_API_KEY. Kept separate so the agent's small daily quota
+    doesn't eat into Explain / Find bugs / Generate docs."""
+    return settings.agent_gemini_api_key or settings.gemini_api_key
+
+
+# Separate client for the agent, so a separate key gets its own quota. Same key as
+# `client` when AGENT_GEMINI_API_KEY isn't set, so default behaviour is unchanged.
+agent_client = genai.Client(api_key=resolve_agent_api_key())
+
 MODEL_NAME = "gemini-2.5-flash"
 
 
