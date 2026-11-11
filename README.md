@@ -419,7 +419,8 @@ wsl -d Ubuntu -- bash -lc "cd /mnt/c/path/to/NexusCode/backend && python3 -m ven
 
 ## 📜 License
 
-This project was built for academic purposes as a final-year college project.
+Released under the [MIT License](LICENSE). Originally built as a final-year
+college project.
 
 ---
 
