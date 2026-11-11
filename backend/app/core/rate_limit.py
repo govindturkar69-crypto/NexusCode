@@ -24,6 +24,10 @@ TEST_EMAIL_LIMIT = "3/hour"
 RESET_REQUEST_LIMIT = "5/hour"
 RESET_CONFIRM_LIMIT = "10/hour"
 OAUTH_LIMIT = "20/minute"
+# WebSocket tickets are cheap (sign a JWT, one membership read), but a client
+# fetches one per connect/reconnect. 60/min/user is far above any real reconnect
+# burst (a handful of open files plus chat) and far below a flood.
+WS_TICKET_LIMIT = "60/minute"
 
 
 def user_or_ip(request: Request) -> str:

@@ -157,3 +157,12 @@ def test_chat_messages_are_persisted(client, setup):
         ws.receive_json()
     messages = client.get(f"/projects/{pid}/messages", headers=auth(alice)).json()["messages"]
     assert [(m["username"], m["content"]) for m in messages] == [("alice", "saved")]
+
+
+def test_ws_ticket_is_rate_limited(client, setup, rate_limits):
+    from app.core.rate_limit import WS_TICKET_LIMIT
+
+    limit = int(WS_TICKET_LIMIT.split("/")[0])
+    codes = [client.post("/ws-ticket", json={"project_id": setup["pid"]}, headers=auth(setup["alice"])).status_code for _ in range(limit + 1)]
+    assert codes[:limit] == [200] * limit
+    assert codes[-1] == 429
