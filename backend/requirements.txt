@@ -4,7 +4,7 @@ alembic==1.20.1
 # Defines password-hash compatibility (bcrypt $2b$, cost 12); see tests/test_legacy_auth.py
 bcrypt==5.0.0
 cloudinary==1.44.2
-cryptography==49.0.0
+cryptography==50.0.0
 fastapi==0.138.0
 google-genai==2.9.0
 httpx==0.28.1
