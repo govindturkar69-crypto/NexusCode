@@ -28,6 +28,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_project_role
 from app.core.security import create_oauth_state, hash_oauth_nonce, verify_oauth_state
 from app.models import CodeFileModel, ProjectModel, UserModel
+from app.routers import collab
 from app.schemas.misc import (
     REPO_NAME_PATTERN,
     GitHubAuthorizeUrl,
@@ -138,6 +139,8 @@ def push_to_github(
     one the user owns. The token is decrypted only on the way to GitHub."""
     token = _connected_token(current_user)
 
+    # Live edits from the last couple of seconds go in the push too
+    collab.flush_project(project.id)
     code_files = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id).order_by(CodeFileModel.path).all()
     if not code_files:
         raise HTTPException(status_code=400, detail="This project has no files to push yet.")

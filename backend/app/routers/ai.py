@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_project_role
 from app.core.rate_limit import AI_LIMIT, limiter, user_or_ip
 from app.models import CodeFileModel, ProjectModel, UserModel
+from app.routers import collab
 from app.schemas.misc import (
     MAX_AI_INPUT_CHARS,
     AIResult,
@@ -80,6 +81,8 @@ def ai_assist_stream(
     The files are read here rather than sent by the browser, so the role check
     above decides what the AI can see. Any id from another project is a 404.
     """
+    # Live edits from the last couple of seconds, saved before the files are read
+    collab.flush_project(project.id)
     wanted = [body.file_id, *(i for i in body.context_file_ids if i != body.file_id)]
     rows = db.query(CodeFileModel).filter(CodeFileModel.project_id == project.id, CodeFileModel.id.in_(wanted)).all()
     by_id = {row.id: row for row in rows}

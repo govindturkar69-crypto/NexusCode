@@ -8,6 +8,7 @@ import logging
 import re
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +30,7 @@ from app.routers import (
     auth,
     chat,
     code,
+    collab,
     email,
     files,
     github,
@@ -49,7 +51,14 @@ logger = logging.getLogger("nexuscode")
 email_service.log_configuration()
 access_logger = logging.getLogger("nexuscode.access")
 
-app = FastAPI(title="NexusCode API")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    # Open collaborative documents are saved before the process exits
+    await collab.shutdown()
+
+
+app = FastAPI(title="NexusCode API", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
@@ -113,7 +122,7 @@ async def log_requests(request: Request, call_next):
     access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})
     return response
 
-for module in (auth, account, email, password, oauth, identities, agent, projects, members, tasks, files, code, chat, ai, github, activity, analytics, admin):
+for module in (auth, account, email, password, oauth, identities, agent, projects, members, tasks, files, code, collab, chat, ai, github, activity, analytics, admin):
     app.include_router(module.router)
 
 

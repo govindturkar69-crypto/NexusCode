@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, defer
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_project_role
 from app.models import CodeFileModel, ProjectModel, UserModel
+from app.routers import collab
 from app.schemas.project import (
     CodeFileContent,
     CodeFileCreate,
@@ -97,7 +98,10 @@ def create_code_file(
 
 
 @router.get("/code-files/{code_file_id}", response_model=CodeFileResponse)
-def get_code_file(code_file: CodeFileModel = Depends(require_project_role("viewer", "code_file"))):
+def get_code_file(code_file: CodeFileModel = Depends(require_project_role("viewer", "code_file")), db: Session = Depends(get_db)):
+    # Someone may be editing it live; their last few seconds aren't saved yet
+    collab.flush_file(code_file.id)
+    db.refresh(code_file)
     return {"code_file": code_file}
 
 
@@ -107,9 +111,10 @@ def save_code_file(
     code_file: CodeFileModel = Depends(require_project_role("editor", "code_file")),
     db: Session = Depends(get_db),
 ):
-    """Autosave, so it doesn't send the content back or add to the activity feed."""
-    code_file.content = body.content
-    db.commit()
+    """Autosave, so it doesn't send the content back or add to the activity feed.
+    The change goes through the file's live document, so people editing it live
+    see it, and nothing they typed is overwritten by a stale copy."""
+    collab.replace_text(code_file.id, body.content)
     db.refresh(code_file)
     return {"code_file": code_file}
 
@@ -141,10 +146,11 @@ def delete_code_file(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
-    project_id = code_file.project_id
+    project_id, file_id = code_file.project_id, code_file.id
     record(db, project_id, current_user.id, "code_deleted", code_file.path)
     db.delete(code_file)
     db.commit()
+    collab.drop_files([file_id])
     publish(project_id, "code_deleted")
     return Response(status_code=204)
 
@@ -190,6 +196,7 @@ def delete_folder(
         db.delete(code_file)
     record(db, project.id, current_user.id, "code_deleted", f"{body.path}/")
     db.commit()
+    collab.drop_files(deleted)
     publish(project.id, "code_deleted")
     return {"deleted": deleted}
 
@@ -222,9 +229,11 @@ def update_legacy_code_file(update: CodeFileUpdate, project: ProjectModel = Depe
     code_file = _oldest_file(db, project.id)
     if not code_file:
         code_file = _new_legacy_file(project.id, update.language)
+        code_file.content = update.content
         db.add(code_file)
-    code_file.content = update.content
     code_file.language = update.language
     db.commit()
+    # Through the live document, like the multi-file save
+    collab.replace_text(code_file.id, update.content)
     db.refresh(code_file)
     return {"message": "Code saved", "code_file": code_file}

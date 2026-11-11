@@ -7,6 +7,7 @@ from app.core.deps import get_current_user
 from app.core.rate_limit import LOGIN_LIMIT, limiter
 from app.core.security import hash_password, session_token_for, verify_password
 from app.models import UserModel
+from app.routers import collab
 from app.schemas.auth import (
     AccountDelete,
     DeletionPlan,
@@ -92,4 +93,5 @@ def delete_account(request: Request, body: AccountDelete, db: Session = Depends(
         anyio.from_thread.run(manager.kick, project_id, user_id)
         anyio.from_thread.run(video_manager.kick, project_id, user_id)
         publish(project_id, "member_left")
+    collab.remove_user(user_id)
     return Response(status_code=204)

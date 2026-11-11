@@ -190,8 +190,12 @@ export async function apiFetchAll(path, key, { pageSize = 200, signal } = {}) {
 // connections, so a short-lived single-use ticket goes in the query string
 // instead of the login token.
 export function wsUrl(path, ticket) {
-  const base = API_URL.replace(/^http/, "ws");
-  return `${base}${path}?ticket=${encodeURIComponent(ticket)}`;
+  return `${wsBase()}${path}?ticket=${encodeURIComponent(ticket)}`;
+}
+
+// The backend's address for WebSockets (ws:// or wss://)
+export function wsBase() {
+  return API_URL.replace(/^http/, "ws");
 }
 
 // Fetches a fresh ticket (valid 30 s, one connection) and returns the socket URL.

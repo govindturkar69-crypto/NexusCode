@@ -23,6 +23,7 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 | 👤 **Private Workspaces** | Each project belongs to one user; projects can't be shared with teammates yet |
 | 📈 **Project Management (Kanban)** | Drag-and-drop task board (`@hello-pangea/dnd`) with live status sync |
 | 💻 **Online Code Editor** | Monaco Editor (the engine behind VS Code) with a file tree, tabs, per-file auto-save and language from the file extension |
+| 👥 **Live Collaborative Editing** | Edit the same file together in real time with Yjs: named cursors in each person's colour, who's here, offline edits that sync later, and documents that survive restarts ([details](#-live-collaborative-editing)) |
 | ▶️ **Run Code in the Browser** | Run Python and JavaScript, and preview HTML/CSS/JS projects, with no server-side execution and no API keys ([details](#-running-code)) |
 | 🦾 **AI Agent** | Give it a goal and it writes files, runs them in your browser, and fixes them until they pass. You review every change as a diff ([details](#-ai-agent)) |
 | 🤖 **AI Code Generation** | Generate code from natural-language prompts via Gemini |
@@ -248,7 +249,7 @@ python scripts/migrate.py          # applies every migration after the baseline
 ### Tests
 
 ```bash
-cd backend && pip install -r requirements-dev.txt && pytest       # SQLite by default
+cd backend && pip install -r requirements-dev.txt && pytest       # SQLite by default (on Windows, see Live Collaborative Editing if pycrdt is blocked)
 TEST_DATABASE_URL=postgresql://postgres:test@localhost:5432/test pytest   # throwaway local Postgres (it gets wiped)
 cd frontend && npm test
 ```
@@ -342,6 +343,58 @@ The timeline shows each step live: the agent's text, every tool call with its re
 
 ---
 
+## 👥 Live Collaborative Editing
+
+Everyone in a project edits code files together, live. Each code file is one [Yjs](https://yjs.dev) document: you see other people's changes as they type, with their cursor, selection and name in their colour, and how many people are in each open file. Editors and owners can edit; viewers watch live, read-only.
+
+**How it works**
+
+- **Browser:** `yjs`, `y-monaco` (keeps the Monaco editor and the document in step, and draws remote cursors) and `y-websocket`'s provider, over `/ws/code-files/{id}`.
+- **Server:** an endpoint in the FastAPI app built on [`pycrdt`](https://github.com/jupyter-server/pycrdt), the Python binding of Yrs (the Rust port of Yjs), maintained by the Jupyter community. The server keeps a real copy of each open document. That lets it answer sync requests itself, check every change before applying it, and write the text back to `code_files.content`, which is what Run, Preview, the AI, the agent and GitHub push read.
+- **Sign-in:** each connection uses the usual single-use, 30-second WebSocket ticket. `y-websocket` reconnects on its own, and a fresh ticket is fetched for every reconnect.
+
+**Saving**
+
+- Each document is saved in `code_file_yjs` together with `code_files.content`: 2 s after the last change, when the last person leaves, on shutdown, and as soon as a file is first opened.
+- Existing files become documents lazily, the first time someone opens them.
+- Because the Yjs state is saved, and not only the text, a browser that was offline, or stayed open across a restart, merges its changes into the same document.
+- Saves that don't come from the live editor (normal saving when live editing isn't available, the agent writing a file nobody has open, the old single-file API) go through the document too. Live editors see the change, and nothing they typed is overwritten.
+- Reading a file, asking the AI and pushing to GitHub all save pending live changes first.
+
+**Going offline:** you can keep typing. The status line says *"Offline: your changes will sync when you're back"*, the edits are sent when the connection returns, and closing the page before then asks you to confirm.
+
+**Limits and safety**
+
+| | |
+|---|---|
+| Document size | 1,000,000 characters, checked before a change is applied |
+| One message | 8 MB (enough for a reconnecting browser's whole document) |
+| Rate per connection | 60 messages/s (bursts of 240) and 256 KB/s (bursts up to 8 MB) |
+| Connections | 10 per user, 50 per project; past that, the file is edited with normal saving and the editor says why |
+| Access | A role change reaches open connections at once, so an editor made a viewer goes read-only straight away. Removing a member or deleting an account disconnects them. Roles are re-checked every 60 s as a backstop. |
+| Isolation | One room per file; a ticket only opens files in its own project; cursor names are the signed-in user's, and colours must be `#rrggbb`, since they end up in other people's CSS |
+
+**On Render's free tier**
+
+- Rooms live in one process's memory, so this needs a **single instance**. Several instances would need a shared message bus, for example Redis.
+- A restart or cold start loses nothing that was saved. Open browsers reconnect and send anything the server didn't have.
+- The first connection after the service has spun down waits for the cold start, up to about a minute. The editor shows *"Connecting to live editing..."* meanwhile.
+
+**Developing on Windows:** `pycrdt` is a compiled extension. If Windows Application Control (Smart App Control) blocks it, as it did on the machine this was built on, run the backend and its tests in WSL or Docker, which run Linux like Render does. For example:
+
+```bash
+wsl -d Ubuntu -- bash -lc "cd /mnt/c/path/to/NexusCode/backend && python3 -m venv ~/nexus-venv && ~/nexus-venv/bin/pip install -r requirements-dev.txt && ~/nexus-venv/bin/python -m pytest"
+```
+
+**Trying it with two browsers**
+
+1. Sign in as two different members of a project, for example one in a normal window and one in a private window, and open the same file in both.
+2. Type in both at once. Both should end up with the same text, each showing the other's cursor and name.
+3. Make one of them a viewer from the members panel. Their editor turns read-only straight away.
+4. Stop the backend, type in one window (it says Offline), and start the backend again. The change reaches the other window once and is saved.
+
+---
+
 ## 🔑 Key Design Decisions
 
 - **JWT over sessions** — stateless auth, no server-side session storage needed.
@@ -355,7 +408,7 @@ The timeline shows each step live: the agent's text, every tool call with its re
 
 ## 🚧 Known Limitations / Future Improvements
 
-- No team collaboration yet: projects can't be shared, so chat and meetings are only reachable by the project owner.
+- Live editing keeps its rooms in one process's memory, so the backend must run as a single instance (as it does on Render's free tier).
 - Video meetings are 1:1 and use public STUN only (no TURN server), so calls can fail on strict networks.
 - No database migrations yet (tables are created on startup); schema changes need manual SQL.
 - No automated tests or CI/CD pipeline yet.
