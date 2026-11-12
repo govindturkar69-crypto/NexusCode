@@ -28,6 +28,8 @@ OAUTH_LIMIT = "20/minute"
 # fetches one per connect/reconnect. 60/min/user is far above any real reconnect
 # burst (a handful of open files plus chat) and far below a flood.
 WS_TICKET_LIMIT = "60/minute"
+# A meeting token is fetched once per Join click (LiveKit reconnects reuse it)
+MEETING_TOKEN_LIMIT = "20/minute"
 
 
 def user_or_ip(request: Request) -> str:
