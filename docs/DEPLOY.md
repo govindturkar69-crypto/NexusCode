@@ -21,13 +21,30 @@ and lists all tables. Keep the `.dump` file (they're gitignored and live
 outside the repo).
 
 ## 2. Preflight (local, read-only)
+Preflight checks required env vars, DB connectivity, that the DB is at the
+alembic head, RLS on every public table, and (with `--health-url`) a running
+`/health`. It only runs `SELECT`s and never prints a value. Expect
+`RESULT: OK`; fix any FAIL before going further.
+
+**Point it at production.** Preflight reads `backend/.env`, but environment
+variables override it. A local `.env` usually has `DB_PASSWORD` and no
+`DB_HOST`/`DATABASE_URL`, so a bare `python scripts/preflight.py` checks
+**localhost**, not production (it fails with `database connectivity -
+OperationalError`). Give it the Session pooler host and user for that one run.
+In PowerShell, from `backend/`:
+```powershell
+# Supabase: Connect > Session pooler shows the host (ends in pooler.supabase.com)
+# and the user (postgres.<project-ref>). The password still comes from backend/.env.
+$env:DB_HOST = Read-Host "Pooler host"
+$env:DB_USER = Read-Host "Pooler user"
+$env:DB_PORT = "5432"; $env:DB_NAME = "postgres"; $env:DB_SSLMODE = "require"
+try { python scripts/preflight.py --health-url https://<your-backend>/health }
+finally { "DB_HOST","DB_USER","DB_PORT","DB_NAME","DB_SSLMODE" | ForEach-Object { Remove-Item "Env:$_" -ErrorAction SilentlyContinue } }
 ```
-cd backend
-python scripts/preflight.py
-```
-Expect `RESULT: OK`. Fix any FAIL before going further. It checks required env
-vars, DB connectivity, that the DB is at the alembic head, RLS on every public
-table, and (optionally, with `--health-url`) a running `/health`.
+(On bash: `DB_HOST=... DB_USER=... DB_PORT=5432 DB_NAME=postgres DB_SSLMODE=require python scripts/preflight.py`.)
+Check the output says `DB at alembic head (...)` and `row-level security (all N
+tables)`. `LiveKit vars` shows `SKIP` until any `LIVEKIT_*` is set and `OK` once
+all three are.
 
 ## 3. Open a PR and get CI green
 Push the branch, open a PR into `main`. **Do not merge until CI is green**
