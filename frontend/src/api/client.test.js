@@ -157,7 +157,7 @@ describe('wsUrl / socketUrl', () => {
   it('socketUrl trades the login token for a ticket for that project', async () => {
     setToken('login-token')
     const fetchMock = stubFetch([200, { ticket: 'tkt', expires_in: 30 }])
-    await expect(socketUrl('/ws/projects/7/meeting', '7')).resolves.toBe('ws://api.test/ws/projects/7/meeting?ticket=tkt')
+    await expect(socketUrl('/ws/projects/7/chat', '7')).resolves.toBe('ws://api.test/ws/projects/7/chat?ticket=tkt')
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('http://api.test/ws-ticket')
     expect(JSON.parse(init.body)).toEqual({ project_id: 7 })
