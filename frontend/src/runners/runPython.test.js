@@ -49,6 +49,9 @@ describe('runPython', () => {
   it('agent runs say offline, and never share a worker with the editor', async () => {
     const agentRun = runPython({ ...REQUEST, offline: true })
     const agentWorker = FakeWorker.instances[0]
+    // Its own file, which vercel.json gives a strict Content-Security-Policy
+    expect(agentWorker.url).toContain('agentPythonWorker')
+    expect(agentWorker.options).toEqual({ type: 'module' })
     agentWorker.receive({ type: 'ready' })
     expect(agentWorker.sent).toEqual([{ code: 'print(1)', fileName: 'a.py', stdin: 'x', offline: true }])
     agentWorker.receive({ type: 'started' })
@@ -58,6 +61,7 @@ describe('runPython', () => {
     // The editor gets a fresh worker, not the one whose network is off
     runPython(REQUEST)
     expect(FakeWorker.instances).toHaveLength(2)
+    expect(FakeWorker.instances[1].url).not.toContain('agent')
     // The next agent run reuses the offline one
     runPython({ ...REQUEST, offline: true })
     expect(FakeWorker.instances).toHaveLength(2)

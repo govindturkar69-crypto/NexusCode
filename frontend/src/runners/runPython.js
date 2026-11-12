@@ -24,7 +24,12 @@ export function runPython({ code, fileName, stdin, onOutput, onProgress, files, 
   let usedWorker = null;
   const handle = startRun({
     existingWorker,
-    createWorkers: [() => new Worker(new URL("./pythonWorker.js", import.meta.url), { type: "module" })],
+    // The agent's worker is the same code under a name vercel.json gives a strict CSP
+    createWorkers: [
+      offline
+        ? () => new Worker(new URL("./agentPythonWorker.js", import.meta.url), { type: "module" })
+        : () => new Worker(new URL("./pythonWorker.js", import.meta.url), { type: "module" }),
+    ],
     send: (worker) => {
       usedWorker = worker;
       worker.postMessage({ code, fileName, stdin, ...(files?.length ? { files, path } : {}), ...(offline ? { offline } : {}) });

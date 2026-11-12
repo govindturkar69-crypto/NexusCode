@@ -46,6 +46,29 @@ function selfHostPyodide() {
   }
 }
 
+// `vite preview` sends the same headers as Vercel, so the built app, including the
+// agent workers' Content-Security-Policy, can be checked locally. Only the
+// patterns vercel.json uses are supported: literal paths and (.*).
+function previewWithVercelHeaders() {
+  const rules = JSON.parse(readFileSync(join(HERE, 'vercel.json'), 'utf-8')).headers.map(({ source, headers }) => {
+    if (/[:?+*]/.test(source.replaceAll('(.*)', ''))) throw new Error(`vercel.json: unsupported source ${source}`)
+    const pattern = new RegExp(`^${source.replaceAll('.', '\\.').replaceAll('(\\.*)', '(.*)')}$`)
+    return { pattern, headers }
+  })
+  return {
+    name: 'preview-with-vercel-headers',
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = (req.url ?? '').split('?')[0]
+        for (const { pattern, headers } of rules) {
+          if (pattern.test(path)) for (const { key, value } of headers) res.setHeader(key, value)
+        }
+        next()
+      })
+    },
+  }
+}
+
 // monaco-editor ships its own copy of DOMPurify inside its source
 // (vs/base/browser/dompurify/dompurify.js, currently 3.4.15), so an npm
 // "overrides" pin alone never reaches it. This swaps that file for the
@@ -72,7 +95,7 @@ function monacoUsesNpmDompurify() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), monacoUsesNpmDompurify(), selfHostPyodide()],
+  plugins: [react(), monacoUsesNpmDompurify(), selfHostPyodide(), previewWithVercelHeaders()],
   define: {
     __PYODIDE_BASE__: JSON.stringify(PYODIDE_BASE),
     __PYODIDE_DOWNLOAD_BYTES__: PYODIDE_DOWNLOAD_BYTES,
@@ -99,7 +122,7 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.{js,jsx}'],
       // Workers run in a real browser, so the browser checks cover them
-      exclude: ['src/test/**', 'src/**/*.test.{js,jsx}', 'src/main.jsx', 'src/editor/monacoSetup.js', 'src/runners/pythonWorker.js'],
+      exclude: ['src/test/**', 'src/**/*.test.{js,jsx}', 'src/main.jsx', 'src/editor/monacoSetup.js', 'src/runners/pythonWorker.js', 'src/runners/agentPythonWorker.js', 'src/runners/agentJsWorker.js'],
     },
   },
 })
