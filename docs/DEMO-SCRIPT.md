@@ -54,7 +54,8 @@ out the guardrails: step/token/time caps, network-blocked sandbox, review-before
 
 **6:00 — Chat & activity (30s)**
 Show the project chat (seeded conversation) and the activity feed reflecting
-everything that just happened. Mention group video (LiveKit) is the next milestone.
+everything that just happened. Then click **📹 Start Meeting**: both windows join
+the same call (camera, mic, screen share), and the viewer can join too.
 
 **6:30 — Close (30s)**
 One slide on the stack: React + Vite front end, FastAPI back end, Supabase Postgres

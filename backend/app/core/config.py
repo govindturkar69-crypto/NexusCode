@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     # Required: Fernet key(s) for encrypting stored GitHub tokens (app/core/crypto.py)
     github_token_enc_key: str = Field(min_length=1)
 
+    # Group video (app/services/meetings.py). Off unless all three are set; the app
+    # starts either way and the meeting endpoint answers 503 while it's off.
+    # The secret only signs tokens here and never leaves the backend.
+    livekit_url: str | None = None  # wss://<project>.livekit.cloud
+    livekit_api_key: str | None = None
+    livekit_api_secret: str | None = None
+
     # Observability (app/core/observability.py)
     log_level: str = "INFO"
     log_format: str = "json"  # or "text" for local development

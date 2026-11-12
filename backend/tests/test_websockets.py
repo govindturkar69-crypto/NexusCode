@@ -3,7 +3,6 @@ from conftest import auth, open_socket, ws_path
 from starlette.websockets import WebSocketDisconnect
 
 from app.core import security
-from app.services import realtime as websocket_manager
 
 
 @pytest.fixture
@@ -29,9 +28,9 @@ def test_ticket_requires_login_and_project_ownership(client, setup):
     assert r.status_code == 200 and r.json()["expires_in"] == 30
 
 
-@pytest.mark.parametrize("kind", ["chat", "meeting"])
-def test_socket_refuses_missing_bad_or_foreign_credentials(client, setup, kind):
+def test_socket_refuses_missing_bad_or_foreign_credentials(client, setup):
     pid, alice = setup["pid"], setup["alice"]
+    kind = "chat"
     assert _rejected_code(client, f"/ws/projects/{pid}/{kind}") == 1008
     assert _rejected_code(client, f"/ws/projects/{pid}/{kind}?ticket=garbage") == 1008
     # The long-lived login token is no longer accepted in the URL
@@ -88,66 +87,11 @@ def test_chat_broadcasts_to_every_socket_in_the_project(client, setup):
         assert second.receive_json()["content"] == "to everyone"
 
 
-def _drain_handshake(first, second):
-    """Consumes the coordination messages sent when two peers join."""
-    assert first.receive_json() == {"type": "role", "initiator": False}
-    assert second.receive_json() == {"type": "role", "initiator": True}
-    assert first.receive_json() == {"type": "peer-joined"}
-
-
-def test_meeting_tells_exactly_one_peer_to_offer(client, setup):
-    pid, alice = setup["pid"], setup["alice"]
-    with open_socket(client, alice, pid, "meeting") as first:
-        assert first.receive_json() == {"type": "role", "initiator": False}  # nobody to call yet
-        with open_socket(client, alice, pid, "meeting") as second:
-            assert second.receive_json() == {"type": "role", "initiator": True}  # newcomer offers
-            assert first.receive_json() == {"type": "peer-joined"}
-        # second hung up: first is told so it can reset and wait
-        assert first.receive_json() == {"type": "peer-left"}
-        with open_socket(client, alice, pid, "meeting") as rejoined:
-            assert rejoined.receive_json() == {"type": "role", "initiator": True}
-            assert first.receive_json() == {"type": "peer-joined"}
-
-
-def test_meeting_room_holds_two_peers(client, setup):
-    pid, alice = setup["pid"], setup["alice"]
-    with open_socket(client, alice, pid, "meeting") as a, \
-            open_socket(client, alice, pid, "meeting") as b:
-        _drain_handshake(a, b)
-        with open_socket(client, alice, pid, "meeting") as third:
-            assert third.receive_json() == {"type": "room-full"}
-            with pytest.raises(WebSocketDisconnect) as closed:
-                third.receive_json()
-            assert closed.value.code == 1013
-        assert len(websocket_manager.video_manager.active_connections[pid]) == 2
-
-
-def test_meeting_relays_only_signals_and_never_to_chat(client, setup):
-    pid, alice = setup["pid"], setup["alice"]
-    with open_socket(client, alice, pid) as chat, \
-            open_socket(client, alice, pid, "meeting") as peer_a, \
-            open_socket(client, alice, pid, "meeting") as peer_b:
-        _drain_handshake(peer_a, peer_b)
-        peer_a.send_json({"type": "not-a-signal"})
-        peer_a.send_text("{bad json")
-        peer_a.send_json({"type": "offer", "sdp": "v=0"})
-        assert peer_b.receive_json() == {"type": "offer", "sdp": "v=0"}
-        chat.send_json({"content": "after the offer"})
-        assert chat.receive_json()["content"] == "after the offer"
-        assert len(websocket_manager.video_manager.active_connections[pid]) == 2
-        assert len(websocket_manager.manager.active_connections[pid]) == 1
-    assert pid not in websocket_manager.manager.active_connections
-    assert pid not in websocket_manager.video_manager.active_connections
-
-
-def test_meeting_drops_oversized_frames(client, setup):
-    pid, alice = setup["pid"], setup["alice"]
-    with open_socket(client, alice, pid, "meeting") as peer_a, \
-            open_socket(client, alice, pid, "meeting") as peer_b:
-        _drain_handshake(peer_a, peer_b)
-        peer_a.send_json({"type": "offer", "sdp": "x" * (70 * 1024)})
-        peer_a.send_json({"type": "answer", "sdp": "small"})
-        assert peer_b.receive_json() == {"type": "answer", "sdp": "small"}
+def test_the_old_meeting_socket_is_gone(client, setup):
+    """Video moved to LiveKit (POST /projects/{id}/meeting/token); the backend no
+    longer relays WebRTC signals, even for a member with a valid ticket."""
+    path = ws_path(client, setup["alice"], setup["pid"]).replace("/chat?", "/meeting?")
+    assert _rejected_code(client, path) is not None
 
 
 def test_chat_messages_are_persisted(client, setup):

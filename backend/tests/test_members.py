@@ -121,18 +121,14 @@ def test_owner_can_remove_member_and_access_ends(client, team):
     assert client.post("/ws-ticket", json={"project_id": pid}, headers=auth(team["t"]["eddie"])).status_code == 404
 
 
-@pytest.mark.parametrize("kind", ["chat", "meeting"])
-def test_removal_closes_open_sockets_immediately(client, team, kind):
+def test_removal_closes_open_sockets_immediately(client, team):
     pid = team["pid"]
-    with open_socket(client, team["t"]["eddie"], pid, kind) as ws:
-        if kind == "meeting":
-            assert ws.receive_json()["type"] == "role"
+    with open_socket(client, team["t"]["eddie"], pid) as ws:
         assert client.delete(f"/projects/{pid}/members/{team['id']['eddie']}", headers=team["owner"]).status_code == 204
         with pytest.raises(WebSocketDisconnect) as closed:
             ws.receive_json()
         assert closed.value.code == 1008
-    rooms = realtime.manager.active_connections if kind == "chat" else realtime.video_manager.active_connections
-    assert pid not in rooms
+    assert pid not in realtime.manager.active_connections
 
 
 def test_removal_only_closes_that_users_sockets(client, team):

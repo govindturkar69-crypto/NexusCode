@@ -11,7 +11,7 @@ Checks:
   - alembic head matches the DB's current version
   - row-level security on every public table (Postgres)
   - /health reachable (only when --health-url / PREFLIGHT_HEALTH_URL is given)
-  - LiveKit vars all present (only when any LIVEKIT_* is set)
+  - LiveKit vars all present and LIVEKIT_URL is ws(s):// (SKIP when none is set)
 
 It is deliberately self-contained: it does not import the app, so it runs even
 when required env vars are missing (that is one of the things it reports).
@@ -180,11 +180,13 @@ def check_livekit(env: dict) -> None:
     names = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
     present = [n for n in names if env.get(n)]
     if not present:
-        report(SKIP, "LiveKit vars", "not configured (fine until C4)")
-    elif len(present) == len(names):
-        report(OK, "LiveKit vars")
-    else:
+        report(SKIP, "LiveKit vars", "not set: video meetings are off")
+    elif len(present) < len(names):
         report(FAIL, "LiveKit vars", f"missing: {', '.join(n for n in names if not env.get(n))}")
+    elif not env["LIVEKIT_URL"].startswith(("wss://", "ws://")):
+        report(FAIL, "LiveKit vars", "LIVEKIT_URL must start with wss:// (or ws:// for a local server)")
+    else:
+        report(OK, "LiveKit vars")
 
 
 def main() -> int:

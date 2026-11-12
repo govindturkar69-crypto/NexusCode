@@ -34,7 +34,8 @@ os.environ["GITHUB_CLIENT_SECRET"] = "test-client-secret"
 # Real keys in backend/.env must never reach the tests: environment variables win
 # over .env, so these blank values keep email off unless a test fakes the provider
 for _name in ("RESEND_API_KEY", "MAIL_FROM_EMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI",
-              "GITHUB_LOGIN_CLIENT_ID", "GITHUB_LOGIN_CLIENT_SECRET", "GITHUB_LOGIN_REDIRECT_URI"):
+              "GITHUB_LOGIN_CLIENT_ID", "GITHUB_LOGIN_CLIENT_SECRET", "GITHUB_LOGIN_REDIRECT_URI",
+              "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
     os.environ[_name] = ""
 os.environ["GITHUB_REDIRECT_URI"] = "http://api.test/auth/github/callback"
 os.environ["GITHUB_TOKEN_ENC_KEY"] = "8ZK7f1e0bW0n5x3oZr5yC3w0e8u9pQvB2s4D6f8H0jY="  # test-only Fernet key
@@ -92,7 +93,6 @@ def fresh_database(migrated_database):
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
     websocket_manager.manager.active_connections.clear()
-    websocket_manager.video_manager.active_connections.clear()
     # Rate limits are off unless a test opts in with the `rate_limits` fixture
     limiter.reset()
     auth_module.used_ws_tickets.clear()

@@ -32,7 +32,7 @@ NexusCode combines project management, an in-browser code editor, AI-assisted de
 | 🐙 **GitHub Integration** | Full OAuth flow — authorize once, then push code from the editor directly to a new GitHub repo |
 | 📂 **File Manager** | Upload/download project files via Cloudinary cloud storage |
 | 💬 **Real-time Chat** | Per-project chat over authenticated WebSockets, with persisted history |
-| 📹 **Video Meeting** | 1:1 WebRTC video call per project, with authenticated signaling |
+| 📹 **Video Meetings** | Group video calls per project on [LiveKit](https://livekit.io): camera, mic, screen share and device choice; every member can join |
 | 📊 **Analytics Dashboard** | Live charts (Recharts) summarizing projects, tasks, files, and messages |
 | 🛠️ **Admin Dashboard** | Platform-wide stats, users, and projects for admin accounts |
 | 🐳 **Docker Support** | Containerized backend running as a non-root user, with a `/health` check |
@@ -96,7 +96,7 @@ NexusCode/
 │   ├── ai.py                  # Gemini integration (code gen, bug detection, docs)
 │   ├── files.py               # Cloudinary upload logic
 │   ├── github_oauth.py       # GitHub OAuth flow + repo API calls
-│   ├── websocket_manager.py # Chat + video-meeting connection managers
+│   ├── websocket_manager.py # Chat connection manager
 │   ├── Dockerfile
 │   ├── .env.example
 │   └── requirements.txt
@@ -206,9 +206,11 @@ Copy `frontend/.env.example` to `frontend/.env`:
 
 ```env
 VITE_API_URL=http://127.0.0.1:8000
+# Optional, for video meetings: the same public URL as the backend's LIVEKIT_URL
+VITE_LIVEKIT_URL=wss://YOUR_PROJECT.livekit.cloud
 ```
 
-On Vercel, set `VITE_API_URL` under Project Settings → Environment Variables instead.
+On Vercel, set `VITE_API_URL` (and `VITE_LIVEKIT_URL`) under Project Settings → Environment Variables instead.
 
 Run the dev server:
 
@@ -396,6 +398,18 @@ wsl -d Ubuntu -- bash -lc "cd /mnt/c/path/to/NexusCode/backend && python3 -m ven
 
 ---
 
+## 📹 Video Meetings
+
+Each project has one group video room on [LiveKit](https://livekit.io). Any member (owner, editor or viewer) can click **Join** and use their camera, microphone and screen share, and pick which mic and camera to use. Speakers get a highlight, and the page shows connection problems, blocked or missing devices in plain words.
+
+- **How it works:** when you click Join, the browser asks `POST /projects/{id}/meeting/token` for a LiveKit access token (valid for 1 hour, for this project's room only), then connects straight to LiveKit. Audio and video go through LiveKit's servers, never through the backend, and no meeting state is kept here.
+- **Access:** non-members get a 404, like the other project routes. Removing a member, or deleting an account, also removes that person from a call that is in progress.
+- **Secrets:** the LiveKit API key and secret stay on the backend, which signs the tokens. The browser only knows the public `wss://` URL.
+- **Leaving:** Leave, moving to another page, and closing the tab all end the call and turn the camera off.
+- **Setup:** set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (backend) and `VITE_LIVEKIT_URL` (frontend). See `docs/DEPLOY.md`.
+
+---
+
 ## 🔑 Key Design Decisions
 
 - **JWT over sessions** — stateless auth, no server-side session storage needed.
@@ -410,7 +424,7 @@ wsl -d Ubuntu -- bash -lc "cd /mnt/c/path/to/NexusCode/backend && python3 -m ven
 ## 🚧 Known Limitations / Future Improvements
 
 - Live editing keeps its rooms in one process's memory, so the backend must run as a single instance (as it does on Render's free tier).
-- Video meetings are 1:1 and use public STUN only (no TURN server), so calls can fail on strict networks.
+- Video meetings need a LiveKit project (LiveKit Cloud's free tier is enough to try it). Without the `LIVEKIT_*` settings and `VITE_LIVEKIT_URL`, the meeting page says video isn't configured and the rest of the app works as usual.
 - JavaScript runs one file on its own (no imports of other project files), and third-party Python packages aren't available.
 - The agent's free-tier quota is small (2 runs a day), and it can only run Python and JavaScript.
 - No light theme toggle yet (dark theme only).

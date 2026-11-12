@@ -1,4 +1,4 @@
-"""Chat history, the chat WebSocket and the video-meeting signaling WebSocket."""
+"""Chat history and the chat WebSocket. (Video meetings are on LiveKit: see meetings.py.)"""
 import json
 import logging
 import time
@@ -26,7 +26,7 @@ from app.core.rate_limit import WS_TICKET_LIMIT, limiter, user_or_ip
 from app.core.security import WS_TICKET_TTL_SECONDS, consume_ws_ticket, create_ws_ticket
 from app.models import MessageModel, ProjectMemberModel, ProjectModel, UserModel
 from app.schemas.project import MessageListResponse, WsTicketRequest, WsTicketResponse
-from app.services.realtime import manager, video_manager
+from app.services.realtime import manager
 
 logger = logging.getLogger("nexuscode")
 
@@ -34,9 +34,6 @@ router = APIRouter(tags=["chat"])
 
 MAX_CHAT_MESSAGE_LENGTH = 2000
 TYPING_MIN_INTERVAL_SECONDS = 2.0
-MAX_SIGNAL_FRAME_BYTES = 64 * 1024  # SDP offers are a few KB; this is generous
-SIGNAL_TYPES = {"offer", "answer", "ice-candidate"}
-MAX_MEETING_PEERS = 2  # the meeting UI is a 1:1 call
 
 
 @router.get("/projects/{project_id}/messages", response_model=MessageListResponse)
@@ -76,8 +73,8 @@ def get_project_messages(
 def _ws_member(ticket: str | None, project_id: int) -> tuple[int, str] | None:
     """
     (user id, username) behind a valid, unused ticket for this project, if that
-    user is still a member (any role: viewers can read the chat and join
-    meetings); otherwise None. Runs in a worker thread: it touches the database.
+    user is still a member (any role: viewers can read the chat); otherwise
+    None. Runs in a worker thread: it touches the database.
     """
     username = consume_ws_ticket(ticket, project_id) if ticket else None
     if username is None:
@@ -188,45 +185,3 @@ async def chat_websocket(websocket: WebSocket, project_id: int):
     finally:
         manager.disconnect(websocket, project_id)
         await manager.broadcast_presence(project_id)
-
-
-@router.websocket("/ws/projects/{project_id}/meeting")
-async def meeting_websocket(websocket: WebSocket, project_id: int):
-    member = await _authorize_websocket(websocket, project_id)
-    if member is None:
-        return
-    user_id, username = member
-
-    # Separate room from chat, so signaling never shows up in the chat box
-    await websocket.accept()
-    already_there = video_manager.join_if_room(websocket, project_id, user_id, MAX_MEETING_PEERS)
-    if already_there is None:
-        await websocket.send_json({"type": "room-full"})
-        await websocket.close(code=1013)  # "try again later"
-        return
-
-    try:
-        # Exactly one side makes the WebRTC offer: the newcomer, towards the
-        # peer already waiting. The waiting peer just learns someone joined.
-        await websocket.send_json({"type": "role", "initiator": already_there > 0})
-        if already_there:
-            await video_manager.broadcast_to_peer(project_id, websocket, {"type": "peer-joined"})
-        while True:
-            raw = await websocket.receive_text()
-            if len(raw.encode()) > MAX_SIGNAL_FRAME_BYTES:
-                continue
-            try:
-                data = json.loads(raw)
-            except ValueError:
-                continue
-            if not isinstance(data, dict) or data.get("type") not in SIGNAL_TYPES:
-                continue
-            await video_manager.broadcast_to_peer(project_id, websocket, data)
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        logger.exception("Meeting socket error (project %s, user %s)", project_id, username)
-    finally:
-        video_manager.disconnect(websocket, project_id)
-        # Lets the remaining peer reset and wait for the next one to join
-        await video_manager.broadcast_to_peer(project_id, websocket, {"type": "peer-left"})

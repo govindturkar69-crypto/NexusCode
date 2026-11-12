@@ -1,10 +1,24 @@
 # C4 — LiveKit group video: groundwork notes
 
-**Status: groundwork only. No feature code in this branch.** C4 replaces the
-current 1:1 WebRTC-signaling meeting with LiveKit-based group video. This file
-inventories what exists today, what C4 will remove/replace, the tests to rewrite,
-and the deploy/CSP/permissions changes LiveKit needs. Per the project rule, **the
-old meeting code stays until C4 replaces it** — nothing here is deleted yet.
+**Status: implemented (branch `phase-c4-livekit`).** The sections below were
+written before C4 as its plan and are kept for history; they describe the old
+1:1 WebRTC code, which is now removed. What actually shipped:
+
+- Backend: `app/services/meetings.py`, `app/routers/meetings.py`
+  (`POST /projects/{project_id}/meeting/token`), `livekit-api` 1.2.2. The old
+  meeting WebSocket, `VideoMeetingManager` and their tests are gone.
+- Frontend: `src/meeting/useMeetingRoom.js`, `MeetingStage.jsx`, `messages.js`,
+  `config.js`, a rewritten `pages/VideoMeeting.jsx`; `livekit-client` 2.23.0 and
+  `@livekit/components-react` 2.9.24. `src/meeting/session.js` is gone.
+- Infra: `Permissions-Policy` in `vercel.json`; `VITE_LIVEKIT_URL`; preflight
+  checks the `LIVEKIT_*` values; `docs/DEPLOY.md` has the setup steps.
+- Missed by this plan: `routers/members.py` and `routers/account.py` also called
+  `video_manager.kick` (a removed member or deleted account left the call at
+  once). That behaviour is kept: they now call `meetings.kick`, which removes the
+  participant through LiveKit's server API. `test_members.py` and
+  `test_permissions.py` also had `meeting` cases, now removed.
+- Viewers can publish camera, mic and screen like everyone else (nothing here
+  said otherwise).
 
 ## 1. Current meeting code (to be replaced by C4)
 

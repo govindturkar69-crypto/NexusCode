@@ -49,7 +49,7 @@ def test_livekit_skips_when_unset_fails_when_partial_passes_when_full():
     assert run(preflight.check_livekit, {})[0][0][0] == preflight.SKIP
     partial, failed = run(preflight.check_livekit, {"LIVEKIT_URL": "wss://x"})
     assert failed and partial[0][0] == preflight.FAIL
-    full, failed = run(preflight.check_livekit, {"LIVEKIT_URL": "w", "LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s"})
+    full, failed = run(preflight.check_livekit, {"LIVEKIT_URL": "wss://x.livekit.cloud", "LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s"})
     assert not failed and full[0][0] == preflight.OK
 
 
@@ -75,3 +75,10 @@ def test_load_env_parses_dotenv_and_env_wins(tmp_path, monkeypatch):
 def test_health_skips_without_url():
     out, failed = run(preflight.check_health, None)
     assert not failed and out[0][0] == preflight.SKIP
+
+
+def test_livekit_url_must_be_a_websocket_url_and_is_never_printed():
+    env = {"LIVEKIT_URL": "https://secret-project.livekit.cloud", "LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s"}
+    lines, failed = run(preflight.check_livekit, env)
+    assert failed and lines[0][0] == preflight.FAIL
+    assert "secret-project" not in " ".join(str(part) for part in lines[0])
