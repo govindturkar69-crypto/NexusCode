@@ -13,6 +13,22 @@ production database by hand except the RLS statements in step 8.
 - **CI**: GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR:
   ruff + pytest (SQLite and Postgres), eslint + Vitest + vite build.
 
+## Video meetings (LiveKit): one-time setup
+Video is optional: without these the app runs and the meeting page says video
+isn't configured. No database migration is involved.
+1. **LiveKit Cloud** (cloud.livekit.io): create a project for production (use a
+   separate one for local development). Settings shows the URL
+   (`wss://<project>.livekit.cloud`); Keys has the API key and secret.
+2. **Render** (backend service → Environment): set `LIVEKIT_URL`,
+   `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. Saving redeploys the backend. The
+   secret only signs tokens on the backend; never put it in Vercel or the repo.
+3. **Vercel** (frontend project → Settings → Environment Variables, Production):
+   set `VITE_LIVEKIT_URL` to the same `wss://` URL. `VITE_*` values are baked in
+   at build time, so **redeploy the frontend** afterwards (Deployments → ⋯ →
+   Redeploy) or the page keeps saying video isn't configured.
+4. Check: preflight shows `[ OK ] LiveKit vars`, then do the meeting smoke test
+   in step 9.
+
 ## 1. Back up the database first
 Take a fresh dump before anything that could touch data (always before a
 migration). Use your read-only backup script; it reads the password from
@@ -43,8 +59,9 @@ finally { "DB_HOST","DB_USER","DB_PORT","DB_NAME","DB_SSLMODE" | ForEach-Object 
 ```
 (On bash: `DB_HOST=... DB_USER=... DB_PORT=5432 DB_NAME=postgres DB_SSLMODE=require python scripts/preflight.py`.)
 Check the output says `DB at alembic head (...)` and `row-level security (all N
-tables)`. `LiveKit vars` shows `SKIP` until any `LIVEKIT_*` is set and `OK` once
-all three are.
+tables)`. `LiveKit vars` shows `SKIP` when none of `LIVEKIT_*` is set (video meetings off),
+`OK` when all three are set and `LIVEKIT_URL` starts with `wss://`, and `FAIL`
+otherwise.
 
 ## 3. Open a PR and get CI green
 Push the branch, open a PR into `main`. **Do not merge until CI is green**
@@ -89,6 +106,8 @@ In a browser, quickly exercise the changed area and the core flows:
 - run a file (Python and JS); open the AI panel
 - open the same file in two sessions and confirm live editing + presence
 - if the change touched auth/email/GitHub/agent, exercise that path
+- video: two accounts join the same project's meeting and see and hear each
+  other; Leave turns the camera light off
 
 ## 10. Rollback (if needed)
 - **Code**: in Render, **Rollback** to the previous deploy (or revert the merge
@@ -102,8 +121,10 @@ In a browser, quickly exercise the changed area and the core flows:
   Prefer restoring the backup over downgrading a destructive migration.
 
 ## Notes
-- The backend keeps live-editing rooms, the rate limiter, ws-ticket store and
-  the agent's daily-quota flag **in memory**, so it must run as a single
-  instance. A restart saves open documents and clients reconnect.
+- The backend keeps chat and live-editing rooms, the rate limiter, ws-ticket
+  store and the agent's daily-quota flag **in memory**, so it must run as a
+  single instance. A restart saves open documents and clients reconnect.
+  Video meetings keep no state here: rooms and participants live on LiveKit,
+  so a backend restart doesn't end a call.
 - First request after the free-tier service has slept waits for a cold start
   (up to ~1 min); `/health` and the editor both show that briefly.
