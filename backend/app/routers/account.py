@@ -15,9 +15,9 @@ from app.schemas.auth import (
     PasswordChange,
     SessionResponse,
 )
-from app.services import accounts, github
+from app.services import accounts, github, meetings
 from app.services.activity import publish
-from app.services.realtime import manager, video_manager
+from app.services.realtime import manager
 
 router = APIRouter(tags=["account"])
 
@@ -91,7 +91,7 @@ def delete_account(request: Request, body: AccountDelete, db: Session = Depends(
 
     for project_id in project_ids:
         anyio.from_thread.run(manager.kick, project_id, user_id)
-        anyio.from_thread.run(video_manager.kick, project_id, user_id)
+        anyio.from_thread.run(meetings.kick, project_id, user_id)
         publish(project_id, "member_left")
     collab.remove_user(user_id)
     return Response(status_code=204)

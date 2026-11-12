@@ -120,10 +120,9 @@ def test_analytics_counts_every_project_you_are_a_member_of(client, team):
     assert stats["total_projects"] == 1 and stats["total_tasks"] == 1 and stats["total_files"] == 1
 
 
-@pytest.mark.parametrize("kind", ["chat", "meeting"])
 @pytest.mark.parametrize("role", ROLES)
-def test_every_member_role_can_open_sockets(client, team, role, kind):
-    with open_socket(client, team["tokens"][role], team["pid"], kind):
+def test_every_member_role_can_open_sockets(client, team, role):
+    with open_socket(client, team["tokens"][role], team["pid"]):
         pass
 
 

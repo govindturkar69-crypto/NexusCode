@@ -2,6 +2,7 @@
 
 Tokens are signed and verified with the real LiveKit library, using a key pair
 that exists only in these tests. Nothing here talks to LiveKit's servers."""
+import asyncio
 import time
 
 import jwt
@@ -133,3 +134,51 @@ def test_the_token_endpoint_is_rate_limited(client, livekit, team, rate_limits):
     codes = [client.post(token_url(pid), headers=auth(tokens["owner"])).status_code for _ in range(limit + 1)]
     assert codes[:limit] == [200] * limit
     assert codes[-1] == 429
+
+
+# ---- removal from a call ----
+
+@pytest.fixture
+def kicks(monkeypatch):
+    """Records meeting removals instead of calling LiveKit's servers."""
+    calls = []
+
+    async def record(project_id, user_id):
+        calls.append((project_id, user_id))
+
+    monkeypatch.setattr(meetings_service, "kick", record)
+    return calls
+
+
+def test_removing_a_member_removes_them_from_the_call(client, team, kicks):
+    pid, tokens = team
+    r = client.delete(f"/projects/{pid}/members/{user_id('eddie')}", headers=auth(tokens["owner"]))
+    assert r.status_code in (200, 204)
+    assert kicks == [(pid, user_id("eddie"))]
+
+
+def test_deleting_an_account_removes_it_from_every_call(client, team, kicks, project_of):
+    from conftest import DEFAULT_PASSWORD
+
+    pid, tokens = team
+    second = project_of(tokens["owner"], "Second")
+    add_member("vera", second, "viewer")
+    vera = user_id("vera")
+    r = client.post("/me/delete", json={"password": DEFAULT_PASSWORD}, headers=auth(tokens["viewer"]))
+    assert r.status_code == 204, r.text
+    assert sorted(kicks) == sorted([(pid, vera), (second, vera)])
+
+
+def test_kick_does_nothing_when_video_is_not_configured():
+    assert not meetings_service.is_configured()
+    asyncio.run(meetings_service.kick(1, 2))  # returns without trying to connect
+
+
+def test_kick_never_raises_when_livekit_cannot_be_reached(monkeypatch):
+    # A closed local port: the call fails fast, without leaving this machine
+    monkeypatch.setattr(settings, "livekit_url", "ws://127.0.0.1:9")
+    monkeypatch.setattr(settings, "livekit_api_key", TEST_KEY)
+    monkeypatch.setattr(settings, "livekit_api_secret", TEST_SECRET)
+    started = time.monotonic()
+    asyncio.run(meetings_service.kick(1, 2))
+    assert time.monotonic() - started < meetings_service.KICK_TIMEOUT_SECONDS + 2

@@ -17,8 +17,9 @@ from app.schemas.members import (
     MemberResponse,
     MemberUpdate,
 )
+from app.services import meetings
 from app.services.activity import notify, publish, record
-from app.services.realtime import manager, video_manager
+from app.services.realtime import manager
 
 router = APIRouter(tags=["members"])
 
@@ -155,7 +156,7 @@ def remove_member(
 
     # They lose live access right away, not on their next message
     anyio.from_thread.run(manager.kick, project_id, user_id)
-    anyio.from_thread.run(video_manager.kick, project_id, user_id)
+    anyio.from_thread.run(meetings.kick, project_id, user_id)
     collab.set_role(project_id, user_id, None)
     publish(project_id, "member_left" if leaving else "member_removed")
     return Response(status_code=204)

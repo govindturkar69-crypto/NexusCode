@@ -93,7 +93,6 @@ def fresh_database(migrated_database):
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
     websocket_manager.manager.active_connections.clear()
-    websocket_manager.video_manager.active_connections.clear()
     # Rate limits are off unless a test opts in with the `rate_limits` fixture
     limiter.reset()
     auth_module.used_ws_tickets.clear()
