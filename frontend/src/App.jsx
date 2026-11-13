@@ -1,10 +1,11 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppBar from "./components/AppBar";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ThemeToggle from "./components/ThemeToggle";
 import AuthProvider from "./auth/AuthProvider";
 import ThemeProvider from "./theme/ThemeProvider";
+import HomeRoute from "./components/HomeRoute";
 
 // Every page is its own chunk, so e.g. Monaco and Recharts only download
 // when their pages are opened.
@@ -53,7 +54,7 @@ function App() {
         <ThemeProvider>
           <Suspense fallback={<PageLoading />}>
             <Routes>
-              <Route path="/" element={<Navigate to="/projects" replace />} />
+              <Route path="/" element={<HomeRoute />} />
               <Route
                 path="/login"
                 element={
