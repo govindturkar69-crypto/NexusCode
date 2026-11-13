@@ -1,7 +1,8 @@
 # NexusCode — architecture notes
 
 A reference for the demo, the README, and future work. Describes what is actually
-deployed today (through phase C4, group video).
+deployed today (through phase C5: group video and the public landing page).
+The README has the same picture as a Mermaid diagram.
 
 ## System at a glance
 
@@ -18,10 +19,10 @@ deployed today (through phase C4, group video).
    └──────────────┬───────────────────┬─────────────┘
                   │ SQLAlchemy         │ external
                   ▼                    ▼
-   ┌───────────────────────┐   Gemini API (AI agent)
+   ┌───────────────────────┐   Gemini API (AI assistant + agent)
    │ Supabase Postgres     │   Cloudinary (file uploads)
-   │ row-level security on │   Google / GitHub OAuth
-   │ every table           │   Sentry (errors)
+   │ row-level security on │   GitHub API (push) · Google / GitHub OAuth
+   │ every table           │   Resend (email) · Sentry (errors)
    └───────────────────────┘   LiveKit server API (remove a participant)
 
    Browser ══ wss + WebRTC media ══▶ LiveKit Cloud (SFU)
@@ -71,6 +72,10 @@ browser**, not on the server. The server never runs user code.
 
 ## Frontend (React + Vite)
 
+- **Landing page**: signed-out visitors to `/` get `pages/Landing.jsx` (its own lazy
+  chunk; words in `landing/content.js`); signed-in users are sent to `/projects`
+  (`components/HomeRoute.jsx`). `index.html` carries the description, canonical URL
+  and Open Graph / Twitter tags, with `public/og-image.png` as the preview.
 - **React 19 + Vite 8**, React Router 7. Dirs under `frontend/src/`: `pages`,
   `components`, `auth`, `projects`, `editor` (Monaco setup), `collab` (Yjs
   sessions, presence), `runners` (Pyodide + JS workers), `agent`, `api`, `meeting`
@@ -103,15 +108,16 @@ of the deploy (see `docs/DEPLOY.md`).
 - **Backend** → Render (free tier, single instance; configured via dashboard — no
   `render.yaml`).
 - **Database** → Supabase managed Postgres (session pooler), RLS enforced.
-- **CI** → GitHub Actions (backend tests on SQLite + Postgres, ruff, frontend
-  Vitest + eslint + build).
-- **Externals**: Gemini (AI), Cloudinary (uploads), Google/GitHub OAuth, Sentry,
-  LiveKit Cloud (video).
+- **CI** → GitHub Actions: ruff + pytest against Postgres 16; eslint, Vitest,
+  vite build and `npm audit --omit=dev`. (SQLite is the default for local test runs.)
+- **Externals**: Gemini (AI), Cloudinary (uploads), GitHub API (push), Google/GitHub
+  OAuth, Resend (email), Sentry, LiveKit Cloud (video).
 
 ## Constraints / things to know
 
-- **Single-instance realtime**: chat/collab room state lives in memory, so
-  it does not scale past one backend instance as-is. Fine for the current scale;
+- **Single instance**: chat and live-editing rooms, rate-limit counters and the
+  WebSocket-ticket store live in memory, so it does not scale past one backend
+  instance as-is. Fine for the current scale;
   would need a shared backplane (e.g. Redis) to scale out.
 - **Cold starts**: Render free tier sleeps; first request after idle is slow.
   `/health` does a `SELECT 1`.
@@ -119,5 +125,4 @@ of the deploy (see `docs/DEPLOY.md`).
   blocked in-worker and by CSP on its bundles.
 - **Video depends on LiveKit**: if LiveKit is down or not configured, meetings
   are unavailable but nothing else is affected.
-- **Next up (C5)**: polish, README/landing page and the demo — see
-  `docs/DEMO-SCRIPT.md`.
+- **Demo**: `backend/scripts/seed_demo.py` and `docs/DEMO-SCRIPT.md`.

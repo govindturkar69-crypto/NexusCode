@@ -102,6 +102,8 @@ its behaviour; it only closes Supabase's public API.
 
 ## 9. Live smoke test
 In a browser, quickly exercise the changed area and the core flows:
+- signed out, `/` shows the landing page (and a link preview uses `og-image.png`);
+  signed in, `/` goes to your projects
 - sign in; open a project; open the code editor
 - run a file (Python and JS); open the AI panel
 - open the same file in two sessions and confirm live editing + presence

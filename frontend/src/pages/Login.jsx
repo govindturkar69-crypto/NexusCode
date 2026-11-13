@@ -17,7 +17,9 @@ const MODES = {
 };
 
 function Login() {
-  const [mode, setMode] = useState("signin");
+  const location = useLocation();
+  // /login?mode=signup (e.g. from the landing page) opens the sign-up form
+  const [mode, setMode] = useState(() => (new URLSearchParams(location.search).get("mode") === "signup" ? "signup" : "signin"));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -26,7 +28,6 @@ function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
-  const location = useLocation();
   const { signIn } = useAuth();
   // Where ProtectedRoute was sending the user before they were bounced here
   const redirectTo = location.state?.from?.pathname ?? "/projects";
