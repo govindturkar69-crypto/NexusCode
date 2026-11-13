@@ -81,7 +81,7 @@ CODE_FILES = [
         "README.md",
         "markdown",
         "# Weather CLI\n\nA tiny demo project. Reads temperature readings and "
-        "reports the average and the hottest city.\n\nRun: `python src/main.py data/temps.txt`\n",
+        "reports the average and the hottest city.\n\nRun: open `src/main.py` and click Run (it reads `data/temps.txt`)\n",
     ),
     (
         "src/main.py",
@@ -101,7 +101,8 @@ def main(path):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    # The in-browser runner passes no arguments, so default to the sample data
+    main(sys.argv[1] if len(sys.argv) > 1 else "data/temps.txt")
 ''',
     ),
     ("src/weather.py", "python", BUGGY_PY),
