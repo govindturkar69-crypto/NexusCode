@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Landing from './Landing'
@@ -101,6 +101,10 @@ describe('the "/" route', () => {
 
 describe('index.html meta tags', () => {
   const html = readFileSync('index.html', 'utf-8')
+
+  it('points og:image at a file that ships with the site', () => {
+    expect(existsSync('public/og-image.png')).toBe(true)
+  })
   it.each([
     ['name="description"'],
     ['rel="canonical" href="https://nexus-code-chi.vercel.app/"'],
@@ -108,7 +112,8 @@ describe('index.html meta tags', () => {
     ['property="og:description"'],
     ['property="og:url" content="https://nexus-code-chi.vercel.app/"'],
     ['property="og:type" content="website"'],
-    ['name="twitter:card"'],
+    ['name="twitter:card" content="summary_large_image"'],
+    ['property="og:image" content="https://nexus-code-chi.vercel.app/og-image.png"'],
   ])('has %s', (fragment) => {
     expect(html).toContain(fragment)
   })

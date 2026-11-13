@@ -1,26 +1,33 @@
-# Screenshots to capture
+# Screenshots
 
-Capture these from the seeded demo project (**NexusCode Demo — Weather CLI**; see
-`docs/DEMO-SCRIPT.md` for setup) and drop the image files in this folder. Suggested
-filenames are listed so the README and docs can link to them. Use a clean browser
-window (no personal bookmarks/extensions bars), and a consistent light or dark
-theme across the set.
+Captured on 2026-11-13 from a **local** stack only: a throwaway Postgres seeded with
+`backend/scripts/seed_demo.py` (the demo project **NexusCode Demo — Weather CLI**
+and the accounts `demo_priya`, `demo_alex`, `demo_sam`), the backend and the Vite dev
+server, driven by headless Chromium (Playwright) at 1440×900 in the dark theme. No
+production data and no real accounts or emails appear in them. PNGs are palette-
+optimized (about 195 KB for the set).
 
-| File | What to show |
-|------|--------------|
-| `01-dashboard.png` | Project list / dashboard after signing in. |
-| `02-board.png` | The Kanban board with the seeded tasks across todo / in progress / done. |
-| `03-members-roles.png` | Members panel showing owner / editor / viewer. |
-| `04-editor-collab.png` | `src/weather.py` open with a second user's cursor + name (presence). Two windows side by side if possible. |
-| `05-run-python.png` | `src/main.py` run via Pyodide, output panel visible. |
-| `06-agent-fix.png` | The AI agent proposing/applying the fix to the seeded bug, with its step/guardrail UI. |
-| `07-agent-diff.png` | The review-before-apply diff from the agent run. |
-| `08-chat-activity.png` | Project chat and the activity feed side by side. |
-| `09-architecture.png` | The architecture diagram (from `docs/ARCHITECTURE-NOTES.md`). |
+| File | What it shows | How it was made |
+|------|---------------|-----------------|
+| `00-landing.png` | The public landing page at `/` (signed out). | Automated. |
+| `01-dashboard.png` | The project list after signing in as `demo_priya`. | Automated. |
+| `02-board.png` | The Kanban board with the seeded tasks across To Do / In Progress / Done. | Automated. |
+| `03-members-roles.png` | The Members panel: owner, editor, viewer. | Automated (element). |
+| `04-editor-collab.png` | `src/weather.py` open as `demo_priya`, with `demo_alex`'s live cursor and name ("2 people editing"). | Automated: two signed-in browser sessions on the same file. |
+| `06-agent-fix.png` | A real AI-agent run on the seeded bug: goal, quota ("1 of 2 runs left today"), step counter, timeline, and a change waiting for review. | Automated, one real agent run (Gemini). The bottom edge cuts the review buttons; `07` shows them. |
+| `07-agent-diff.png` | That run's proposed diff for `src/weather.py`, with Accept / Reject. | Automated (element), same run. |
+| `08-chat-activity.png` | Project chat (seeded messages) and the activity feed. | Automated: the two panels captured separately and placed side by side. The feed's two "started the AI agent" entries come from the capture run (the second, at the moment the script clicked Stop, made no AI calls). |
+| `10-video-meeting.png` | A real two-person LiveKit call (`demo_priya` and `demo_sam`) with mic / camera / screen-share controls and device pickers. | Automated. The video is Chromium's **fake camera test pattern** and the devices are its fake devices ("Fake Default Audio Input", "fake_device_0"); the call itself was real. |
 
-Notes:
-- Don't capture any real secrets, tokens, or personal email addresses — the demo
-  accounts use `@demo.nexuscode.local` addresses on purpose.
-- Keep images reasonably sized (PNG, ~1600px wide max) so the repo stays light.
-- This folder currently holds only this list; add the images when capturing for the
-  README / landing page (C5).
+## Not captured
+
+- **`05-run-python.png` — needs a manual screenshot.** The automated run clicked Run on
+  `src/main.py` but the output did not appear within the 30-second limit, twice
+  (headless first load of Pyodide), so it was skipped. To take it by hand: open
+  `src/main.py` in the demo project and click **Run**; the seeded bug ends in
+  `ValueError: could not convert string to float: ''`.
+- **`09-architecture.png` — not needed.** The README embeds the architecture as a
+  Mermaid diagram, which GitHub renders directly.
+
+`frontend/public/og-image.png` (1200×630, the link preview for social sites) is a crop
+of `00-landing.png`.
