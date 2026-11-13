@@ -92,6 +92,13 @@ describe('sign in', () => {
 })
 
 describe('protected routes', () => {
+  it('opens the sign-up form for /login?mode=signup (the landing page links there)', () => {
+    stubRoutes({ 'GET /auth/options': OPTIONS })
+    renderApp('/login?mode=signup')
+    expect(screen.getByRole('button', { name: 'Create account' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirm password')).toBeInTheDocument()
+  })
+
   it('redirect to /login without a token', () => {
     renderApp('/projects')
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
