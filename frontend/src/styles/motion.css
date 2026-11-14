@@ -102,3 +102,6 @@
 :root[data-motion="reduce"] .skeleton::after,
 :root[data-motion="reduce"] .pulse-ring::after { animation: none; }
 :root[data-motion="reduce"] .spinner { animation-duration: 1.6s; }
+
+/* Content waiting to be revealed on scroll must never print blank */
+@media print { .reveal-pending { opacity: 1; transform: none; } }

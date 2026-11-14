@@ -41,8 +41,8 @@ function Showcase() {
               className={`landing-shot__img landing-shot__img--${theme}`}
               src={`/landing/${shot.id}-${theme}.webp`}
               alt={shot.alt}
-              width="1440"
-              height="900"
+              width="1280"
+              height="800"
               loading="lazy"
               decoding="async"
             />
