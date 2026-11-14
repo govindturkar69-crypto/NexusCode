@@ -27,6 +27,7 @@ from app.routers import (
     agent,
     ai,
     analytics,
+    archive,
     auth,
     chat,
     code,
@@ -44,6 +45,7 @@ from app.routers import (
 )
 from app.services import ai as ai_service
 from app.services import email as email_service
+from app.services.project_archive import MAX_ARCHIVE_BYTES
 from app.services.storage import MAX_UPLOAD_BYTES
 
 configure_logging(settings.log_level, settings.log_format)
@@ -72,8 +74,10 @@ async def ai_not_configured_handler(request: Request, exc: ai_service.AINotConfi
     return JSONResponse(status_code=503, content={"detail": ai_service.AI_NOT_CONFIGURED})
 
 UPLOAD_PATH = re.compile(r"^/projects/\d+/files$")
+IMPORT_PATH = re.compile(r"^/projects/\d+/code/import$")
 # Multipart framing adds a little on top of the file itself
 UPLOAD_BODY_LIMIT = MAX_UPLOAD_BYTES + 64 * 1024
+IMPORT_BODY_LIMIT = MAX_ARCHIVE_BYTES + 64 * 1024
 
 
 # Registered before CORS so CORS wraps it and these errors still carry CORS headers
@@ -81,14 +85,21 @@ UPLOAD_BODY_LIMIT = MAX_UPLOAD_BYTES + 64 * 1024
 async def limit_upload_size(request: Request, call_next):
     """Rejects oversized uploads from the header, before the body is read.
     FastAPI would otherwise receive and spool the whole body first."""
-    if request.method == "POST" and UPLOAD_PATH.match(request.url.path):
+    if request.method == "POST":
+        path = request.url.path
+        if UPLOAD_PATH.match(path):
+            limit, message = UPLOAD_BODY_LIMIT, "Files can be at most 10 MB."
+        elif IMPORT_PATH.match(path):
+            limit, message = IMPORT_BODY_LIMIT, f"ZIP files can be at most {MAX_ARCHIVE_BYTES // (1024 * 1024)} MB."
+        else:
+            return await call_next(request)
         length = request.headers.get("content-length")
         if length is None:
             return JSONResponse(status_code=411, content={"detail": "Content-Length is required for uploads."})
         if not length.isdigit():
             return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length."})
-        if int(length) > UPLOAD_BODY_LIMIT:
-            return JSONResponse(status_code=413, content={"detail": "Files can be at most 10 MB."})
+        if int(length) > limit:
+            return JSONResponse(status_code=413, content={"detail": message})
     return await call_next(request)
 
 
@@ -140,7 +151,7 @@ async def log_requests(request: Request, call_next):
     access_logger.log(level, "request", extra={**context, "status": response.status_code, "duration_ms": duration_ms})
     return response
 
-for module in (auth, account, email, password, oauth, identities, agent, projects, members, tasks, files, code, collab, chat, meetings, ai, github, activity, analytics, admin):
+for module in (auth, account, email, password, oauth, identities, agent, projects, members, tasks, files, code, archive, collab, chat, meetings, ai, github, activity, analytics, admin):
     app.include_router(module.router)
 
 
