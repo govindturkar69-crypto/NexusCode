@@ -21,7 +21,7 @@
 .palette__option.is-active .palette__icon { color: var(--color-accent-text); }
 .palette__icon { flex-shrink: 0; color: var(--color-text-subtle); }
 .palette__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.palette__label mark { background: none; color: var(--color-accent-text); font-weight: var(--weight-bold); }
+.palette__match { color: var(--color-accent-text); font-weight: var(--weight-bold); }
 .palette__hint { flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); font-size: var(--text-xs); }
 .palette__enter { flex-shrink: 0; color: var(--color-accent-text); }
 .palette__empty { padding: var(--space-6) var(--space-4); text-align: center; }

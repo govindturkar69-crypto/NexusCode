@@ -67,6 +67,17 @@ async function openWithKeyboard(user, { ready = true } = {}) {
 }
 
 const combobox = () => screen.getByRole('combobox', { name: /Search projects/ })
+// Options by their visible text (jsdom puts spaces between highlighted fragments
+// when it computes names; browsers don't, and axe in Chromium checks the real names)
+const findOption = async (pattern) => {
+  let found
+  await waitFor(() => {
+    found = screen.getAllByRole('option').find((o) => pattern.test(o.textContent))
+    expect(found).toBeDefined()
+  })
+  return found
+}
+const queryOption = (pattern) => screen.queryAllByRole('option').find((o) => pattern.test(o.textContent))
 
 describe('Command palette', () => {
   beforeEach(() => {
@@ -131,11 +142,11 @@ describe('Command palette', () => {
     const fetchMock = renderApp()
     await openWithKeyboard(user)
     await user.type(combobox(), 'avg')
-    const task = await screen.findByRole('option', { name: /Fix the average bug/ })
-    expect(within(task).getAllByText((_, el) => el?.tagName === 'MARK').map((m) => m.textContent).join('')).toBe('avg')
+    const task = await findOption(/Fix the average bug/)
+    expect([...task.querySelectorAll('.palette__match')].map((m) => m.textContent).join('')).toBe('avg')
     await user.clear(combobox())
     await user.type(combobox(), 'weather.py')
-    await user.click(await screen.findByRole('option', { name: /src\/weather\.py/ }))
+    await user.click(await findOption(/src\/weather\.py/))
     expect(screen.getByTestId('where')).toHaveTextContent('/projects/1/editor?do=open&file=src%2Fweather.py')
     // Loaded once each
     expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/projects/1/tasks?limit=200&offset=0') || url.includes('/projects/1/tasks')).length).toBe(1)
@@ -146,8 +157,8 @@ describe('Command palette', () => {
     renderApp('/projects/1')
     await openWithKeyboard(user)
     await user.type(combobox(), 'new')
-    expect(await screen.findByRole('option', { name: /New task/ })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /New file/ })).toBeInTheDocument()
+    expect(await findOption(/New task/)).toBeInTheDocument()
+    expect(queryOption(/New file/)).toBeDefined()
     await user.keyboard('{Escape}')
   })
 
@@ -158,12 +169,12 @@ describe('Command palette', () => {
     for (const q of ['new task', 'new file', 'agent']) {
       await user.clear(combobox())
       await user.type(combobox(), q)
-      expect(screen.queryByRole('option', { name: /New task|New file|Run the AI agent/ })).not.toBeInTheDocument()
+      expect(queryOption(/New task|New file|Run the AI agent/)).toBeUndefined()
     }
     // Read-only actions stay
     await user.clear(combobox())
     await user.type(combobox(), 'export')
-    expect(screen.getByRole('option', { name: /Export project as ZIP/ })).toBeInTheDocument()
+    expect(await findOption(/Export project as ZIP/)).toBeInTheDocument()
   })
 
   it('runs actions through the URL so the page can act (New task)', async () => {
@@ -184,7 +195,7 @@ describe('Command palette', () => {
     await screen.findByText('/settings')
     await openWithKeyboard(user, { ready: false }) // no project on /settings
     const recent = await screen.findByRole('group', { name: /Recent/ })
-    expect(within(recent).getByRole('option', { name: /Settings/ })).toBeInTheDocument()
+    expect(within(recent).getAllByRole('option').some((o) => /Settings/.test(o.textContent))).toBe(true)
     expect(loadRecents()[0]).toMatchObject({ key: 'nav:settings', label: 'Settings' })
   })
 
@@ -240,5 +251,21 @@ describe('fuzzy matching', () => {
     for (let i = 0; i < 8; i++) rememberRecent({ key: `k${i}`, label: `L${i}` })
     rememberRecent({ key: 'k5', label: 'L5' })
     expect(loadRecents().map((r) => r.key)).toEqual(['k5', 'k7', 'k6', 'k4', 'k3', 'k2'])
+  })
+})
+
+describe('palette ranking', () => {
+  it("doesn't match every page by the project name in its hint", async () => {
+    const user = userEvent.setup()
+    renderApp('/projects/1')
+    await user.click(await screen.findByRole('button', { name: 'Search' }))
+    await screen.findAllByRole('option')
+    await waitFor(() => expect(screen.getAllByRole('option').some((o) => /src\/weather\.py/.test(o.textContent))).toBe(true), { timeout: 3000 })
+    await user.type(screen.getByRole('combobox', { name: /Search projects/ }), 'weather')
+    const texts = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(texts.some((t) => t.startsWith('Weather CLI'))).toBe(true) // the project itself
+    expect(texts.some((t) => t.startsWith('src/weather.py'))).toBe(true)
+    expect(texts.some((t) => t.startsWith('Board'))).toBe(false)
+    expect(texts.some((t) => t.startsWith('New task'))).toBe(false)
   })
 })

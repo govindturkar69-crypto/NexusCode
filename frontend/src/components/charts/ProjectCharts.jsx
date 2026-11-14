@@ -29,7 +29,7 @@ export function BurnChart({ data }) {
   const c = colors();
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <AreaChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} accessibilityLayer>
+      <AreaChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} accessibilityLayer={false}>
         <CartesianGrid stroke={c.grid} strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="date" tickFormatter={shortDate} {...axis(c)} minTickGap={16} />
         <YAxis allowDecimals={false} {...axis(c)} />
@@ -49,7 +49,7 @@ export function ThroughputChart({ data }) {
   const rows = data.map((b) => ({ ...b, label: b.days === 7 ? `${shortDate(b.start)}–${shortDate(b.end)}` : `${shortDate(b.start)}–${shortDate(b.end)} (${b.days}d)` }));
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={rows} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} accessibilityLayer>
+      <BarChart data={rows} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} accessibilityLayer={false}>
         <CartesianGrid stroke={c.grid} strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="label" {...axis(c)} />
         <YAxis allowDecimals={false} {...axis(c)} />
@@ -65,7 +65,7 @@ export function ActivityChart({ data }) {
   const c = colors();
   return (
     <ResponsiveContainer width="100%" height={200}>
-      <BarChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} accessibilityLayer>
+      <BarChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} accessibilityLayer={false}>
         <CartesianGrid stroke={c.grid} strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="date" tickFormatter={shortDate} {...axis(c)} minTickGap={16} />
         <YAxis allowDecimals={false} {...axis(c)} />

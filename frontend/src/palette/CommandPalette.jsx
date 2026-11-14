@@ -25,7 +25,8 @@ const iconFor = (item) => ICONS[item.key.split(":").slice(0, 2).join(":")] ?? IC
 
 function Label({ text, indices }) {
   if (!indices?.length) return text;
-  return highlight(text, indices).map((part, i) => (part.match ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>));
+  // Plain inline spans, so the option's accessible name is the label as written
+  return highlight(text, indices).map((part, i) => <span key={i} className={part.match ? "palette__match" : undefined}>{part.text}</span>);
 }
 
 /**
@@ -116,7 +117,9 @@ function CommandPalette({ onClose, project, projects }) {
     const scored = [];
     for (const item of items) {
       const onLabel = fuzzyMatch(query, item.label);
-      const onRest = onLabel ? null : fuzzyMatch(query, `${item.hint ?? ""} ${item.keywords ?? ""}`);
+      // Keywords (synonyms) can match too, but not the hint: it's often the project's
+      // name, which would make every page and action match a search for it
+      const onRest = onLabel || !item.keywords ? null : fuzzyMatch(query, item.keywords);
       if (onLabel) scored.push({ item, indices: onLabel.indices, score: onLabel.score + 50 });
       else if (onRest) scored.push({ item, indices: [], score: onRest.score * 0.5 });
     }
@@ -213,15 +216,13 @@ function CommandPalette({ onClose, project, projects }) {
                     id={optionId(i)}
                     role="option"
                     aria-selected={i === activeIndex}
-                    // One clean name, not the highlighted fragments
-                    aria-label={item.hint ? `${item.label}, ${item.hint}` : item.label}
                     className={`palette__option ${i === activeIndex ? "is-active" : ""}`}
                     onMouseMove={() => i !== activeIndex && setActive(i)}
                     onClick={() => run(item)}
                   >
                     <Icon size={16} className="palette__icon" aria-hidden="true" />
                     <span className="palette__label"><Label text={item.label} indices={indices} /></span>
-                    {item.hint && <span className="palette__hint">{item.hint}</span>}
+                    {item.hint && <span className="palette__hint"><span className="visually-hidden">, </span>{item.hint}</span>}
                     {i === activeIndex && <CornerDownLeft size={14} className="palette__enter" aria-hidden="true" />}
                   </div>
                 );
