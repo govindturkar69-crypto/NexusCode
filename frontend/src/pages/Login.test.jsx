@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
@@ -226,7 +226,8 @@ describe('email options on the login page', () => {
     const user = userEvent.setup()
     const fetchMock = renderLogin(false)
     await user.click(screen.getByRole('button', { name: 'Create an account' }))
-    expect(screen.queryByLabelText('Email (optional)')).not.toBeInTheDocument()
+    // Disabled in place once the server says email is off: nothing moves
+    await waitFor(() => expect(screen.getByLabelText('Email (optional)')).toBeDisabled())
     await user.type(screen.getByLabelText('Username'), 'newbie')
     await user.type(screen.getByLabelText('Password'), 'long-enough-1')
     await user.type(screen.getByLabelText('Confirm password'), 'long-enough-1')
@@ -239,11 +240,38 @@ describe('email options on the login page', () => {
 
 
 describe('Continue with Google', () => {
-  it('is hidden until the server offers it', async () => {
+  it('is shown at once, before the server answers', async () => {
+    // The options request never answers (a sleeping server)
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    renderApp()
+    const names = screen.getAllByRole('button', { name: /^Continue with/ }).map((b) => b.textContent)
+    expect(names).toEqual(['Continue with Google', 'Continue with GitHub'])
+    for (const button of screen.getAllByRole('button', { name: /^Continue with/ })) expect(button).toBeEnabled()
+    // The form doesn't wait either
+    expect(screen.getByLabelText('Username')).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+  })
+
+  it('is disabled in place, not removed, when the server says it is off', async () => {
     const fetchMock = stubRoutes({ 'GET /auth/options': [200, { email: false, google: false, github: false }] })
     renderApp()
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    expect(screen.queryByRole('button', { name: /Continue with/ })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Continue with GitHub' })).toBeDisabled()
+    expect(screen.getByText("Google and GitHub sign-in isn't set up on this server.")).toBeInTheDocument()
+  })
+
+  it('remembers the answer, so the next visit starts from it', async () => {
+    const first = stubRoutes({ 'GET /auth/options': [200, { email: true, google: true, github: false }] })
+    const { unmount } = renderApp()
+    await waitFor(() => expect(first).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with GitHub' })).toBeDisabled())
+    unmount()
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    renderApp()
+    // Before any answer: GitHub already shows as off, Google as on
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Continue with GitHub' })).toBeDisabled()
   })
 
   it('shows on sign in and sign up, and shows start errors', async () => {
@@ -280,8 +308,8 @@ describe('Continue with GitHub', () => {
       'POST /auth/oauth/github/start': [500, { detail: 'boom' }],
     })
     renderApp()
-    expect(screen.queryByRole('button', { name: 'Continue with Google' })).not.toBeInTheDocument()
-    await user.click(await screen.findByRole('button', { name: 'Continue with GitHub' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeDisabled())
+    await user.click(screen.getByRole('button', { name: 'Continue with GitHub' }))
     await screen.findByRole('alert')
     const paths = fetchMock.mock.calls.map(([url]) => new URL(url).pathname)
     expect(paths).toContain('/auth/oauth/github/start')

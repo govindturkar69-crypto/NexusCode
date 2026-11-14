@@ -554,20 +554,8 @@
 .run-panel__running { display: inline-flex; align-items: center; gap: 6px; }
 .run-output { animation: nx-fade-in var(--duration-base) var(--ease-out); }
 
-/* ---------- Auth and account pages (C6) ----------
-   Top-aligned rather than centred, so provider buttons that arrive after
-   /auth/options loads never push the form around. */
-.auth-page { display: flex; justify-content: center; align-items: flex-start; padding: clamp(1.5rem, 8vh, 5rem) var(--space-4) var(--space-6); min-height: calc(100dvh - var(--header-height)); }
-.auth-card { width: 100%; max-width: 400px; padding: clamp(1.5rem, 5vw, 2.25rem); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); }
-.auth-card__header { margin-bottom: var(--space-5); }
-.auth-card__mark { width: 36px; height: 36px; font-size: 17px; border-radius: 10px; margin-bottom: var(--space-4); }
-.auth-card__title { margin: 0; font-size: var(--text-2xl); font-weight: var(--weight-bold); letter-spacing: -0.02em; }
-.auth-card__subtitle { margin: var(--space-1) 0 0; font-size: var(--text-sm); }
-.auth-card__forgot { text-align: center; margin: 0; }
-.auth-card__switch { text-align: center; margin: var(--space-5) 0 0; }
-.provider-buttons { margin-top: var(--space-4); }
-.provider-buttons__or { display: flex; align-items: center; gap: var(--space-3); margin: 0; color: var(--color-text-subtle); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; }
-.provider-buttons__or::before, .provider-buttons__or::after { content: ""; flex: 1; height: 1px; background: var(--color-border); }
+/* Signed-out page frame: auth pages (styles/auth.css), 404 and the error screen */
+.auth-page { display: flex; justify-content: center; align-items: flex-start; padding: clamp(1.5rem, 6vh, 4rem) var(--space-4) var(--space-6); min-height: calc(100dvh - var(--header-height)); }
 .not-found { max-width: 440px; }
 .not-found__code { margin: 0; font-family: var(--font-mono); font-size: var(--text-3xl); font-weight: var(--weight-bold); color: var(--color-text-subtle); letter-spacing: 0.1em; }
 .not-found__title { font-size: var(--text-2xl); }

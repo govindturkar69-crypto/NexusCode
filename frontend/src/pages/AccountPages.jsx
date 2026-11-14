@@ -4,7 +4,10 @@ import { apiFetch } from "../api/client";
 import { PROVIDERS, completeOAuth, linkWithPassword, peekPendingOAuth, takePendingOAuth } from "../api/oauth";
 import { useAuth } from "../auth/useAuth";
 import { useFragmentParam } from "../auth/fragment";
+import AuthLayout from "../components/auth/AuthLayout";
+import PasswordStrength from "../components/auth/PasswordStrength";
 import Alert from "../components/ui/Alert";
+import { loadLogin, prefetchOn } from "../routes/prefetch";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 
@@ -12,18 +15,18 @@ import Input from "../components/ui/Input";
 
 function Shell({ title, children }) {
   return (
-    <main className="page auth-page">
-      <div className="card auth-card motion-rise-in">
-        <header className="auth-card__header">
+    <AuthLayout label={title}>
+      <div className="auth-card__body motion-stagger">
+        <header className="auth-card__header" style={{ "--i": 0 }}>
           <span className="brand__mark auth-card__mark" aria-hidden="true">N</span>
           <h1 className="auth-card__title">{title}</h1>
         </header>
-        {children}
-        <p className="muted small auth-card__switch">
-          <Link to="/login" className="btn btn--link">Back to sign in</Link>
+        <div style={{ "--i": 1 }}>{children}</div>
+        <p className="muted small auth-card__switch" style={{ "--i": 2 }}>
+          <Link to="/login" className="btn btn--link" {...prefetchOn(loadLogin)}>Back to sign in</Link>
         </p>
       </div>
-    </main>
+    </AuthLayout>
   );
 }
 
@@ -60,7 +63,7 @@ export function ForgotPassword() {
           <p className="muted small">Enter the verified email address on your account and we'll send you a link.</p>
           <Input label="Email address" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           <Alert>{error}</Alert>
-          <Button type="submit" block disabled={busy || !email.trim()}>{busy ? "Sending..." : "Send reset link"}</Button>
+          <Button type="submit" block size="lg" loading={busy} disabled={!email.trim()}>{busy ? "Sending..." : "Send reset link"}</Button>
         </form>
       )}
     </Shell>
@@ -101,10 +104,13 @@ export function ResetPassword() {
         <Alert tone="success">{done} Other devices have been signed out.</Alert>
       ) : (
         <form onSubmit={submit} className="stack" noValidate>
-          <Input label="New password" type="password" autoComplete="new-password" hint="8 to 72 bytes." value={password} onChange={(e) => setPassword(e.target.value)} />
+          <div className="stack" style={{ "--gap": "0.4rem" }}>
+            <Input label="New password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <PasswordStrength value={password} />
+          </div>
           <Input label="Confirm new password" type="password" autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
           <Alert>{error}</Alert>
-          <Button type="submit" block disabled={busy}>{busy ? "Saving..." : "Set new password"}</Button>
+          <Button type="submit" block size="lg" loading={busy}>{busy ? "Saving..." : "Set new password"}</Button>
         </form>
       )}
     </Shell>
@@ -203,7 +209,7 @@ export function OAuthCallback() {
           </p>
           <Input label={`Password for ${view.username}`} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           <Alert>{formError}</Alert>
-          <Button type="submit" block disabled={busy || !password}>{busy ? "Linking..." : `Link ${name} and sign in`}</Button>
+          <Button type="submit" block size="lg" loading={busy} disabled={!password}>{busy ? "Linking..." : `Link ${name} and sign in`}</Button>
         </form>
       )}
     </Shell>

@@ -1,0 +1,86 @@
+/* ---------- Auth and account pages (C7) ----------
+   One card with the form; on wide screens a brand panel beside it. Everything
+   in the card renders at once (no element waits for the server), so nothing
+   pops in or moves. Loaded with the auth pages (imported by AuthLayout), not by every page;
+   .auth-page itself is in theme.css because 404 and the error screen use it. */
+.auth-layout__grid { width: 100%; max-width: 1040px; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; }
+.auth-card { width: 100%; max-width: 420px; padding: clamp(1.5rem, 5vw, 2.25rem); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); position: relative; z-index: 1; }
+.auth-card__body { display: flex; flex-direction: column; }
+.auth-card__header { margin-bottom: var(--space-5); }
+.auth-card__mark { width: 36px; height: 36px; font-size: 17px; border-radius: 10px; margin-bottom: var(--space-4); }
+.auth-card__title { margin: 0; font-size: var(--text-2xl); font-weight: var(--weight-bold); letter-spacing: -0.02em; }
+.auth-card__subtitle { margin: var(--space-1) 0 0; font-size: var(--text-sm); }
+.auth-card__forgot { text-align: right; margin: 0; min-height: 1.5em; }
+.auth-card__forgot .btn--link { font-size: var(--text-sm); }
+.auth-card__switch { text-align: center; margin: var(--space-5) 0 0; }
+
+/* Provider buttons: fixed height list + a status line that always keeps its space */
+.provider-buttons__list { display: grid; gap: var(--space-2); }
+.provider-button { justify-content: center; gap: var(--space-3); min-height: 44px; font-weight: var(--weight-semibold); }
+.provider-button .icon { flex-shrink: 0; }
+.provider-buttons__status { min-height: 1.4em; margin: var(--space-2) 0 0; text-align: center; }
+.provider-buttons .alert { margin-top: var(--space-2); }
+.auth-divider { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-2) 0 var(--space-4); color: var(--color-text-subtle); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--color-border); }
+.auth-form__status { min-height: 1.4em; margin: calc(var(--space-2) * -1) 0 0; text-align: center; }
+
+/* Password strength: four segments and one line of text, always the same height */
+.strength { display: flex; flex-direction: column; gap: 6px; }
+.strength__bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.strength__bar span { height: 4px; border-radius: 2px; background: var(--color-border); transition: background-color var(--duration-base) var(--ease-out); }
+.strength--1 .strength__bar .is-on { background: var(--color-danger); }
+.strength--2 .strength__bar .is-on { background: var(--color-warning); }
+.strength--3 .strength__bar .is-on { background: var(--color-accent); }
+.strength--4 .strength__bar .is-on { background: var(--color-success); }
+.strength__text { margin: 0; min-height: 1.4em; font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* A subtle shake when a problem appears. Its distance is --motion-distance, which
+   is 0 under reduced motion, so it simply doesn't move there. */
+@keyframes nx-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20%, 60% { transform: translate3d(calc(var(--motion-distance) * -0.6), 0, 0); }
+  40%, 80% { transform: translate3d(calc(var(--motion-distance) * 0.6), 0, 0); }
+}
+.auth-card .field__error, .auth-card .alert--error { animation: nx-shake 360ms var(--ease-out); }
+
+/* The brand panel: only on wide screens */
+.auth-brand { display: none; }
+@media (min-width: 960px) {
+  .auth-page.auth-layout { align-items: center; }
+  .auth-layout__grid { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 0; align-items: stretch; justify-items: stretch; border: 1px solid var(--color-border); border-radius: calc(var(--radius-xl) + 6px); background: var(--color-surface); box-shadow: var(--shadow-lg); overflow: hidden; }
+  .auth-layout__grid > .auth-card { order: 2; max-width: none; border: 0; border-radius: 0; box-shadow: none; padding: clamp(2rem, 4vw, 3rem); align-self: center; }
+  .auth-layout__grid > .auth-card .auth-card__body { max-width: 380px; margin: 0 auto; }
+  .auth-brand { order: 1; display: block; position: relative; overflow: hidden; padding: clamp(2rem, 4vw, 3rem); border-right: 1px solid var(--color-border); background: var(--color-bg); min-height: 560px; }
+}
+.auth-brand__bg { position: absolute; inset: -20%; pointer-events: none; }
+/* Soft colour blobs that drift slowly, under a fading grid */
+.auth-brand__bg::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(40% 35% at 25% 25%, var(--color-accent-soft), transparent 70%),
+    radial-gradient(35% 30% at 75% 70%, rgba(139, 92, 246, 0.16), transparent 70%),
+    radial-gradient(30% 30% at 60% 20%, var(--color-success-soft), transparent 70%);
+  animation: nx-drift 18s var(--ease-in-out) infinite alternate;
+}
+.auth-brand__bg::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse 60% 50% at 40% 40%, #000 20%, transparent 75%);
+  opacity: 0.5;
+}
+@keyframes nx-drift {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to { transform: translate3d(3%, 2%, 0) scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .auth-brand__bg::before { animation: none; } }
+:root[data-motion="reduce"] .auth-brand__bg::before { animation: none; }
+.auth-brand__content { position: relative; display: flex; flex-direction: column; gap: var(--space-5); height: 100%; }
+.auth-brand__logo { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--color-text); }
+.auth-brand__tagline { margin: var(--space-4) 0 0; font-size: var(--text-3xl); line-height: 1.15; letter-spacing: -0.03em; font-weight: var(--weight-bold); color: var(--color-text); text-wrap: balance; }
+.auth-brand__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.auth-brand__item { display: flex; gap: var(--space-3); align-items: flex-start; font-size: var(--text-sm); color: var(--color-text); }
+.auth-brand__item strong { display: block; font-weight: var(--weight-semibold); }
+.auth-brand__text { display: block; color: var(--color-text-muted); margin-top: 2px; line-height: 1.5; }
+.auth-brand__icon { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; background: var(--color-surface-raised); border: 1px solid var(--color-border); color: var(--color-accent-text); }
+.auth-brand__note { margin: auto 0 0; font-size: var(--text-xs); color: var(--color-text-muted); }
