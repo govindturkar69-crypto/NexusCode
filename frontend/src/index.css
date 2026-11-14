@@ -1,6 +1,7 @@
 /* App-wide base styles. Order: tokens, components, pages, motion; then base elements. */
 @import './styles/tokens.css';
 @import './styles/components.css';
+@import './styles/shell.css';
 @import './styles/theme.css';
 @import './styles/motion.css';
 
