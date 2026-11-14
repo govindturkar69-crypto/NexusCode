@@ -387,6 +387,9 @@ describe('CodeEditor', () => {
       expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /^Rename / })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /Push to GitHub/ })).not.toBeInTheDocument()
+      // Any member may download the project; only owners and editors import into it
+      expect(screen.getByRole('button', { name: 'Export ZIP' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Import ZIP' })).not.toBeInTheDocument()
       await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
       await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('print(1)'))
       expect(fetchMock.mock.calls.filter(([, init]) => ['PUT', 'PATCH', 'DELETE'].includes(init?.method))).toHaveLength(0)
@@ -394,6 +397,7 @@ describe('CodeEditor', () => {
 
     it('an editor can edit but not push', async () => {
       setup('editor')
+      expect(await screen.findByRole('button', { name: 'Import ZIP' })).toBeInTheDocument()
       expect(await screen.findByRole('button', { name: '+ File' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /Push to GitHub/ })).not.toBeInTheDocument()
     })
