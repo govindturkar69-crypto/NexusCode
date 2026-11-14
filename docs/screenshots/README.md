@@ -30,6 +30,19 @@ both themes) come from the same local demo stack.
 | `08-chat-activity.png` | Project chat (seeded messages) and the activity feed. | Automated: the two panels captured separately and placed side by side. The feed's two "started the AI agent" entries come from the capture run (the second, at the moment the script clicked Stop, made no AI calls). |
 | `10-video-meeting.png` | A real two-person LiveKit call (`demo_priya` and `demo_sam`) with mic / camera / screen-share controls and device pickers. | Automated. The video is Chromium's **fake camera test pattern** and the devices are its fake devices ("Fake Default Audio Input", "fake_device_0"); the call itself was real. |
 
+## Added in C8 (2026-11-14)
+
+Captured the same way, from the production build (`vite preview`) with reduced
+motion on, dark theme, 1440 px wide. Before capturing, `demo_alex` moved "Fix the
+average() off-by-one bug" to Done through the normal API, so the analytics page has
+one real completion; the seeded done tasks were created as done and show as undated.
+
+| File | What it shows |
+|------|---------------|
+| `11-command-palette.png` | The command palette over the board, searching "wea": highlighted matches in actions and pages. |
+| `12-analytics.png` | The project analytics page for the last 14 days. |
+| `13-zip-import.png` | The ZIP import preview: new files, one that already exists (skip or rename) and three skipped entries (a `..` path, a symlink and a PNG). |
+
 ## Not captured
 
 - **`06-agent-fix.png`, `07-agent-diff.png` and `10-video-meeting.png` are still the

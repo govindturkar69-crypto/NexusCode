@@ -42,7 +42,20 @@ browser**, not on the server. The server never runs user code.
   `account`, `email` (accounts & sign-in); `projects`, `members`, `tasks`, `files`,
   `activity`, `analytics` (workspace); `code`, `collab`, `chat` (editor, live
   collab + chat WebSockets); `meetings` (LiveKit token); `agent`, `ai` (AI assist
-  + agent); `github`; `admin`.
+  + agent); `github`; `admin`; `archive` (project ZIP export/import).
+- **Project analytics**: `GET /projects/{id}/analytics?range=7|14|30` (any member)
+  in `services/project_analytics.py`. GROUP BY queries plus one query per table, so
+  the query count doesn't grow with the data (tested). Tasks have no completion
+  column: a done task's completion time is its latest `task_moved` "<title> → Done"
+  activity entry; tasks that can't be matched are reported as undated.
+- **ZIP export/import**: `GET /projects/{id}/export` (any member) builds the ZIP on
+  the server (code/, tasks.json without emails, README). `POST
+  /projects/{id}/code/import` (owner/editor) is two-step (dry run, then the real
+  run with skip/rename choices) and re-checks everything each time in
+  `services/project_archive.py`: zip-slip and absolute paths via `path_problem`,
+  symlinks, binaries and non-UTF-8, entry/size/ratio caps (zip bombs), duplicates,
+  file/folder clashes and the 500-file limit. The upload is capped at 5 MB from
+  `Content-Length` before the body is read.
 - **Services** (`backend/app/services/`): `auth_tokens`, `accounts`, `oauth`,
   `email`, `github`, `storage` (Cloudinary), `realtime` (WebSocket room managers),
   `collab` (Yjs persistence), `code_paths`, `agent` + `ai` + `ai_assist` (Gemini),
@@ -93,6 +106,16 @@ browser**, not on the server. The server never runs user code.
   JS worker with an opaque origin. The AI agent's code runs in stricter workers
   with a Content-Security-Policy (see `docs/CSP-RETEST-CHECKLIST.md`).
 - **Errors**: Sentry (`@sentry/react`).
+- **Command palette** (`palette/`): the shell holds only the Ctrl/Cmd+K listener and
+  the Search button; the palette itself is a lazy chunk. It is an ARIA combobox in a
+  modal dialog, with fuzzy matching (`palette/fuzzy.js`), recents in localStorage
+  (guarded) and role-aware actions. Pages act on `?do=` links (`utils/useDoParam.js`):
+  `new-task`, `task`, `new-file`, `open`, `agent`, `join`. Inside Monaco, Ctrl/Cmd+K is
+  left to Monaco's chords.
+- **Project analytics page** (`pages/ProjectAnalytics.jsx`, lazy): Recharts charts in
+  their own lazy chunk; each chart is a figure with a summary and a data table.
+- **ZIP**: export downloads with progress (`api/archive.js`); the import dialog
+  (lazy) uploads with XHR for upload progress and shows the server's preview.
 
 ## Data model (Postgres)
 
