@@ -169,6 +169,14 @@ describe('AgentPanel', () => {
     expect(within(timeline()).queryByText('All done.')).not.toBeInTheDocument()
   })
 
+  it('says the AI is not configured and offers no Start when the server has no key', async () => {
+    stubServer([], { quota: { ...QUOTA, ai_configured: false } })
+    setup()
+    expect(await screen.findByText(/AI is not configured on this server/)).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Goal'), 'Fix the bug')
+    expect(screen.getByRole('button', { name: '▶ Start' })).toBeDisabled()
+  })
+
   it('auto-accept is off by default', () => {
     stubServer([])
     setup()

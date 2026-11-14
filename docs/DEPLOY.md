@@ -59,7 +59,9 @@ finally { "DB_HOST","DB_USER","DB_PORT","DB_NAME","DB_SSLMODE" | ForEach-Object 
 ```
 (On bash: `DB_HOST=... DB_USER=... DB_PORT=5432 DB_NAME=postgres DB_SSLMODE=require python scripts/preflight.py`.)
 Check the output says `DB at alembic head (...)` and `row-level security (all N
-tables)`. `LiveKit vars` shows `SKIP` when none of `LIVEKIT_*` is set (video meetings off),
+tables)`. `Gemini (AI)` shows `SKIP` when no Gemini key is set (the app runs and the AI
+features answer 503 "AI is not configured"), and `OK` when one is.
+`LiveKit vars` shows `SKIP` when none of `LIVEKIT_*` is set (video meetings off),
 `OK` when all three are set and `LIVEKIT_URL` starts with `wss://`, and `FAIL`
 otherwise.
 

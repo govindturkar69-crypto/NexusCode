@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { aiErrorText } from "../api/aiErrors";
 import { apiFetch } from "../api/client";
 import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
@@ -50,7 +51,7 @@ function AIAssistant() {
     setError("");
     apiFetch(`/ai/${config.endpoint}`, { method: "POST", body: { [config.bodyKey]: input } })
       .then((data) => setResult(data.result ?? ""))
-      .catch((err) => setError(err.message || "Something went wrong. The AI service may be busy — try again."))
+      .catch((err) => setError(aiErrorText(err, "Something went wrong. The AI service may be busy — try again.")))
       .finally(() => setLoading(false));
   }
 

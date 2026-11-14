@@ -59,3 +59,5 @@ class AgentQuota(BaseModel):
     resets_at: datetime
     # False while Gemini itself has refused for the day
     ai_available: bool = True
+    # False when no Gemini key is set on the server (the agent can't run at all)
+    ai_configured: bool = True

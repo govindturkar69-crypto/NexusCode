@@ -32,7 +32,7 @@ def gemini(monkeypatch):
         return chunks()
 
     fake_client = SimpleNamespace(models=SimpleNamespace(generate_content_stream=generate_content_stream))
-    monkeypatch.setattr(ai_service, "client", fake_client)
+    monkeypatch.setattr(ai_service, "get_client", lambda: fake_client)
     monkeypatch.setattr(ai_assist.time, "sleep", lambda _seconds: None)
     return state
 

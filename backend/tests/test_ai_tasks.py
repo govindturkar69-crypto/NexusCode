@@ -27,7 +27,7 @@ def gemini(monkeypatch):
             raise state["errors"].pop(0)
         return SimpleNamespace(text=state["reply"])
 
-    monkeypatch.setattr(ai_service, "client", SimpleNamespace(models=SimpleNamespace(generate_content=generate_content)))
+    monkeypatch.setattr(ai_service, "get_client", lambda: SimpleNamespace(models=SimpleNamespace(generate_content=generate_content)))
     monkeypatch.setattr(ai_service.time, "sleep", lambda _seconds: None)
     return state
 

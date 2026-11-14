@@ -1,3 +1,4 @@
+import threading
 import time
 
 from google import genai
@@ -5,7 +6,16 @@ from google.genai import errors
 
 from app.core.config import settings
 
-client = genai.Client(api_key=settings.gemini_api_key)
+# Shown to users (as a 503) when no Gemini key is set. It names no key or value.
+AI_NOT_CONFIGURED = "AI is not configured"
+
+
+class AINotConfiguredError(Exception):
+    """No Gemini API key is set, so the AI features are off. main.py turns this
+    into a 503 with AI_NOT_CONFIGURED for every route."""
+
+    def __init__(self) -> None:
+        super().__init__(AI_NOT_CONFIGURED)
 
 
 def resolve_agent_api_key() -> str | None:
@@ -15,9 +25,42 @@ def resolve_agent_api_key() -> str | None:
     return settings.agent_gemini_api_key or settings.gemini_api_key
 
 
-# Separate client for the agent, so a separate key gets its own quota. Same key as
-# `client` when AGENT_GEMINI_API_KEY isn't set, so default behaviour is unchanged.
-agent_client = genai.Client(api_key=resolve_agent_api_key())
+def is_configured() -> bool:
+    """Can the AI assistant (generate, review, docs, streaming, task ideas) run?"""
+    return bool(settings.gemini_api_key)
+
+
+def agent_is_configured() -> bool:
+    return bool(resolve_agent_api_key())
+
+
+# Clients are made on first use, not at import: genai.Client refuses an empty key,
+# and the app must start (and /health answer) without one. One client per key, so
+# the agent gets its own when AGENT_GEMINI_API_KEY is set, and the same one as the
+# assistant when it isn't (the behaviour before this was lazy).
+_clients: dict[str, genai.Client] = {}
+_clients_lock = threading.Lock()
+
+
+def _client_for(key: str | None) -> genai.Client:
+    if not key:
+        raise AINotConfiguredError()
+    with _clients_lock:
+        client = _clients.get(key)
+        if client is None:
+            client = _clients[key] = genai.Client(api_key=key)
+        return client
+
+
+def get_client() -> genai.Client:
+    """The assistant's Gemini client. Raises AINotConfiguredError without a key."""
+    return _client_for(settings.gemini_api_key)
+
+
+def get_agent_client() -> genai.Client:
+    """The agent's Gemini client (AGENT_GEMINI_API_KEY, else GEMINI_API_KEY)."""
+    return _client_for(resolve_agent_api_key())
+
 
 MODEL_NAME = "gemini-2.5-flash"
 
@@ -33,6 +76,7 @@ class AIServiceBusyError(Exception):
 
 
 def _generate_with_retry(prompt: str, max_retries: int = 3, config=None) -> str:
+    client = get_client()  # AINotConfiguredError before any attempt
     extra = {"config": config} if config is not None else {}
     last_error = None
     for _attempt in range(max_retries):

@@ -135,7 +135,7 @@ API docs: `http://127.0.0.1:8000/docs`. Every variable is described in [`backend
 |---|---|
 | `JWT_SECRET`, `FRONTEND_URL`, `GITHUB_TOKEN_ENC_KEY` | **Required.** The server refuses to start without them. |
 | `DATABASE_URL`, or `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_SSLMODE` | **Required:** the database. |
-| `GEMINI_API_KEY` (and optionally `AGENT_GEMINI_API_KEY`) | AI assistant and agent. |
+| `GEMINI_API_KEY` (and optionally `AGENT_GEMINI_API_KEY`) | AI assistant and agent. Optional: without a key the app still starts, and every AI route answers 503 "AI is not configured", which the UI shows. `AGENT_GEMINI_API_KEY` on its own turns on just the agent. |
 | `CLOUDINARY_*` | File uploads. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI` | Connect GitHub and push. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Sign in with Google (off until all three are set). |
@@ -144,7 +144,7 @@ API docs: `http://127.0.0.1:8000/docs`. Every variable is described in [`backend
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Video meetings (the endpoint answers 503 until all three are set). |
 | `LOG_LEVEL`, `LOG_FORMAT`, `SENTRY_*` | Logging and error tracking (optional). |
 
-Optional features stay off, without errors, until their variables are set; the login page only offers what the server has configured.
+Optional features (AI, email, Google and GitHub sign-in, video) stay off until their variables are set: the app still starts, the login page only offers what the server has configured, and the routes of a feature that is off answer a clear 503 that the UI shows.
 
 **OAuth callback URLs** to register with the providers (local / production):
 - Google: `http://localhost:8000/auth/google/callback`, `https://nexuscode-backend-wbt4.onrender.com/auth/google/callback`
@@ -217,9 +217,9 @@ Current results (run on this branch):
 
 | Suite | Result |
 |---|---|
-| Backend, SQLite | 982 passed |
-| Backend, Postgres (throwaway) | 982 passed |
-| Frontend (Vitest) | 707 passed (48 files) |
+| Backend, SQLite | 996 passed |
+| Backend, Postgres (throwaway) | 996 passed |
+| Frontend (Vitest) | 712 passed (49 files) |
 | ruff · eslint · vite build | clean |
 
 CI runs the same on every push and pull request (backend against Postgres 16).

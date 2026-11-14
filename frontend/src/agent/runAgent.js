@@ -1,3 +1,4 @@
+import { isAINotConfigured } from "../api/aiErrors";
 import { apiFetch, apiStream, ApiError } from "../api/client";
 
 // Drives one agent run from the browser. The server streams each Gemini step and
@@ -103,8 +104,10 @@ export async function runAgent({ projectId, goal, tools, onEvent = () => {}, sig
         if (err.name === "AbortError" || signal?.aborted) return end({ status: "stopped", reason: "Stopped by you." });
         // 503 is Gemini busy or out of quota; the server left the step to be asked again
         // A daily limit won't lift by retrying; a per-minute one or a busy server will
+        // ...and a server with no AI key won't get one by retrying either
         const daily = /quota|allowance/i.test(err.message);
-        outcome = { error: { detail: err.message, retryable: err instanceof ApiError && err.status === 503 && !daily } };
+        const final = daily || isAINotConfigured(err);
+        outcome = { error: { detail: err.message, retryable: err instanceof ApiError && err.status === 503 && !final } };
       }
       if (!outcome.error) break;
       if (!outcome.error.retryable || attempt >= MAX_STEP_RETRIES) {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
+import { aiErrorText } from "../api/aiErrors";
 import { apiStream } from "../api/client";
 import { useTheme } from "../theme/useTheme";
 import AIMarkdown, { CopyButton } from "./AIMarkdown";
@@ -93,7 +94,7 @@ function AIPanel({ projectId, files, activeFile, activeContent, canEdit, beforeA
       )
       .catch((err) => {
         // Pressing Stop isn't a failure
-        if (err.name !== "AbortError") setError(err.message);
+        if (err.name !== "AbortError") setError(aiErrorText(err));
       })
       .finally(() => {
         if (controller.current === ctrl) setStreaming(false);

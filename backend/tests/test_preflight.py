@@ -82,3 +82,14 @@ def test_livekit_url_must_be_a_websocket_url_and_is_never_printed():
     lines, failed = run(preflight.check_livekit, env)
     assert failed and lines[0][0] == preflight.FAIL
     assert "secret-project" not in " ".join(str(part) for part in lines[0])
+
+
+def test_gemini_is_optional_skip_when_unset_ok_when_set():
+    lines, failed = run(preflight.check_gemini, {})
+    assert not failed and lines[0][0] == preflight.SKIP
+    lines, failed = run(preflight.check_gemini, {"GEMINI_API_KEY": "secret-value-1"})
+    assert not failed and lines[0][0] == preflight.OK
+    assert "secret-value-1" not in " ".join(str(part) for part in lines[0])
+    lines, failed = run(preflight.check_gemini, {"AGENT_GEMINI_API_KEY": "secret-value-2"})
+    assert not failed and lines[0][0] == preflight.OK and "agent only" in lines[0][2]
+
