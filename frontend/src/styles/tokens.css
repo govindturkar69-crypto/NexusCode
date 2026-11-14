@@ -1,0 +1,164 @@
+/*
+ * Design tokens: the only place colours, type, spacing, radius, shadows, z-index and
+ * motion are defined. Everything else uses var(--…). Text colours meet WCAG AA
+ * (4.5:1) on --color-bg, --color-surface and --color-surface-raised in both themes
+ * (checked with a script; see docs/DESIGN-SYSTEM.md).
+ */
+:root {
+  /* ---- colour: dark (default) ---- */
+  --color-bg: #0d1117;
+  --color-surface: #151b23;
+  --color-surface-raised: #1c2330;
+  --color-surface-hover: #212a37;
+  --color-border: #2a313c;
+  --color-border-strong: #3b4452;
+  --color-text: #e6edf3;
+  --color-text-muted: #a3aebb;
+  --color-text-subtle: #8b95a2;
+  --color-accent: #58a6ff;
+  --color-accent-hover: #79b8ff;
+  --color-accent-text: #79b8ff;
+  --color-accent-soft: rgba(88, 166, 255, 0.14);
+  --color-on-accent: #0b1220;
+  --color-danger: #ff7b72;
+  --color-danger-solid: #da3633;
+  --color-danger-soft: rgba(248, 81, 73, 0.14);
+  --color-on-danger: #ffffff;
+  --color-success: #56d364;
+  --color-success-soft: rgba(63, 185, 80, 0.15);
+  --color-warning: #e3b341;
+  --color-warning-soft: rgba(210, 153, 34, 0.15);
+  --color-backdrop: rgba(1, 4, 9, 0.66);
+  --color-focus: #58a6ff;
+  --color-skeleton: #1f2733;
+  --color-skeleton-shine: #2a3442;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45), 0 4px 10px rgba(0, 0, 0, 0.3);
+  --shadow-lift: 0 12px 28px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
+
+  color-scheme: dark;
+
+  /* ---- type: system fonts, nothing downloaded ---- */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+  --text-3xl: 28px;
+  --text-hero: clamp(32px, 5.2vw, 52px);
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---- spacing (4 px grid) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* ---- shape ---- */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-full: 999px;
+  --border-width: 1px;
+
+  /* ---- layers ---- */
+  --z-sticky: 10;
+  --z-header: 20;
+  --z-sidebar: 30;
+  --z-dropdown: 1000;
+  --z-overlay: 1100;
+  --z-modal: 1200;
+  --z-toast: 1300;
+  --z-tooltip: 1400;
+
+  /* ---- motion ---- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --stagger: 40ms;
+  /* How far things travel and grow; 0 / 1 with reduced motion, so only fades remain */
+  --motion-distance: 8px;
+  --motion-scale: 0.96;
+
+  /* ---- layout ---- */
+  --sidebar-width: 232px;
+  --header-height: 56px;
+  --touch-target: 44px;
+}
+
+/* Light theme: only colours and shadows change */
+:root[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-surface: #f6f8fa;
+  --color-surface-raised: #eef1f4;
+  --color-surface-hover: #e9edf1;
+  --color-border: #d8dee4;
+  --color-border-strong: #afb8c1;
+  --color-text: #1f2328;
+  --color-text-muted: #55606b;
+  --color-text-subtle: #636c76;
+  --color-accent: #0969da;
+  --color-accent-hover: #0858b9;
+  --color-accent-text: #0969da;
+  --color-accent-soft: rgba(9, 105, 218, 0.1);
+  --color-on-accent: #ffffff;
+  --color-danger: #cf222e;
+  --color-danger-solid: #cf222e;
+  --color-danger-soft: rgba(207, 34, 46, 0.08);
+  --color-on-danger: #ffffff;
+  --color-success: #187733;
+  --color-success-soft: rgba(26, 127, 55, 0.1);
+  --color-warning: #875c00;
+  --color-warning-soft: rgba(154, 103, 0, 0.1);
+  --color-backdrop: rgba(31, 35, 40, 0.45);
+  --color-focus: #0969da;
+  --color-skeleton: #eaeef2;
+  --color-skeleton-shine: #f6f8fa;
+
+  --shadow-xs: 0 1px 2px rgba(31, 35, 40, 0.08);
+  --shadow-sm: 0 1px 3px rgba(31, 35, 40, 0.1), 0 1px 2px rgba(31, 35, 40, 0.06);
+  --shadow-md: 0 6px 16px rgba(31, 35, 40, 0.1), 0 2px 4px rgba(31, 35, 40, 0.06);
+  --shadow-lg: 0 16px 40px rgba(31, 35, 40, 0.16), 0 4px 10px rgba(31, 35, 40, 0.08);
+  --shadow-lift: 0 12px 28px rgba(31, 35, 40, 0.18), 0 2px 6px rgba(31, 35, 40, 0.1);
+
+  color-scheme: light;
+}
+
+/* One switch for all motion: the OS setting, or data-motion="reduce" from Settings.
+   Movement and scaling go; short fades stay so state changes are still visible. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) {
+    --duration-base: 120ms;
+    --duration-slow: 120ms;
+    --stagger: 0ms;
+    --motion-distance: 0px;
+    --motion-scale: 1;
+  }
+}
+:root[data-motion="reduce"] {
+  --duration-base: 120ms;
+  --duration-slow: 120ms;
+  --stagger: 0ms;
+  --motion-distance: 0px;
+  --motion-scale: 1;
+}

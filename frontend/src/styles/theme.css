@@ -1,65 +1,7 @@
 /*
- * Design tokens and shared component styles. Pages use these classes (via
- * the components in src/components/ui) instead of inline style objects, so
- * colours live in one place and :focus-visible / media queries work.
+ * Shared component and page styles. Tokens (colours, type, spacing, motion) live
+ * in tokens.css; see docs/DESIGN-SYSTEM.md.
  */
-:root {
-  --color-bg: #0d1117;
-  --color-surface: #161b22;
-  --color-border: #30363d;
-  --color-text: #e6edf3;
-  --color-text-muted: #8b949e;
-  --color-text-subtle: #6e7681;
-  --color-accent: #58a6ff;
-  --color-on-accent: #0d1117;
-  --color-danger: #f85149;
-  --color-success: #7ee787;
-  --color-on-danger: #ffffff;
-  --color-backdrop: rgba(1, 4, 9, 0.7);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
-
-  color-scheme: dark;
-
-  --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, Consolas, monospace;
-
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 12px;
-
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.5rem;
-  --space-6: 2rem;
-  --space-7: 3rem;
-
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-md: 14px;
-  --text-lg: 16px;
-}
-
-/* Same tokens, light values. Only colours differ between themes. */
-:root[data-theme="light"] {
-  --color-bg: #ffffff;
-  --color-surface: #f6f8fa;
-  --color-border: #d0d7de;
-  --color-text: #1f2328;
-  --color-text-muted: #59636e;
-  --color-text-subtle: #6e7781;
-  --color-accent: #0969da;
-  --color-on-accent: #ffffff;
-  --color-danger: #cf222e;
-  --color-success: #1a7f37;
-  --color-on-danger: #ffffff;
-  --color-backdrop: rgba(31, 35, 40, 0.5);
-  --shadow-lg: 0 8px 32px rgba(31, 35, 40, 0.2);
-
-  color-scheme: light;
-}
 
 /* ---------- layout ---------- */
 .page {

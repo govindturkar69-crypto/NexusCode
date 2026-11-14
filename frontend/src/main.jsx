@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { initSentry } from './observability.js'
 import { applyInitialTheme } from './theme/theme.js'
 
+// index.html already set it before the first paint; this keeps it in step
 applyInitialTheme()
 
 // No-op unless VITE_SENTRY_DSN is set; never blocks rendering
