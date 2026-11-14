@@ -1,21 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router-dom";
-import {
-  ChartColumn,
-  Check,
-  ChevronRight,
-  ChevronsUpDown,
-  CodeXml,
-  FolderKanban,
-  LogOut,
-  Menu as MenuIcon,
-  Settings as SettingsIcon,
-  ShieldCheck,
-  Sparkles,
-  SquareKanban,
-  Video,
-  X,
-} from "lucide-react";
+import { ChartColumn, Check, ChevronRight, ChevronsUpDown, CodeXml, FolderKanban, LogOut, Menu as MenuIcon, Settings as SettingsIcon, ShieldCheck, Sparkles, SquareKanban, Video, X } from "lucide-react";
 import { apiFetchAll } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import GithubIcon from "../icons/GithubIcon";
@@ -25,7 +10,7 @@ import Avatar from "../ui/Avatar";
 import Menu from "../ui/Menu";
 import { useToast } from "../ui/toastContext";
 
-const PROJECT_PAGES = { "": "Board", editor: "Code editor", meeting: "Video meeting" };
+const PROJECT_PAGES = { "": "Board", editor: "Code editor", meeting: "Video meeting", analytics: "Analytics" };
 const TOP_PAGES = { "/projects": "Projects", "/dashboard": "Dashboard", "/ai": "AI Assistant", "/settings": "Settings", "/admin": "Admin" };
 
 function useProjectRoute(pathname) {
@@ -181,6 +166,7 @@ function AppShell() {
               <SideLink to={`/projects/${projectRoute.id}`} icon={SquareKanban} end>Board</SideLink>
               <SideLink to={`/projects/${projectRoute.id}/editor`} icon={CodeXml}>Code editor</SideLink>
               <SideLink to={`/projects/${projectRoute.id}/meeting`} icon={Video}>Video meeting</SideLink>
+              <SideLink to={`/projects/${projectRoute.id}/analytics`} icon={ChartColumn}>Analytics</SideLink>
             </nav>
           </div>
         )}
