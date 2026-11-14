@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiFetch, socketUrl } from "../api/client";
 import { formatMessageTime, typingText } from "../projects/chat";
+import { ArrowUp, MessageSquare, SendHorizontal } from "lucide-react";
+import Avatar from "./ui/Avatar";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import Input from "./ui/Input";
@@ -158,32 +160,36 @@ function ChatPanel({ projectId, canPost, currentUser, members, onActivity }) {
 
   return (
     <section className="stack">
-      <h2 className="section-title">💬 Chat</h2>
-      <Card className="grow stack">
-        <p className="small muted" aria-live="polite" aria-label="Who is online">
-          <span className="presence-dot" aria-hidden="true" />
+      <h2 className="section-title"><MessageSquare size={17} aria-hidden="true" /> Chat</h2>
+      <Card className="grow stack chat-card">
+        <p className="small muted chat-online" aria-live="polite" aria-label="Who is online">
+          <span className={`presence-dot ${online.length === 0 ? "presence-dot--off" : ""}`} aria-hidden="true" />
           {online.length === 0 ? "Nobody online" : `Online: ${online.map((u) => u.username).join(", ")}`}
         </p>
 
         <div ref={log} onScroll={handleScroll} className="chat-log" role="log" aria-live="polite" aria-label="Chat messages">
           {olderCursor !== null && (
             <Button variant="link" onClick={loadOlder} disabled={loadingOlder}>
-              {loadingOlder ? "Loading..." : "↑ Load older messages"}
+              {loadingOlder ? "Loading..." : <><ArrowUp size={13} aria-hidden="true" /> Load older messages</>}
             </Button>
           )}
           {messages.length === 0 && <p className="muted small">No messages yet. Say hello!</p>}
           {messages.map((message, index) => {
             const mine = currentUser != null && (message.user_id === currentUser.id || message.username === currentUser.username);
             return (
-              <p key={message.id ?? index} className="small" style={{ marginBottom: "0.5rem" }}>
-                <strong className={mine ? "text-success" : "text-accent"}>
-                  {mine ? `${message.username} (you)` : message.username}
-                </strong>
-                {isRemoved(message) && <span className="badge badge--muted chat-removed">removed</span>}{" "}
-                <time className="hint" dateTime={message.created_at}>{formatMessageTime(message.created_at)}</time>
-                <br />
-                {message.content}
-              </p>
+              <div key={message.id ?? index} className={`chat-message ${mine ? "chat-message--mine" : ""}`}>
+                <Avatar name={message.username} size="sm" decorative />
+                <div className="chat-message__body">
+                  <p className="chat-message__meta">
+                    <strong className="chat-message__author">
+                      {mine ? `${message.username} (you)` : message.username}
+                    </strong>
+                    {isRemoved(message) && <span className="badge badge--muted chat-removed">removed</span>}{" "}
+                    <time className="chat-message__time" dateTime={message.created_at}>{formatMessageTime(message.created_at)}</time>
+                  </p>
+                  <p className="chat-message__text">{message.content}</p>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -191,7 +197,7 @@ function ChatPanel({ projectId, canPost, currentUser, members, onActivity }) {
         <p className="hint" aria-live="polite" style={{ minHeight: "1.2em", margin: 0 }}>{typingLine}</p>
 
         {canPost ? (
-          <form onSubmit={sendMessage} className="row">
+          <form onSubmit={sendMessage} className="row chat-form">
             <Input
               label="Message"
               hideLabel
@@ -201,7 +207,7 @@ function ChatPanel({ projectId, canPost, currentUser, members, onActivity }) {
               maxLength={MAX_CHAT_MESSAGE_LENGTH}
               className="grow"
             />
-            <Button type="submit">Send</Button>
+            <Button type="submit" icon={<SendHorizontal size={15} aria-hidden="true" />}>Send</Button>
           </form>
         ) : (
           <p className="hint">Viewers can read the chat but not post in it.</p>

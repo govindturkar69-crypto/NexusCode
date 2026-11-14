@@ -3,6 +3,7 @@ import { apiFetch } from "../api/client";
 import Button from "./ui/Button";
 import Input from "./ui/Input";
 import Modal from "./ui/Modal";
+import Alert from "./ui/Alert";
 
 // Task details. Editors change them here; viewers see the same form read-only.
 function TaskModal({ task, members, canEdit, onClose, onSaved }) {
@@ -38,11 +39,12 @@ function TaskModal({ task, members, canEdit, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={canEdit ? "Edit task" : "Task details"} onClose={saving ? () => {} : onClose}>
+    <Modal title={canEdit ? "Edit task" : "Task details"} size="lg" onClose={saving ? () => {} : onClose}>
       <form onSubmit={save} noValidate>
-        <fieldset disabled={!canEdit} className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+        <fieldset disabled={!canEdit} className="stack task-form" style={{ "--gap": "1rem" }}>
           <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
           <Input label="Description" multiline rows={4} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={5000} />
+          <div className="task-form__meta">
           <div className="field">
             <label htmlFor="task-assignee" className="field__label">Assignee</label>
             <select id="task-assignee" className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
@@ -52,7 +54,6 @@ function TaskModal({ task, members, canEdit, onClose, onSaved }) {
               ))}
             </select>
           </div>
-          <div className="split" style={{ "--gap": "0.75rem" }}>
             <Input label="Due date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             <div className="field">
               <label htmlFor="task-priority" className="field__label">Priority</label>
@@ -64,10 +65,10 @@ function TaskModal({ task, members, canEdit, onClose, onSaved }) {
             </div>
           </div>
         </fieldset>
-        {error && <p role="alert" className="small text-danger" style={{ marginTop: "0.75rem" }}>{error}</p>}
+        {error && <div style={{ marginTop: "0.75rem" }}><Alert>{error}</Alert></div>}
         <div className="modal__actions">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>{canEdit ? "Cancel" : "Close"}</Button>
-          {canEdit && <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save"}</Button>}
+          <Button variant="secondary" onClick={onClose} disabled={saving}>{canEdit ? "Cancel" : "Close"}</Button>
+          {canEdit && <Button type="submit" loading={saving}>Save</Button>}
         </div>
       </form>
     </Modal>

@@ -56,10 +56,14 @@ function Modal({ title, description, onClose, children, actions, wide = false, s
     };
   }, []);
 
-  // Exit animation: runs while the nodes are still in the document
+  // Exit animation: runs while the nodes are still in the document. Skipped for a
+  // dialog removed right after it appeared (e.g. React StrictMode's dev re-mount).
   useLayoutEffect(() => {
     const backdrop = backdropRef.current;
-    return () => animateOut(backdrop, { keyframes: [{ opacity: 1 }, { opacity: 0 }] });
+    const openedAt = performance.now();
+    return () => {
+      if (performance.now() - openedAt > 100) animateOut(backdrop, { keyframes: [{ opacity: 1 }, { opacity: 0 }] });
+    };
   }, []);
 
   const sizeClass = wide || size === "wide" ? "modal--wide" : size === "lg" ? "modal--lg" : "";

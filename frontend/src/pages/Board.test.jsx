@@ -74,12 +74,12 @@ describe('Board is role-aware', () => {
   it('shows priority, due date, assignee and an overdue highlight on cards', async () => {
     renderBoard('editor', [OVERDUE])
     const title = await screen.findByRole('button', { name: 'Late task' })
-    const card = title.closest('.card')
+    const card = title.closest('.task-card')
     expect(card).toHaveClass('task-card--overdue')
     expect(within(card).getByText('high')).toBeInTheDocument()
     expect(within(card).getByText('Overdue: 2020-01-01')).toBeInTheDocument()
     expect(within(card).getByText('@nina')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'A task' }).closest('.card')).not.toHaveClass('task-card--overdue')
+    expect(screen.getByRole('button', { name: 'A task' }).closest('.task-card')).not.toHaveClass('task-card--overdue')
   })
 
   it('filters by assignee', async () => {
