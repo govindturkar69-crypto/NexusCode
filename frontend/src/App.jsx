@@ -8,10 +8,11 @@ import AppShell from "./components/shell/AppShell";
 import PublicHeader from "./components/shell/PublicHeader";
 import { ToastProvider } from "./components/ui/Toast";
 import Spinner from "./components/ui/Spinner";
+import { loadAccountPages, loadLogin } from "./routes/prefetch";
 
 // Every page is its own chunk, so e.g. Monaco and Recharts only download
 // when their pages are opened.
-const Login = lazy(() => import("./pages/Login"));
+const Login = lazy(loadLogin);
 const Projects = lazy(() => import("./pages/Projects"));
 const Board = lazy(() => import("./pages/Board"));
 const AIAssistant = lazy(() => import("./pages/AIAssistant"));
@@ -20,10 +21,10 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const VideoMeeting = lazy(() => import("./pages/VideoMeeting"));
 const Settings = lazy(() => import("./pages/Settings"));
-const ForgotPassword = lazy(() => import("./pages/AccountPages").then((m) => ({ default: m.ForgotPassword })));
-const ResetPassword = lazy(() => import("./pages/AccountPages").then((m) => ({ default: m.ResetPassword })));
-const VerifyEmail = lazy(() => import("./pages/AccountPages").then((m) => ({ default: m.VerifyEmail })));
-const OAuthCallback = lazy(() => import("./pages/AccountPages").then((m) => ({ default: m.OAuthCallback })));
+const ForgotPassword = lazy(() => loadAccountPages().then((m) => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => loadAccountPages().then((m) => ({ default: m.ResetPassword })));
+const VerifyEmail = lazy(() => loadAccountPages().then((m) => ({ default: m.VerifyEmail })));
+const OAuthCallback = lazy(() => loadAccountPages().then((m) => ({ default: m.OAuthCallback })));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Pages anyone can open: the public header (brand + theme toggle), then the page,

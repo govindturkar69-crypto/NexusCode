@@ -17,7 +17,6 @@ import {
   X,
 } from "lucide-react";
 import { apiFetchAll } from "../../api/client";
-import { startGithubLink } from "../../api/github";
 import { useAuth } from "../../auth/useAuth";
 import GithubIcon from "../icons/GithubIcon";
 import NotificationBell from "../NotificationBell";
@@ -113,7 +112,10 @@ function AppShell() {
   }
 
   function connectGithub() {
-    startGithubLink().catch((err) => toast({ title: "Couldn't connect GitHub", description: err.message, tone: "error" }));
+    // Loaded on click: it isn't needed for anything else in the shell
+    import("../../api/github")
+      .then(({ startGithubLink }) => startGithubLink())
+      .catch((err) => toast({ title: "Couldn't connect GitHub", description: err.message, tone: "error" }));
   }
 
   const crumbs = [];
