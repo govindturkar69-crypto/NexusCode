@@ -6,16 +6,35 @@ import { fetchAgentQuota, runAgent, stopAgentRun } from "../agent/runAgent";
 import { AI_NOT_CONFIGURED_TEXT, aiErrorText } from "../api/aiErrors";
 import { describeRunResult, runResults } from "../agent/summary";
 import { useTheme } from "../theme/useTheme";
+import { defineNexusThemes, monacoTheme } from "../editor/monacoThemes";
+import {
+  AlertTriangle, Ban, Bot, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, FileText, FolderOpen,
+  Hourglass, Pencil, Play, Repeat, Square, Timer, Wrench, X, XCircle,
+} from "lucide-react";
+import Spinner from "./ui/Spinner";
 import Alert from "./ui/Alert";
 import Button from "./ui/Button";
 
 const END_TEXT = {
-  finished: { icon: "✅", title: "Done" },
-  capped: { icon: "⏱", title: "Stopped at a limit" },
-  stuck: { icon: "🔁", title: "Stopped: the same error kept coming back" },
-  stopped: { icon: "■", title: "Stopped" },
-  failed: { icon: "⚠️", title: "The run failed" },
+  finished: { Icon: CheckCircle2, title: "Done" },
+  capped: { Icon: Timer, title: "Stopped at a limit" },
+  stuck: { Icon: Repeat, title: "Stopped: the same error kept coming back" },
+  stopped: { Icon: Square, title: "Stopped" },
+  failed: { Icon: AlertTriangle, title: "The run failed" },
 };
+
+// A line icon per agent tool (describeTool's text stays the label)
+const TOOL_ICONS = { list_files: FolderOpen, read_file: FileText, write_file: Pencil, add_task: ClipboardList };
+
+function toolIcon(call, result, ok) {
+  if (call.name === "run_file") {
+    if (!result) return <Spinner size={13} />;
+    if (result.status === "unsupported") return <Ban size={13} />;
+    return ok === false ? <XCircle size={13} /> : <CheckCircle2 size={13} />;
+  }
+  const Icon = TOOL_ICONS[call.name] ?? (call.name?.includes("file") ? Pencil : Wrench);
+  return <Icon size={13} />;
+}
 
 const STATUS_TEXT = {
   pending: "Waiting for review",
@@ -34,10 +53,10 @@ function languageFor(path, files) {
 }
 
 function TimelineItem({ item }) {
-  if (item.type === "step") return <li className="agent-timeline__step">Step {item.step} of {item.maxSteps}</li>;
+  if (item.type === "step") return <li className="agent-timeline__step motion-rise-in">Step {item.step} of {item.maxSteps}</li>;
   if (item.type === "thought") {
     return (
-      <li>
+      <li className="motion-fade-in">
         <details className="agent-timeline__thought">
           <summary>Reasoning</summary>
           <p className="small muted agent-text">{item.text}</p>
@@ -45,15 +64,15 @@ function TimelineItem({ item }) {
       </li>
     );
   }
-  if (item.type === "text") return <li className="small agent-text">{item.text}</li>;
-  if (item.type === "retry") return <li className="small muted">⏳ {item.detail} Trying again ({item.attempt}).</li>;
-  if (item.type === "rejected") return <li className="small text-danger">⛔ Refused {item.call.name}: {item.call.error}</li>;
+  if (item.type === "text") return <li className="small agent-text motion-fade-in">{item.text}</li>;
+  if (item.type === "retry") return <li className="small muted agent-timeline__line motion-rise-in"><Hourglass size={13} aria-hidden="true" /> {item.detail} Trying again ({item.attempt}).</li>;
+  if (item.type === "rejected") return <li className="small text-danger agent-timeline__line motion-rise-in"><Ban size={13} aria-hidden="true" /> Refused {item.call.name}: {item.call.error}</li>;
   if (item.type === "tool") {
-    const { icon, text, detail, ok } = describeTool(item.call, item.result);
+    const { text, detail, ok } = describeTool(item.call, item.result);
     const output = item.call.name === "run_file" && item.result && item.result.status !== "unsupported";
     return (
-      <li className={`small agent-timeline__tool ${ok === false ? "text-danger" : ""}`}>
-        <span aria-hidden="true">{icon}</span> {text}
+      <li className={`small agent-timeline__tool motion-rise-in ${ok === false ? "agent-timeline__tool--error" : ""} ${item.call.name === "run_file" && !item.result ? "agent-timeline__tool--running" : ""}`}>
+        <span className="agent-timeline__icon" aria-hidden="true">{toolIcon(item.call, item.result, ok)}</span> {text}
         {detail && <span className="muted"> · {detail}</span>}
         {output && (item.result.stdout || item.result.stderr) && (
           <details>
@@ -120,7 +139,7 @@ function RunSummary({ timeline, entries, runId }) {
           <ul aria-label="Run results">
             {results.filter((r) => r.status !== "unsupported").map((result) => (
               <li key={result.path} className={result.status === "ok" ? "text-success" : "text-danger"}>
-                {result.status === "ok" ? "✔" : "✖"} <span className="mono">{result.path}</span> {describeRunResult(result)}
+                {result.status === "ok" ? <CheckCircle2 size={13} aria-hidden="true" /> : <XCircle size={13} aria-hidden="true" />} <span className="mono">{result.path}</span> {describeRunResult(result)}
               </li>
             ))}
           </ul>
@@ -145,7 +164,7 @@ function ChangeCard({ entry, store, files, theme }) {
     <li className={`agent-change agent-change--${entry.status}`} aria-label={label}>
       <div className="row row--between">
         <button type="button" className="btn btn--link agent-change__path" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "▾" : "▸"} {entry.path}
+          {open ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />} {entry.path}
         </button>
         <span className="small muted">{isNew ? "New file" : "Edit"} · {STATUS_TEXT[entry.status]}</span>
       </div>
@@ -180,7 +199,8 @@ function ChangeCard({ entry, store, files, theme }) {
             language={languageFor(entry.path, files)}
             original={entry.before ?? ""}
             modified={entry.after}
-            theme={theme === "dark" ? "vs-dark" : "light"}
+            beforeMount={defineNexusThemes}
+            theme={monacoTheme(theme)}
             options={{ readOnly: true, minimap: { enabled: false }, fontSize: 13, renderSideBySide: false }}
           />
         </div>
@@ -193,7 +213,7 @@ function TaskCard({ task, store }) {
   return (
     <li className="agent-change" aria-label={`Task ${task.title}`}>
       <div className="row row--between">
-        <strong className="small">📋 {task.title}</strong>
+        <strong className="small agent-timeline__line"><ClipboardList size={14} aria-hidden="true" /> {task.title}</strong>
         <span className="small muted">{task.priority ?? "medium"} · {STATUS_TEXT[task.status] ?? task.status}</span>
       </div>
       {task.description && <p className="small muted">{task.description}</p>}
@@ -330,8 +350,8 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
   return (
     <section className="card agent-panel" aria-labelledby="agent-title">
       <div className="row row--between">
-        <h2 id="agent-title" className="section-title">🤖 Agent</h2>
-        {onClose && <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close the agent">✕</Button>}
+        <h2 id="agent-title" className="section-title agent-panel__title"><Bot size={18} aria-hidden="true" /> Agent</h2>
+        {onClose && <Button size="icon" variant="subtle" onClick={onClose} aria-label="Close the agent"><X size={16} aria-hidden="true" /></Button>}
       </div>
       <form onSubmit={start} className="stack" style={{ "--gap": "0.5rem" }}>
         <label htmlFor="agent-goal" className="small">Goal</label>
@@ -352,9 +372,9 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
           </label>
           <div className="row" style={{ "--gap": "0.5rem" }}>
             {running ? (
-              <Button variant="danger" onClick={stop}>■ Stop</Button>
+              <Button variant="danger" onClick={stop} icon={<Square size={12} aria-hidden="true" />}>Stop</Button>
             ) : (
-              <Button type="submit" disabled={!goal.trim() || quota?.user_remaining === 0 || quota?.total_remaining === 0 || quota?.ai_available === false || quota?.ai_configured === false}>▶ Start</Button>
+              <Button type="submit" disabled={!goal.trim() || quota?.user_remaining === 0 || quota?.total_remaining === 0 || quota?.ai_available === false || quota?.ai_configured === false} icon={<Play size={13} aria-hidden="true" />}>Start</Button>
             )}
           </div>
         </div>
@@ -370,10 +390,10 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
           <ol className="agent-timeline" aria-label="Agent timeline" aria-live="polite">
             {timeline.map((item) => <TimelineItem key={item.key} item={item} />)}
           </ol>
-          {running && <p role="status" className="small muted">Working...</p>}
+          {running && <p role="status" className="small muted agent-working"><Spinner size={13} /> Working...</p>}
           {end && (
-            <div className={`agent-end agent-end--${end.status}`} role="status">
-              <strong>{endText.icon} {endText.title}</strong>
+            <div className={`agent-end agent-end--${end.status} motion-scale-in`} role="status">
+              <strong className="agent-end__title"><endText.Icon size={16} aria-hidden="true" />{endText.title}</strong>
               {end.reason && <p className="small">{end.reason}</p>}
               {end.summary && <p className="small agent-text">{end.summary}</p>}
               <RunSummary timeline={timeline} entries={store.entries} runId={runId} />

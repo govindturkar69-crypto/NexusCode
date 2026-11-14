@@ -62,7 +62,7 @@ function setup(props = {}) {
 
 async function startRun(goal = 'Build a todo CLI') {
   await userEvent.type(screen.getByLabelText('Goal'), goal)
-  await userEvent.click(screen.getByRole('button', { name: '▶ Start' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Start' }))
 }
 
 const timeline = () => screen.getByRole('list', { name: 'Agent timeline' })
@@ -85,7 +85,7 @@ describe('AgentPanel', () => {
     const requests = stubServer(WRITE_AND_FINISH)
     setup()
     await startRun()
-    expect(await screen.findByText('✅ Done')).toBeInTheDocument()
+    expect(await screen.findByText('Done')).toBeInTheDocument()
     const items = within(timeline()).getAllByRole('listitem').map((li) => li.textContent)
     expect(items[0]).toBe('Step 1 of 8')
     expect(items[1]).toContain('Reasoning')
@@ -103,7 +103,7 @@ describe('AgentPanel', () => {
     stubServer(WRITE_AND_FINISH)
     const { project, deps } = setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     expect(deps.applyFile).not.toHaveBeenCalled()
     expect(project.get('todo.py')).toBe('old code')
     const card = within(changes()).getByRole('listitem', { name: 'todo.py (edit)' })
@@ -118,7 +118,7 @@ describe('AgentPanel', () => {
     stubServer(WRITE_AND_FINISH)
     const { deps } = setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     const card = within(changes()).getByRole('listitem', { name: 'todo.py (edit)' })
     await userEvent.click(within(card).getByRole('button', { name: 'Reject' }))
     expect(within(card).getByText(/Rejected/)).toBeInTheDocument()
@@ -130,7 +130,7 @@ describe('AgentPanel', () => {
     stubServer(WRITE_AND_FINISH)
     const { project } = setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     const card = within(changes()).getByRole('listitem', { name: 'todo.py (edit)' })
     await userEvent.click(within(card).getByRole('button', { name: 'Accept' }))
     await userEvent.click(await within(card).findByRole('button', { name: 'Undo' }))
@@ -143,7 +143,7 @@ describe('AgentPanel', () => {
     const requests = stubServer(WRITE_AND_FINISH)
     setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     await userEvent.click(within(changes()).getByRole('button', { name: 'Accept' }))
     await vi.advanceTimersByTimeAsync(2000)
     await waitFor(() => expect(requests.find((r) => r.path === '/ai/agent/runs/5/accepted')?.body).toEqual({ files: ['todo.py'], tasks: [] }))
@@ -154,7 +154,7 @@ describe('AgentPanel', () => {
     const { project } = setup()
     await userEvent.click(screen.getByRole('checkbox', { name: /without asking/ }))
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     expect(project.get('todo.py')).toBe('new code\nline 2')
     const second = requests.filter((r) => r.path === '/ai/agent/runs/5/step')[1]
     expect(second.body.results[0].result).toEqual({ state: 'saved' })
@@ -164,7 +164,7 @@ describe('AgentPanel', () => {
     stubServer([[frame('text', { text: 'All done.' }), frame('done', { status: 'finished', summary: 'All done.' })]])
     setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     expect(screen.getAllByText('All done.')).toHaveLength(1)
     expect(within(timeline()).queryByText('All done.')).not.toBeInTheDocument()
   })
@@ -174,7 +174,7 @@ describe('AgentPanel', () => {
     setup()
     expect(await screen.findByText(/AI is not configured on this server/)).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Goal'), 'Fix the bug')
-    expect(screen.getByRole('button', { name: '▶ Start' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled()
   })
 
   it('auto-accept is off by default', () => {
@@ -187,7 +187,7 @@ describe('AgentPanel', () => {
     stubServer(WRITE_AND_FINISH)
     const { project } = setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     project.set('todo.py', 'my own edit')
     await userEvent.click(within(changes()).getByRole('button', { name: 'Accept' }))
     expect(await within(changes()).findByRole('alert')).toHaveTextContent('changed since the agent read it')
@@ -203,7 +203,7 @@ describe('AgentPanel', () => {
     ])
     setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     expect(within(timeline()).getByText(/Ran todo.py: passed in 420 ms/)).toBeInTheDocument()
   })
 
@@ -229,7 +229,7 @@ describe('AgentPanel', () => {
     ])
     setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     // The failure went back to the agent, and its fix was what ran next
     const steps = requests.filter((r) => r.path === '/ai/agent/runs/5/step')
     expect(steps[1].body.results[2].result).toMatchObject({ status: 'error', stderr: 'AssertionError: 4 != 5' })
@@ -258,7 +258,7 @@ describe('AgentPanel', () => {
     ])
     setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     expect(within(timeline()).getByText(/Couldn't run Main.java/)).toBeInTheDocument()
     expect(screen.getByRole('note')).toHaveTextContent("Main.java can't run in the browser")
   })
@@ -274,7 +274,7 @@ describe('AgentPanel', () => {
     ])
     const { deps } = setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     expect(within(timeline()).getByText(/Refused read_file/)).toBeInTheDocument()
     const task = within(changes()).getByRole('listitem', { name: 'Task Write docs' })
     await userEvent.click(within(task).getByRole('button', { name: 'Add to board' }))
@@ -288,10 +288,10 @@ describe('AgentPanel', () => {
     setup()
     await startRun()
     await screen.findByText('Thinking about it')
-    await userEvent.click(screen.getByRole('button', { name: '■ Stop' }))
-    expect(await screen.findByText('■ Stopped')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    expect(await screen.findByText('Stopped')).toBeInTheDocument()
     expect(requests.some((r) => r.path === '/ai/agent/runs/5/stop')).toBe(true)
-    expect(screen.getByRole('button', { name: '▶ Start' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument()
   })
 
   it('shows how many runs are left today', async () => {
@@ -311,7 +311,7 @@ describe('AgentPanel', () => {
     setup()
     expect(await screen.findByText(/You've used all your agent runs for today/)).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Goal'), 'Anything')
-    expect(screen.getByRole('button', { name: '▶ Start' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled()
   })
 
   it("can not start when the server's daily total is used up", async () => {
@@ -325,7 +325,7 @@ describe('AgentPanel', () => {
     setup()
     expect(await screen.findByText(/free daily allowance is used up/)).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Goal'), 'Anything')
-    expect(screen.getByRole('button', { name: '▶ Start' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled()
   })
 
   it('runs the agent code with the network off', async () => {
@@ -336,7 +336,7 @@ describe('AgentPanel', () => {
     ])
     setup()
     await startRun()
-    await screen.findByText('✅ Done')
+    await screen.findByText('Done')
     expect(vi.mocked(runPython).mock.calls[0][0]).toMatchObject({ offline: true, code: 'old code', fileName: 'todo.py' })
   })
 
