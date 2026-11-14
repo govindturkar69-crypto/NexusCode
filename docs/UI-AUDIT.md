@@ -88,3 +88,51 @@ was not installed.
    library).
 4. **App shell**, then pages in the order of the table above, then accessibility
    (axe serious/critical to zero), then the after-measurements and screenshots.
+
+## Bundle size after C6
+
+Measured with `vite build`. The sizes are minified, with gzip in brackets. Main means the JS every visitor downloads first.
+
+| Chunk | Baseline (before C6) | Mid-C6 (regressed) | After C6 |
+| --- | --- | --- | --- |
+| Main JS (`index-*.js`) | 265.7 kB (84.9) | 383.0 kB (121.5) | **292.1 kB (93.5)** |
+| Main CSS (`index-*.css`) | 20.8 kB (4.5) | 65.1 kB (12.0) | 68.1 kB (12.4) |
+| Dashboard route | 339.9 kB (98.9) | | **3.1 kB (1.4)**; the chart loads separately (338.6 kB) |
+| Video meeting route | 593.9 kB (157.5) | | **5.9 kB (2.6)**; the call loads on Join |
+| Code editor route | 1646.6 kB (434.7) | | 1657.5 kB (437.8); Monaco, unchanged |
+| Board route | 106.4 kB (32.2) | | 111.2 kB (33.8) |
+
+**What caused the regression.** The source map of the main chunk was attributed module by module (`analyze.mjs`). That showed 86 kB of Yjs (`yjs`, `lib0`, `y-websocket`, `y-protocols`) in the main bundle:
+
+- The shared `Avatar` imported `colorFor` from `collab/collabSession.js`.
+- That module imports Yjs.
+- The app shell renders avatars, so Yjs became eager.
+
+**The fixes.**
+- `colorFor` moved to the import-free `collab/colors.js`.
+- `src/test/bundleBoundaries.test.js` now walks every static import reachable from `main.jsx`. It fails if Yjs, Monaco, Recharts, LiveKit, Pyodide or the drag-and-drop library becomes reachable. It was checked to fail on the old import.
+
+**Other splits made in the same pass.**
+- The Dashboard's Recharts donut is lazy, so the totals render before the chart library arrives.
+- LiveKit loads on Join:
+  - `livekit-client` is a dynamic `import()` in `useMeetingRoom`.
+  - The call view (`meeting/InCall.jsx`, LiveKit components) is a lazy chunk.
+  - So the meeting lobby is tiny.
+- The landing screenshots are lazy `<img>` WebP files (35–46 kB each). Only the image for the current theme is ever fetched.
+- Unused CSS was removed: `eyebrow*`, `page--centered`, `grid-auto`, `split--wide-first`, `text-accent`, `card--inset` and `pulse-ring`.
+
+**Why main is still about 26 kB (8.6 kB gzip) above the baseline.** That difference is the new app shell and the components every signed-in page uses:
+
+| What | Size |
+| --- | --- |
+| Sidebar, header, breadcrumbs, menus, drawer | 6.5 kB |
+| Shared UI (Menu, Tooltip, Toast, Modal and others) | 6.7 kB |
+| lucide icons, imported one by one so they tree-shake | 8.1 kB |
+| Theme, motion and other shell code | about 5 kB |
+
+Lazy-loading the shell would save signed-out visitors about 5 kB gzip. For signed-in pages, though, it would add a second waterfall step (shell, then page). We judged that a worse trade.
+
+**Why main CSS grew.**
+- It now holds the design tokens, the component library, the shell, the motion layer and every page's styles.
+- That is 12.4 kB gzip.
+- There is no CSS framework or font file. The editor's 86.9 kB CSS is Monaco's own, split with its route.

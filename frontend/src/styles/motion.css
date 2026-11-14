@@ -43,10 +43,6 @@
   to { transform: translate3d(100%, 0, 0); }
 }
 @keyframes nx-spin { to { transform: rotate(360deg); } }
-@keyframes nx-pulse-ring {
-  0% { opacity: 0.7; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.08); }
-}
 @keyframes nx-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes nx-check {
   from { stroke-dashoffset: 24; }
@@ -94,13 +90,11 @@
 
 /* Reduced motion: no endless or decorative animations at all */
 @media (prefers-reduced-motion: reduce) {
-  :root:not([data-motion="full"]) .skeleton::after,
-  :root:not([data-motion="full"]) .pulse-ring::after { animation: none; }
+  :root:not([data-motion="full"]) .skeleton::after { animation: none; }
   :root:not([data-motion="full"]) .spinner { animation-duration: 1.6s; }
   ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 }
-:root[data-motion="reduce"] .skeleton::after,
-:root[data-motion="reduce"] .pulse-ring::after { animation: none; }
+:root[data-motion="reduce"] .skeleton::after { animation: none; }
 :root[data-motion="reduce"] .spinner { animation-duration: 1.6s; }
 
 /* Content waiting to be revealed on scroll must never print blank */

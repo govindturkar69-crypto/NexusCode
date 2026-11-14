@@ -1,4 +1,4 @@
-import { colorFor } from "../../collab/collabSession";
+import { colorFor } from "../../collab/colors";
 import { initials, textOn } from "./avatarColors";
 
 // A person's initials in their colour (the same colour as their live-editing cursor).

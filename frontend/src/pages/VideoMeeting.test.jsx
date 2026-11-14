@@ -130,7 +130,7 @@ describe('VideoMeeting', () => {
     await waitFor(() => expect(room.localParticipant.setCameraEnabled).toHaveBeenCalledWith(true))
     expect(room.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(true)
 
-    expect(screen.getByText('2 people in the meeting')).toBeInTheDocument()
+    expect(await screen.findByText('2 people in the meeting')).toBeInTheDocument() // the call view loads lazily
     expect(screen.getByLabelText('olivia (you)')).toBeInTheDocument()
     expect(screen.getByLabelText('eddie')).toHaveAttribute('data-speaking', 'true')
     expect(screen.getByTestId('video-2')).toBeInTheDocument()

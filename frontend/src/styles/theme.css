@@ -17,41 +17,19 @@
   padding: var(--space-6) var(--space-6) var(--space-7);
   max-width: var(--page-width, 960px);
 }
-.page--centered {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-}
 .stack { display: flex; flex-direction: column; gap: var(--gap, var(--space-3)); }
 .row { display: flex; align-items: center; gap: var(--gap, var(--space-3)); flex-wrap: wrap; }
 .row--between { justify-content: space-between; }
 .grow { flex: 1 1 0; min-width: 0; }
-.grid-auto {
-  display: grid;
-  gap: var(--space-4);
-  grid-template-columns: repeat(auto-fit, minmax(var(--min-col, 160px), 1fr));
-}
 /* Side-by-side on wide screens, stacked on phones */
 .split { display: flex; gap: var(--space-5); align-items: stretch; }
 .split > * { flex: 1 1 0; min-width: 0; }
-.split--wide-first > :first-child { flex: 2 1 0; }
 @media (max-width: 767px) {
   .page__inner { padding: var(--space-5) var(--space-4) var(--space-6); }
   .split { flex-direction: column; }
 }
 
 /* ---------- text ---------- */
-/* A small mono kicker: the brand accent, used sparingly (landing, auth cards) */
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--color-accent-text);
-  margin-bottom: var(--space-2);
-  letter-spacing: 0.02em;
-}
-.eyebrow--danger { color: var(--color-danger); }
-.eyebrow--success { color: var(--color-success); }
 .page-title {
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
@@ -71,7 +49,6 @@
 .mono { font-family: var(--font-mono); }
 .text-success { color: var(--color-success); }
 .text-danger { color: var(--color-danger); }
-.text-accent { color: var(--color-accent-text); }
 
 .back-link {
   display: inline-flex; align-items: center; gap: 2px;
@@ -661,3 +638,4 @@
 .admin-list__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-list__meta { margin-left: auto; white-space: nowrap; }
 .admin-list__icon { width: 24px; height: 24px; font-size: 11px; border-radius: 6px; }
+.meeting-loading { display: grid; place-items: center; min-height: 240px; }

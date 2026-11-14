@@ -110,7 +110,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent);
 }
 .card--interactive { cursor: pointer; transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out); }
 .card--interactive:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-md); transform: translate3d(0, calc(var(--motion-distance) * -0.25), 0); }
-.card--inset { background: var(--color-bg); border-radius: var(--radius); padding: var(--space-3); }
 @media (max-width: 767px) { .card { padding: var(--space-4); } }
 
 .alert {

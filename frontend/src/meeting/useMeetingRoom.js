@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ConnectionState, Room, RoomEvent } from 'livekit-client'
 import { apiFetch } from '../api/client'
 import { livekitUrl } from './config'
 import { CONNECT_FAILED, disconnectText, joinErrorText, mediaErrorText, NOT_CONFIGURED } from './messages'
@@ -12,7 +11,8 @@ import { CONNECT_FAILED, disconnectText, joinErrorText, mediaErrorText, NOT_CONF
  *   error: why joining failed or the call ended (shown instead of the call)
  *   notice: a problem that doesn't stop the call (no camera, mic blocked, ...)
  *
- * The token is fetched only in join(), never on load. Leaving, unmounting (route
+ * The token, and the LiveKit client itself (~440 kB), are fetched only in join(),
+ * never on load, so the lobby shows at once. Leaving, unmounting (route
  * change) and closing the tab all disconnect and stop the local tracks, so the
  * camera light goes off.
  */
@@ -68,6 +68,18 @@ export function useMeetingRoom(projectId) {
       return
     }
     if (stale()) return
+
+    let livekit
+    try {
+      livekit = await import('livekit-client')
+    } catch {
+      if (stale()) return
+      setError(CONNECT_FAILED)
+      setPhase('idle')
+      return
+    }
+    if (stale()) return
+    const { ConnectionState, Room, RoomEvent } = livekit
 
     const next = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: true })
     roomRef.current = next

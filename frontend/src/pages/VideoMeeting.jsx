@@ -1,7 +1,6 @@
+import { lazy, Suspense } from "react";
 import { useParams } from "react-router-dom";
-import { RoomContext } from "@livekit/components-react";
 import { livekitUrl } from "../meeting/config";
-import MeetingStage from "../meeting/MeetingStage";
 import { NOT_CONFIGURED } from "../meeting/messages";
 import { useMeetingRoom } from "../meeting/useMeetingRoom";
 import { Users, Video } from "lucide-react";
@@ -9,6 +8,9 @@ import Alert from "../components/ui/Alert";
 import Button from "../components/ui/Button";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
+import Spinner from "../components/ui/Spinner";
+
+const InCall = lazy(() => import("../meeting/InCall"));
 
 const STATUS = {
   idle: "Not in the meeting.",
@@ -43,9 +45,9 @@ function VideoMeeting() {
           <Alert tone="info" onDismiss={clearNotice}>{notice}</Alert>
 
           {inCall ? (
-            <RoomContext.Provider value={room}>
-              <MeetingStage onLeave={leave} onProblem={(text) => text && setNotice(text)} />
-            </RoomContext.Provider>
+            <Suspense fallback={<div className="meeting-loading"><Spinner label="Starting the call…" /></div>}>
+              <InCall room={room} onLeave={leave} onProblem={(text) => text && setNotice(text)} />
+            </Suspense>
           ) : (
             <div className="card meeting-lobby motion-rise-in">
               <span className="meeting-lobby__icon" aria-hidden="true"><Users size={26} /></span>

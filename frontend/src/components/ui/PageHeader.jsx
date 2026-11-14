@@ -1,6 +1,5 @@
-// Page title with an optional description and actions on the right.
-// `eyebrow`/`tone` are accepted for older call sites but no longer shown: the app
-// shell's breadcrumbs say where you are.
+// Page title with an optional description and actions on the right. Where you
+// are is told by the app shell's breadcrumbs, so there is no kicker above it.
 function PageHeader({ title, description, actions, children }) {
   return (
     <header className="page-header">
