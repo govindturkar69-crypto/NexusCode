@@ -1,3 +1,4 @@
+import { Sparkles } from "lucide-react";
 import { useState } from "react";
 import { aiErrorText } from "../api/aiErrors";
 import { apiFetch } from "../api/client";
@@ -82,7 +83,7 @@ function TaskSuggestDialog({ projectId, onClose, onAdded }) {
           {error && <p role="alert" className="small text-danger">{error}</p>}
           <div className="modal__actions">
             <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button type="submit" disabled={busy || !description.trim()}>{generating ? "Thinking..." : "✨ Generate"}</Button>
+            <Button type="submit" disabled={busy || !description.trim()} loading={generating} icon={<Sparkles size={15} aria-hidden="true" />}>{generating ? "Thinking..." : "Generate"}</Button>
           </div>
         </form>
       ) : (
