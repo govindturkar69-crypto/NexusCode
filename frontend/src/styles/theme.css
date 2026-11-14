@@ -50,13 +50,6 @@
 .text-success { color: var(--color-success); }
 .text-danger { color: var(--color-danger); }
 
-.back-link {
-  display: inline-flex; align-items: center; gap: 2px;
-  margin-bottom: var(--space-3); color: var(--color-text-muted);
-  font-size: var(--text-sm); font-weight: var(--weight-medium); text-decoration: none;
-  transition: color var(--duration-fast);
-}
-.back-link:hover { color: var(--color-text); }
 
 /* ---------- page header ---------- */
 .page-header { margin-bottom: var(--space-5); }
