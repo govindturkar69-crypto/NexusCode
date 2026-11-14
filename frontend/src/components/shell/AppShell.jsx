@@ -1,21 +1,6 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router-dom";
-import {
-  ChartColumn,
-  Check,
-  ChevronRight,
-  ChevronsUpDown,
-  CodeXml,
-  FolderKanban,
-  LogOut,
-  Menu as MenuIcon,
-  Settings as SettingsIcon,
-  ShieldCheck,
-  Sparkles,
-  SquareKanban,
-  Video,
-  X,
-} from "lucide-react";
+import { ChartColumn, Check, ChevronRight, ChevronsUpDown, CodeXml, FolderKanban, LogOut, Menu as MenuIcon, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, SquareKanban, Video, X } from "lucide-react";
 import { apiFetchAll } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import GithubIcon from "../icons/GithubIcon";
@@ -25,7 +10,11 @@ import Avatar from "../ui/Avatar";
 import Menu from "../ui/Menu";
 import { useToast } from "../ui/toastContext";
 
-const PROJECT_PAGES = { "": "Board", editor: "Code editor", meeting: "Video meeting" };
+// Loaded on first open: nothing of it is in the main bundle
+const CommandPalette = lazy(() => import("../../palette/CommandPalette"));
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+const PROJECT_PAGES = { "": "Board", editor: "Code editor", meeting: "Video meeting", analytics: "Analytics" };
 const TOP_PAGES = { "/projects": "Projects", "/dashboard": "Dashboard", "/ai": "AI Assistant", "/settings": "Settings", "/admin": "Admin" };
 
 function useProjectRoute(pathname) {
@@ -52,6 +41,22 @@ function AppShell() {
   const { user, signOut } = useAuth();
   const toast = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Ctrl/Cmd+K opens the command palette from anywhere, form fields included,
+  // except inside the Monaco editor: there Ctrl/Cmd+K starts Monaco's own
+  // two-key shortcuts (Ctrl+K Ctrl+C comments a line, and so on), so the
+  // palette leaves it alone and opens from the header's Search button instead.
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "k") return;
+      if (event.target instanceof Element && event.target.closest(".monaco-editor")) return;
+      event.preventDefault();
+      setPaletteOpen((open) => !open);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   const [projects, setProjects] = useState(null);
   const sidebarId = useId();
   const menuButtonRef = useRef(null);
@@ -181,6 +186,7 @@ function AppShell() {
               <SideLink to={`/projects/${projectRoute.id}`} icon={SquareKanban} end>Board</SideLink>
               <SideLink to={`/projects/${projectRoute.id}/editor`} icon={CodeXml}>Code editor</SideLink>
               <SideLink to={`/projects/${projectRoute.id}/meeting`} icon={Video}>Video meeting</SideLink>
+              <SideLink to={`/projects/${projectRoute.id}/analytics`} icon={ChartColumn}>Analytics</SideLink>
             </nav>
           </div>
         )}
@@ -220,6 +226,11 @@ function AppShell() {
           </nav>
 
           <div className="app-header__actions">
+            <button type="button" className="palette-trigger" onClick={() => setPaletteOpen(true)} aria-haspopup="dialog" aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}>
+              <Search size={15} aria-hidden="true" />
+              <span className="palette-trigger__label">Search</span>
+              <kbd className="palette-trigger__kbd" aria-hidden="true">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+            </button>
             <NotificationBell />
             <ThemeToggle />
             {user && (
@@ -257,6 +268,11 @@ function AppShell() {
           </div>
         </main>
       </div>
+      {paletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette onClose={() => setPaletteOpen(false)} project={currentProject ?? null} projects={projects} />
+        </Suspense>
+      )}
     </div>
   );
 }

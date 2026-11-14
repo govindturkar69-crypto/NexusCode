@@ -9,6 +9,7 @@ import Button from "../components/ui/Button";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
 import Spinner from "../components/ui/Spinner";
+import { useDoParam } from "../utils/useDoParam";
 
 const InCall = lazy(() => import("../meeting/InCall"));
 
@@ -25,6 +26,8 @@ function VideoMeeting() {
   const { phase, room, error, notice, join, leave, setNotice, clearNotice } = useMeetingRoom(projectId);
   const configured = Boolean(livekitUrl());
   const inCall = Boolean(room) && (phase === "connected" || phase === "reconnecting");
+  // ?do=join (the command palette's "Start meeting"): join straight away
+  useDoParam({ join: () => (phase === "idle" || phase === "left") && join() }, configured);
 
   return (
     <Page width={1100}>

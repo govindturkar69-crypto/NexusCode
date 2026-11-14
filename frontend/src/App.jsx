@@ -20,6 +20,7 @@ const CodeEditor = lazy(() => import("./pages/CodeEditor"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const VideoMeeting = lazy(() => import("./pages/VideoMeeting"));
+const ProjectAnalytics = lazy(() => import("./pages/ProjectAnalytics"));
 const Settings = lazy(() => import("./pages/Settings"));
 const ForgotPassword = lazy(() => loadAccountPages().then((m) => ({ default: m.ForgotPassword })));
 const ResetPassword = lazy(() => loadAccountPages().then((m) => ({ default: m.ResetPassword })));
@@ -70,6 +71,7 @@ function App() {
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/admin" element={<AdminDashboard />} />
                   <Route path="/projects/:projectId/meeting" element={<VideoMeeting />} />
+                  <Route path="/projects/:projectId/analytics" element={<ProjectAnalytics />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>
                 <Route path="*" element={<SignedOut><NotFound /></SignedOut>} />

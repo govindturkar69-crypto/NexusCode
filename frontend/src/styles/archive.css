@@ -1,0 +1,14 @@
+/* ZIP import dialog (loaded with the dialog) */
+.zip-drop { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-5); border: 1px dashed var(--color-border-strong, var(--color-border)); border-radius: var(--radius-lg); text-align: center; color: var(--color-text-muted); }
+.zip-progress { display: flex; flex-direction: column; gap: var(--space-1); }
+.zip-progress progress { width: 100%; height: 8px; accent-color: var(--color-accent); }
+.zip-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.zip-group { border: 1px solid var(--color-border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); margin: 0; min-width: 0; }
+.zip-group > summary, .zip-group > legend { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--weight-semibold); font-size: var(--text-sm); cursor: pointer; padding: 0 var(--space-1); }
+.zip-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; }
+.zip-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 32px; border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
+.zip-list li:last-child { border-bottom: 0; }
+.zip-list .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zip-list .input--sm { max-width: 14rem; }
+.zip-list--done li { justify-content: flex-start; color: var(--color-success); }
+.zip-list--done .mono { color: var(--color-text); }

@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_project_role
 from app.models import (
     TASK_STATUSES,
     FileModel,
@@ -13,7 +13,9 @@ from app.models import (
     TaskModel,
     UserModel,
 )
+from app.schemas.analytics import ProjectAnalytics
 from app.schemas.misc import AnalyticsOut
+from app.services.project_analytics import RANGES, project_analytics
 
 router = APIRouter(tags=["analytics"])
 
@@ -44,3 +46,15 @@ def get_analytics(db: Session = Depends(get_db), current_user: UserModel = Depen
         "total_files": total_files,
         "total_messages": total_messages,
     }
+
+
+@router.get("/projects/{project_id}/analytics", response_model=ProjectAnalytics)
+def get_project_analytics(
+    range_days: int = Query(14, alias="range", description="Days to cover: 7, 14 or 30"),
+    project: ProjectModel = Depends(require_project_role("viewer")),
+    db: Session = Depends(get_db),
+):
+    """One project's analytics for the last `range` days (any member). Read only."""
+    if range_days not in RANGES:
+        raise HTTPException(status_code=422, detail="range must be 7, 14 or 30 (days).")
+    return project_analytics(db, project.id, range_days)

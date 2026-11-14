@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useParams } from "react-router-dom";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { MonacoBinding } from "y-monaco";
+import { downloadProjectZip } from "../api/archive";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 import { CollabFiles } from "../collab/collabFiles";
@@ -12,6 +13,7 @@ import { isHtmlFile } from "../editor/preview";
 import { collectPythonFiles } from "../runners/pythonProject";
 import { runnerFor, UNSUPPORTED_MESSAGE } from "../runners/runnerFor";
 import { useCodeRunner } from "../runners/useCodeRunner";
+import { useDoParam } from "../utils/useDoParam";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
 import AgentPanel from "../components/AgentPanel";
@@ -21,7 +23,7 @@ import PathDialog from "../components/PathDialog";
 import PreviewPanel from "../components/PreviewPanel";
 import PushToGithubDialog from "../components/PushToGithubDialog";
 import RunPanel from "../components/RunPanel";
-import { Bot, FilePlus, FolderPlus, Monitor, Play, Square, Users, X } from "lucide-react";
+import { Bot, Download, FilePlus, FolderPlus, Monitor, Play, Square, Upload, Users, X } from "lucide-react";
 import FileIcon from "../components/FileIcon";
 import GithubIcon from "../components/icons/GithubIcon";
 import Alert from "../components/ui/Alert";
@@ -36,6 +38,8 @@ const LANGUAGE_NAMES = {
   json: "JSON", markdown: "Markdown", java: "Java", cpp: "C++", c: "C", go: "Go", rust: "Rust",
   sql: "SQL", shell: "Shell", yaml: "YAML", xml: "XML", plaintext: "Plain text",
 };
+
+const ImportZipDialog = lazy(() => import("../components/ImportZipDialog"));
 
 // Self-hosted Monaco (no CDN); must run before <Editor> mounts
 import "../editor/monacoSetup";
@@ -84,6 +88,8 @@ function CodeEditor() {
   const [toDelete, setToDelete] = useState(null); // { kind: "file" | "folder", ... }
   const [deleting, setDeleting] = useState(false);
   const [showPush, setShowPush] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [exporting, setExporting] = useState(null); // download progress 0..1 (or 0 while unknown), null when idle
   const [pushed, setPushed] = useState(null);
   const [showAgent, setShowAgent] = useState(false);
 
@@ -408,6 +414,28 @@ function CodeEditor() {
     setFiles((prev) => prev.filter((file) => !gone.has(file.id)));
   }
 
+  // ?do=new-file / ?do=agent / ?do=open&file=path (from the command palette), once the files are loaded
+  const [searchParams] = useSearchParams();
+  useDoParam(
+    {
+      "new-file": () => canEdit && setDialog({ kind: "new-file", folder: "" }),
+      open: () => {
+        const wanted = files.find((file) => file.path === searchParams.get("file"));
+        if (wanted) openFile(wanted);
+      },
+      agent: () => canEdit && !showAgent && toggleAgent(),
+    },
+    loadState === "ready",
+  );
+
+  function exportZip() {
+    setExporting(0);
+    downloadProjectZip(projectId, { onProgress: (value) => setExporting(value ?? 0) })
+      .then(({ name }) => setNotice(`Downloaded ${name}.`))
+      .catch((err) => setError(`Couldn't export the project: ${err.message}`))
+      .finally(() => setExporting(null));
+  }
+
   function toggleAgent() {
     const opening = !showAgent;
     setShowAgent(opening);
@@ -516,6 +544,14 @@ function CodeEditor() {
                 </>
               )}
             </span>
+            <Button variant="secondary" onClick={exportZip} loading={exporting !== null} disabled={loadState !== "ready"} icon={<Download size={15} aria-hidden="true" />} title="Download the code, tasks and a README as a ZIP">
+              {exporting !== null && exporting < 1 ? `Exporting ${Math.round(exporting * 100)}%` : "Export ZIP"}
+            </Button>
+            {canEdit && (
+              <Button variant="secondary" onClick={() => setShowImport(true)} disabled={loadState !== "ready"} icon={<Upload size={15} aria-hidden="true" />}>
+                Import ZIP
+              </Button>
+            )}
             {canEdit && (
               <Button variant={showAgent ? "primary" : "secondary"} aria-pressed={showAgent} onClick={toggleAgent} disabled={loadState !== "ready"} icon={<Bot size={16} aria-hidden="true" />}>
                 Agent
@@ -787,6 +823,17 @@ function CodeEditor() {
         />
       )}
 
+      {showImport && (
+        <Suspense fallback={null}>
+          <ImportZipDialog
+            projectId={projectId}
+            onClose={() => setShowImport(false)}
+            onImported={(data) => {
+              if (data.created.length > 0) refreshFiles().catch(() => {});
+            }}
+          />
+        </Suspense>
+      )}
       {showPush && (
         <PushToGithubDialog
           projectId={projectId}

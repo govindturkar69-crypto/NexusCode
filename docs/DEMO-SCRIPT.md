@@ -60,6 +60,14 @@ change as a diff. Click **Accept**, then run `src/main.py` again: it prints
 run), the daily quota, no network for its code, and that nothing is saved until you
 accept it.
 
+**5:30 — Command palette, analytics, ZIP (30s)**
+Press **Ctrl/Cmd+K**, type *wea*: the project, a task and `src/weather.py`, with the
+matches highlighted. Pick **Analytics** from the palette: the burn-up, throughput and
+cycle time of the task just finished, with each chart's data table under **Show data**.
+In the editor, **Export ZIP** downloads the code, `tasks.json` and a README; **Import
+ZIP** previews a ZIP first and refuses `..` paths, symlinks and binaries. (As
+`demo_sam`, a viewer, the palette has no editing actions and there is no Import.)
+
 **6:00 — Chat and activity (20s)**
 The project chat (seeded conversation, who is online) and the activity feed showing
 the task move and the agent run.

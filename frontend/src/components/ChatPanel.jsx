@@ -159,7 +159,7 @@ function ChatPanel({ projectId, canPost, currentUser, members, onActivity }) {
   const typingLine = typingText(typing);
 
   return (
-    <section className="stack">
+    <section className="stack" id="chat">
       <h2 className="section-title"><MessageSquare size={17} aria-hidden="true" /> Chat</h2>
       <Card className="grow stack chat-card">
         <p className="small muted chat-online" aria-live="polite" aria-label="Who is online">

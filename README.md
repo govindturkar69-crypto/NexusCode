@@ -27,6 +27,9 @@
 | 📰 | **Activity feed and notifications** | See what changed in a project, and get notified when you are added, assigned a task or given a new role. |
 | 💬 | **Project chat** | Per-project chat over WebSockets, with history and who is online. |
 | 📂 | **Files, dashboards** | Upload project files (Cloudinary), a personal analytics dashboard, and an admin dashboard for admin accounts. |
+| ⌨️ | **Command palette** | **Ctrl/Cmd+K** (or the header's Search button) finds pages, actions, projects and the current project's tasks and files with fuzzy matching and recent items. Editing actions only appear for owners and editors. |
+| 📈 | **Project analytics** | Per project, for the last 7, 14 or 30 days: burn-up/down, throughput, cycle time (median and 90th percentile), workload per member, overdue tasks, activity and recently edited files. Every chart has a text summary and a data table. |
+| 🗜️ | **ZIP export and import** | Any member downloads the code (with its folders), `tasks.json` and a README as a ZIP. Owners and editors import a ZIP after a preview: duplicates are skipped or kept as renamed copies, and unsafe or binary entries are refused with a reason. |
 
 <table>
   <tr>
@@ -36,6 +39,10 @@
   <tr>
     <td><img src="docs/screenshots/07-agent-diff.png" alt="The AI agent's proposed fix shown as a diff with Accept and Reject" /></td>
     <td><img src="docs/screenshots/10-video-meeting.png" alt="A two-person video meeting (Chromium's fake camera test pattern)" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/11-command-palette.png" alt="The command palette over the board, with fuzzy matches highlighted" /></td>
+    <td><img src="docs/screenshots/12-analytics.png" alt="The project analytics page: summary stats, burn-up and burn-down, throughput, workload and activity" /></td>
   </tr>
 </table>
 
@@ -279,6 +286,9 @@ Clicking **Join** asks `POST /projects/{id}/meeting/token` for a LiveKit token (
 - **In-browser running:** Python has the standard library only, JavaScript runs one file at a time, and other languages can't run.
 - **Email:** without a verified domain at Resend, email only reaches the Resend account owner's address.
 - **Video** needs a LiveKit project; without its settings the meeting page says video isn't configured.
+- **Analytics completion times** come from the activity feed's moves to Done, which name tasks by title. A done task created straight into Done, renamed after finishing, or sharing its title can't be dated: it's counted as "undated" and left out of the charts over time, never guessed. Saving code isn't an activity event, so "files" means recently edited files, not edit counts. Days are UTC.
+- **ZIP import** takes text and code only (UTF-8, no binaries), at most 5 MB, 300 entries, 1 MB per file and 10 MB unpacked, within the 500-file project limit. Tasks in an imported `tasks.json` aren't imported.
+- **Command palette in the code editor:** inside Monaco, Ctrl/Cmd+K stays Monaco's own chord prefix, so open the palette from the header's Search button there.
 
 ---
 
