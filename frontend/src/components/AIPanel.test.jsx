@@ -139,6 +139,13 @@ describe('AIPanel', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('free daily quota')
     })
 
+    it('says clearly when the server has no AI key', async () => {
+      streamFetch([], { status: 503, json: { detail: 'AI is not configured' } })
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Explain/ }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('AI is not configured on this server')
+    })
+
     it('keeps what arrived when the stream fails partway', async () => {
       streamFetch([frame('delta', { text: 'partial text' }), frame('error', { detail: 'Stopped partway.' })])
       setup()

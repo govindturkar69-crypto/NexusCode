@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { aiErrorText } from "../api/aiErrors";
 import { apiFetch } from "../api/client";
 import Button from "./ui/Button";
 import Input from "./ui/Input";
@@ -28,7 +29,7 @@ function TaskSuggestDialog({ projectId, onClose, onAdded }) {
         setTasks(data.tasks);
         setSelected(new Set(data.tasks.map((_, index) => index)));
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(aiErrorText(err)))
       .finally(() => setGenerating(false));
   }
 

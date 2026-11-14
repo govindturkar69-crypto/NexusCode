@@ -33,7 +33,7 @@ from app.schemas.agent import (
     AgentRunOut,
     AgentStepRequest,
 )
-from app.services import agent
+from app.services import agent, ai
 from app.services.activity import publish, record
 from app.services.ai import AIQuotaExceededError, AIServiceBusyError
 
@@ -113,6 +113,7 @@ def quota_for(db: Session, user: UserModel) -> dict:
         "total_remaining": max(0, agent.TOTAL_DAILY_RUNS - used_total),
         "resets_at": since + timedelta(days=1),
         "ai_available": agent.gemini_daily_limit.blocked_until() is None,
+        "ai_configured": ai.agent_is_configured(),
     }
 
 
@@ -130,6 +131,9 @@ def start_run(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
+    # Without a key, refuse before touching anything: no old run is ended, no run is counted
+    if not ai.agent_is_configured():
+        raise HTTPException(status_code=503, detail=ai.AI_NOT_CONFIGURED)
     # Starts are counted one at a time, so two at once can't both take the last run
     if db.get_bind().dialect.name == "postgresql":
         db.execute(text("SELECT pg_advisory_xact_lock(724001)"))

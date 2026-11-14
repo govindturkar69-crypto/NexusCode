@@ -71,7 +71,7 @@ def _start_stream(prompt: str):
     last_error = None
     for _attempt in range(MAX_RETRIES):
         try:
-            stream = ai.client.models.generate_content_stream(model=MODEL_NAME, contents=prompt, config=_config())
+            stream = ai.get_client().models.generate_content_stream(model=MODEL_NAME, contents=prompt, config=_config())
             for chunk in stream:
                 if chunk.text:
                     return chunk.text, stream

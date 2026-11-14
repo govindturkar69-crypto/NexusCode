@@ -42,6 +42,7 @@ from app.routers import (
     projects,
     tasks,
 )
+from app.services import ai as ai_service
 from app.services import email as email_service
 from app.services.storage import MAX_UPLOAD_BYTES
 
@@ -62,6 +63,13 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="NexusCode API", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+
+@app.exception_handler(ai_service.AINotConfiguredError)
+async def ai_not_configured_handler(request: Request, exc: ai_service.AINotConfiguredError):
+    """Every AI route (assistant, streaming, task ideas, agent) answers the same
+    clean 503 when no Gemini key is set, instead of failing at startup or with a 500."""
+    return JSONResponse(status_code=503, content={"detail": ai_service.AI_NOT_CONFIGURED})
 
 UPLOAD_PATH = re.compile(r"^/projects/\d+/files$")
 # Multipart framing adds a little on top of the file itself

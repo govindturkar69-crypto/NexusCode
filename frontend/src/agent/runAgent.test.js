@@ -94,6 +94,13 @@ describe('runAgent', () => {
     expect(events.filter((e) => e.type === 'retry')).toHaveLength(2)
   })
 
+  it('does not retry when the server has no AI key', async () => {
+    const { bodies } = stubServer([{ frames: [], status: 503, json: { detail: 'AI is not configured' } }])
+    const end = await runAgent({ projectId: 7, goal: 'g', tools: { execute: vi.fn() } })
+    expect(end).toMatchObject({ status: 'failed', reason: 'AI is not configured' })
+    expect(bodies).toHaveLength(1)
+  })
+
   it('does not retry when the daily allowance is gone', async () => {
     const detail = "The AI's free daily allowance is used up. The agent will work again when it resets."
     const { bodies } = stubServer([{ frames: [], status: 503, json: { detail } }])

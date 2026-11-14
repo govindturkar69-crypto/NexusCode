@@ -25,7 +25,7 @@ class _FakeModels:
 def fake_gemini(monkeypatch):
     def install(*outcomes):
         models = _FakeModels(outcomes)
-        monkeypatch.setattr(ai, "client", type("FakeClient", (), {"models": models})())
+        monkeypatch.setattr(ai, "get_client", lambda: type("FakeClient", (), {"models": models})())
         monkeypatch.setattr(ai.time, "sleep", lambda s: None)
         return models
     return install

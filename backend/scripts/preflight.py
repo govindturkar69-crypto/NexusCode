@@ -11,6 +11,7 @@ Checks:
   - alembic head matches the DB's current version
   - row-level security on every public table (Postgres)
   - /health reachable (only when --health-url / PREFLIGHT_HEALTH_URL is given)
+  - Gemini key for the AI features (SKIP when none is set: the AI is off)
   - LiveKit vars all present and LIVEKIT_URL is ws(s):// (SKIP when none is set)
 
 It is deliberately self-contained: it does not import the app, so it runs even
@@ -176,6 +177,17 @@ def check_health(health_url: str | None) -> None:
         report(FAIL, "/health reachable", type(e).__name__)
 
 
+def check_gemini(env: dict) -> None:
+    """The AI is optional: without a key the app runs and AI routes answer 503."""
+    shared, agent_only = env.get("GEMINI_API_KEY"), env.get("AGENT_GEMINI_API_KEY")
+    if shared:
+        report(OK, "Gemini (AI)", "assistant and agent" + (", agent has its own key" if agent_only else ""))
+    elif agent_only:
+        report(OK, "Gemini (AI)", "agent only: GEMINI_API_KEY unset, so the assistant answers 503")
+    else:
+        report(SKIP, "Gemini (AI)", "not set: AI features are off (they answer 503)")
+
+
 def check_livekit(env: dict) -> None:
     names = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
     present = [n for n in names if env.get(n)]
@@ -201,6 +213,7 @@ def main() -> int:
     check_alembic(engine)
     check_rls(engine)
     check_health(args.health_url)
+    check_gemini(env)
     check_livekit(env)
     print()
     if _failed:

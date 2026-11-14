@@ -3,6 +3,7 @@ import { DiffEditor } from "@monaco-editor/react";
 import { AgentSession } from "../agent/agentSession";
 import { describeTool } from "../agent/describeTool";
 import { fetchAgentQuota, runAgent, stopAgentRun } from "../agent/runAgent";
+import { AI_NOT_CONFIGURED_TEXT, aiErrorText } from "../api/aiErrors";
 import { describeRunResult, runResults } from "../agent/summary";
 import { useTheme } from "../theme/useTheme";
 import Alert from "./ui/Alert";
@@ -75,6 +76,9 @@ function resetTime(iso) {
 // How many runs are left today, for this user and for the whole server
 function QuotaLine({ quota }) {
   if (!quota) return null;
+  if (quota.ai_configured === false) {
+    return <p className="small text-danger" role="status">{AI_NOT_CONFIGURED_TEXT}</p>;
+  }
   if (quota.ai_available === false) {
     return <p className="small text-danger" role="status">The AI's free daily allowance is used up. The agent will work again when it resets.</p>;
   }
@@ -306,7 +310,7 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
       // A run that failed here may still be open on the server: end it there too
       if (result.status === "failed" && runIdRef.current) stopAgentRun(runIdRef.current).catch(() => {});
     } catch (err) {
-      setError(err.message);
+      setError(aiErrorText(err));
     } finally {
       setRunning(false);
       controller.current = null;
@@ -350,7 +354,7 @@ function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createT
             {running ? (
               <Button variant="danger" onClick={stop}>■ Stop</Button>
             ) : (
-              <Button type="submit" disabled={!goal.trim() || quota?.user_remaining === 0 || quota?.total_remaining === 0 || quota?.ai_available === false}>▶ Start</Button>
+              <Button type="submit" disabled={!goal.trim() || quota?.user_remaining === 0 || quota?.total_remaining === 0 || quota?.ai_available === false || quota?.ai_configured === false}>▶ Start</Button>
             )}
           </div>
         </div>

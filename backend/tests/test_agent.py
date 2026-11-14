@@ -30,7 +30,7 @@ def fresh_gemini_limit():
 @pytest.fixture
 def gemini(monkeypatch):
     fake = FakeGemini()
-    monkeypatch.setattr(ai.agent_client.models, "generate_content_stream", fake.generate_content_stream)
+    monkeypatch.setattr(ai.get_agent_client().models, "generate_content_stream", fake.generate_content_stream)
     monkeypatch.setattr(agent, "RETRY_SECONDS", 0)
     return fake
 
@@ -533,7 +533,7 @@ def test_a_per_minute_limit_does_not_block_the_day(client, owner, project, gemin
 def test_the_agent_uses_its_own_model(client, owner, project, gemini, monkeypatch):
     seen = []
     original = gemini.generate_content_stream
-    monkeypatch.setattr(ai.agent_client.models, "generate_content_stream", lambda model, **kw: seen.append(model) or original(model, **kw))
+    monkeypatch.setattr(ai.get_agent_client().models, "generate_content_stream", lambda model, **kw: seen.append(model) or original(model, **kw))
     gemini.script([text("ok")])
     run_id = start(client, owner, project).json()["id"]
     step(client, owner, run_id)
