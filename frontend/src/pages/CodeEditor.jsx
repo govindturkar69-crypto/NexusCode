@@ -21,15 +21,25 @@ import PathDialog from "../components/PathDialog";
 import PreviewPanel from "../components/PreviewPanel";
 import PushToGithubDialog from "../components/PushToGithubDialog";
 import RunPanel from "../components/RunPanel";
+import { Bot, FilePlus, FolderPlus, Monitor, Play, Square, Users, X } from "lucide-react";
+import FileIcon from "../components/FileIcon";
+import GithubIcon from "../components/icons/GithubIcon";
 import Alert from "../components/ui/Alert";
-import BackLink from "../components/ui/BackLink";
+import { AvatarStack } from "../components/ui/Avatar";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
+const LANGUAGE_NAMES = {
+  python: "Python", javascript: "JavaScript", typescript: "TypeScript", html: "HTML", css: "CSS",
+  json: "JSON", markdown: "Markdown", java: "Java", cpp: "C++", c: "C", go: "Go", rust: "Rust",
+  sql: "SQL", shell: "Shell", yaml: "YAML", xml: "XML", plaintext: "Plain text",
+};
+
 // Self-hosted Monaco (no CDN); must run before <Editor> mounts
 import "../editor/monacoSetup";
+import { defineNexusThemes, monacoTheme } from "../editor/monacoThemes";
 import { useTheme } from "../theme/useTheme";
 
 // Picks up files that teammates added, renamed or deleted
@@ -159,6 +169,14 @@ function CodeEditor() {
   // ---- live editing: one Yjs session per open tab (see src/collab) ----
 
   const [editorInstance, setEditorInstance] = useState(null);
+  const [cursor, setCursor] = useState({ line: 1, column: 1 });
+
+  // Cursor position for the status bar
+  useEffect(() => {
+    if (!editorInstance?.onDidChangeCursorPosition) return undefined;
+    const sub = editorInstance.onDidChangeCursorPosition((e) => setCursor({ line: e.position.lineNumber, column: e.position.column }));
+    return () => sub.dispose();
+  }, [editorInstance]);
 
   // Anyone's change to an open file updates the editor's copy, which Run, Preview,
   // the AI and the agent read
@@ -485,13 +503,11 @@ function CodeEditor() {
 
   return (
     <Page width={1400}>
-      <BackLink to={`/projects/${projectId}`}>Back to board</BackLink>
       <PageHeader
-        eyebrow="code --edit"
-        title="Code Editor"
+        title="Code editor"
         actions={
           <>
-            <span role="status" aria-live="polite" className={`small ${saveStatus.className}`}>
+            <span role="status" aria-live="polite" className={`small editor-save ${saveStatus.className}`}>
               {role === "viewer" ? "View only" : activeLiveState.text ?? saveStatus.text}
               {activeSave.status === "error" && (
                 <>
@@ -501,13 +517,13 @@ function CodeEditor() {
               )}
             </span>
             {canEdit && (
-              <Button variant={showAgent ? "primary" : "ghost"} aria-pressed={showAgent} onClick={toggleAgent} disabled={loadState !== "ready"}>
-                🤖 Agent
+              <Button variant={showAgent ? "primary" : "secondary"} aria-pressed={showAgent} onClick={toggleAgent} disabled={loadState !== "ready"} icon={<Bot size={16} aria-hidden="true" />}>
+                Agent
               </Button>
             )}
             {isOwner && (
-              <Button onClick={() => { setPushed(null); setShowPush(true); }} disabled={loadState !== "ready" || files.length === 0}>
-                🐙 Push to GitHub
+              <Button onClick={() => { setPushed(null); setShowPush(true); }} disabled={loadState !== "ready" || files.length === 0} icon={<GithubIcon size={15} />}>
+                Push to GitHub
               </Button>
             )}
           </>
@@ -530,9 +546,10 @@ function CodeEditor() {
       <div className="editor-grid">
         <Card className="editor-grid__tree">
           {canEdit && (
-            <div className="row" style={{ "--gap": "0.5rem", marginBottom: "0.75rem" }}>
-              <Button size="sm" onClick={() => setDialog({ kind: "new-file", folder: "" })} disabled={loadState !== "ready"}>+ File</Button>
-              <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "new-folder" })} disabled={loadState !== "ready"}>+ Folder</Button>
+            <div className="editor-tree__actions">
+              <span className="editor-tree__title">Files</span>
+              <Button size="sm" variant="secondary" aria-label="+ File" title="New file" icon={<FilePlus size={13} aria-hidden="true" />} onClick={() => setDialog({ kind: "new-file", folder: "" })} disabled={loadState !== "ready"}>File</Button>
+              <Button size="sm" variant="secondary" aria-label="+ Folder" title="New folder" icon={<FolderPlus size={13} aria-hidden="true" />} onClick={() => setDialog({ kind: "new-folder" })} disabled={loadState !== "ready"}>Folder</Button>
             </div>
           )}
           {loadState === "loading" && <p role="status" className="muted small">Loading files...</p>}
@@ -555,7 +572,9 @@ function CodeEditor() {
         </Card>
 
         <div className="card editor-grid__main">
-          <div role="tablist" aria-label="Open files" className="editor-tabs">
+          {/* Open files: a group of buttons (the open one marked with aria-current), each
+              with its own Close button, which a role="tablist" could not contain */}
+          <div role="group" aria-label="Open files" className="editor-tabs">
             {openIds.map((id) => {
               const file = filesById.get(id);
               if (!file) return null;
@@ -563,18 +582,19 @@ function CodeEditor() {
               const others = collab.people(id);
               return (
                 <span key={id} className={`editor-tab ${id === activeId ? "editor-tab--active" : ""}`}>
-                  <button type="button" role="tab" aria-selected={id === activeId} title={file.path} className="editor-tab__name" onClick={() => setActiveId(id)}>
+                  <button type="button" aria-current={id === activeId ? "true" : undefined} title={file.path} className="editor-tab__name" onClick={() => setActiveId(id)}>
+                    <FileIcon name={file.path} size={13} />
                     {baseName(file.path)}
                     {others.length > 0 && (
                       <span className="editor-tab__people" title={describePeople(others)} aria-label={`${others.length} other ${others.length === 1 ? "person" : "people"} here`}>
-                        {" "}👥{others.length}
+                        <Users size={11} aria-hidden="true" />{others.length}
                       </span>
                     )}
                     {fileStatus !== "saved" && (
                       <span className={`editor-tab__dot ${fileStatus === "error" ? "text-danger" : ""}`} aria-label={SAVE_STATUS[fileStatus].text}> ●</span>
                     )}
                   </button>
-                  <button type="button" className="editor-tab__close" aria-label={`Close ${baseName(file.path)}`} onClick={() => closeTab(id)}>✕</button>
+                  <button type="button" className="editor-tab__close" aria-label={`Close ${baseName(file.path)}`} onClick={() => closeTab(id)}><X size={13} aria-hidden="true" /></button>
                 </span>
               );
             })}
@@ -596,13 +616,13 @@ function CodeEditor() {
           {activeLoaded && (
             <div className="run-bar">
               {runningHere ? (
-                <Button size="sm" variant="danger" onClick={runner.stop}>■ Stop</Button>
+                <Button size="sm" variant="danger" onClick={runner.stop} icon={<Square size={11} aria-hidden="true" />}>Stop</Button>
               ) : (
-                <Button size="sm" onClick={runActive} disabled={!activeRunner} title="Ctrl+Enter">▶ Run</Button>
+                <Button size="sm" onClick={runActive} disabled={!activeRunner} title="Ctrl+Enter" icon={<Play size={12} aria-hidden="true" />}>Run</Button>
               )}
               {hasHtml && (
-                <Button size="sm" variant="ghost" aria-pressed={showPreview} onClick={() => setShowPreview(!showPreview)}>
-                  🖥 Preview
+                <Button size="sm" variant="secondary" aria-pressed={showPreview} onClick={() => setShowPreview(!showPreview)} icon={<Monitor size={13} aria-hidden="true" />}>
+                  Preview
                 </Button>
               )}
               {activeRunner === "python" && (
@@ -633,14 +653,32 @@ function CodeEditor() {
               {...(activeLive ? { defaultValue: contents[activeId] } : { value: contents[activeId] })}
               onChange={handleCodeChange}
               onMount={(editor) => setEditorInstance(editor)}
-              theme={theme === "dark" ? "vs-dark" : "light"}
+              beforeMount={defineNexusThemes}
+              theme={monacoTheme(theme)}
               // Room above the first line for other people's name labels
               options={{ fontSize: 14, minimap: { enabled: false }, padding: { top: 18 }, readOnly: !canEdit || activeLiveState.readOnly }}
             />
           ) : (
-            <p role="status" className="muted" style={{ padding: "1rem" }}>
+            <p role="status" className="muted editor-placeholder">
               {activeFile ? "Loading code..." : "Open a file from the list to start."}
             </p>
+          )}
+          {activeLoaded && (
+            <div className="editor-status" aria-label="Editor status">
+              <span className="editor-status__item">
+                <FileIcon name={activeFile.path} size={12} />
+                {LANGUAGE_NAMES[activeFile.language] ?? activeFile.language ?? "Plain text"}
+              </span>
+              <span className="editor-status__item mono">Ln {cursor.line}, Col {cursor.column}</span>
+              {(!canEdit || activeLiveState.readOnly) && <span className="editor-status__item">Read-only</span>}
+              <span className="grow" />
+              {activeLive && activePeople.length > 0 && (
+                <span className="editor-status__item">
+                  <AvatarStack names={activePeople.map((p) => p.name)} max={4} size="xs" label={`${activePeople.length} other ${activePeople.length === 1 ? "person" : "people"} in this file`} />
+                </span>
+              )}
+              <span className="editor-status__item">{activeLive ? "Live" : "Local"}</span>
+            </div>
           )}
           {activeId !== null && (
             <RunPanel

@@ -164,7 +164,7 @@ describe('theme', () => {
 
   it('light and dark define the same colour tokens', () => {
     // Read from disk: Vitest empties CSS imports
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../styles/theme.css'), 'utf-8')
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../styles/tokens.css'), 'utf-8')
     const names = (block) => [...block.matchAll(/(--(?:color|shadow)[\w-]*):/g)].map((m) => m[1]).sort()
     const root = css.match(/:root \{([\s\S]*?)\n\}/)[1]
     const light = css.match(/:root\[data-theme="light"\] \{([\s\S]*?)\n\}/)[1]

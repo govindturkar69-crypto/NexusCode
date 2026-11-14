@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Landing from './Landing'
-import { FEATURES, PAGE_TITLE, REPO_URL } from '../landing/content'
+import { FEATURES, PAGE_TITLE, REPO_URL, SHOTS } from '../landing/content'
 import HomeRoute from '../components/HomeRoute'
 import AuthProvider from '../auth/AuthProvider'
 import ThemeProvider from '../theme/ThemeProvider'
@@ -104,6 +104,18 @@ describe('index.html meta tags', () => {
 
   it('points og:image at a file that ships with the site', () => {
     expect(existsSync('public/og-image.png')).toBe(true)
+  })
+  it('only shows screenshots that ship with the site, lazily and with alt text', () => {
+    render(<MemoryRouter><Landing /></MemoryRouter>)
+    const images = screen.getAllByRole('img', { name: SHOTS[0].alt })
+    expect(images).toHaveLength(2) // one per theme; CSS shows one
+    for (const img of images) {
+      expect(img).toHaveAttribute('loading', 'lazy')
+      expect(existsSync(`public${img.getAttribute('src')}`)).toBe(true)
+    }
+    for (const shot of SHOTS) {
+      for (const theme of ['light', 'dark']) expect(existsSync(`public/landing/${shot.id}-${theme}.webp`)).toBe(true)
+    }
   })
   it.each([
     ['name="description"'],

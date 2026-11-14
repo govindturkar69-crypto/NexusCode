@@ -10,16 +10,16 @@ import Input from "../components/ui/Input";
 
 // Signed-out pages reached from the login screen or an email link
 
-function Shell({ prompt, title, children }) {
+function Shell({ title, children }) {
   return (
-    <main className="page page--centered">
-      <div className="card" style={{ width: "100%", maxWidth: "400px", padding: "2.5rem", borderRadius: "var(--radius-xl)", boxShadow: "var(--shadow-lg)" }}>
-        <div style={{ marginBottom: "1.5rem" }}>
-          <div className="eyebrow">{prompt}</div>
-          <h1 className="page-title" style={{ fontSize: "24px" }}>{title}</h1>
-        </div>
+    <main className="page auth-page">
+      <div className="card auth-card motion-rise-in">
+        <header className="auth-card__header">
+          <span className="brand__mark auth-card__mark" aria-hidden="true">N</span>
+          <h1 className="auth-card__title">{title}</h1>
+        </header>
         {children}
-        <p className="muted small" style={{ textAlign: "center", marginTop: "1.5rem" }}>
+        <p className="muted small auth-card__switch">
           <Link to="/login" className="btn btn--link">Back to sign in</Link>
         </p>
       </div>
@@ -52,7 +52,7 @@ export function ForgotPassword() {
   }
 
   return (
-    <Shell prompt="$ forgot-password" title="Reset your password">
+    <Shell title="Reset your password">
       {message ? (
         <Alert tone="success">{message}</Alert>
       ) : (
@@ -89,14 +89,14 @@ export function ResetPassword() {
 
   if (!token) {
     return (
-      <Shell prompt="$ reset-password" title="Reset your password">
+      <Shell title="Reset your password">
         <Alert>This page needs the link from your email. <Link to="/forgot-password">Ask for a new one.</Link></Alert>
       </Shell>
     );
   }
 
   return (
-    <Shell prompt="$ reset-password" title="Choose a new password">
+    <Shell title="Choose a new password">
       {done ? (
         <Alert tone="success">{done} Other devices have been signed out.</Alert>
       ) : (
@@ -126,7 +126,7 @@ export function VerifyEmail() {
   }, [token]);
 
   return (
-    <Shell prompt="$ verify-email" title="Email verification">
+    <Shell title="Email verification">
       {state.status === "working" && <p role="status" className="muted">Checking your link...</p>}
       {state.status === "done" && <Alert tone="success">{state.text}</Alert>}
       {state.status === "error" && <Alert>{state.text} You can send a new link from Settings.</Alert>}
@@ -192,7 +192,7 @@ export function OAuthCallback() {
   }
 
   return (
-    <Shell prompt="$ sign-in" title={view.status === "link" ? `Link ${name} to your account` : `Signing in with ${name}`}>
+    <Shell title={view.status === "link" ? `Link ${name} to your account` : `Signing in with ${name}`}>
       {view.status === "working" && <p role="status" className="muted">Finishing sign-in...</p>}
       {view.status === "error" && <Alert>{view.text}</Alert>}
       {view.status === "link" && (

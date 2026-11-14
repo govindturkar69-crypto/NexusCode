@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Users } from "lucide-react";
+import Avatar from "./ui/Avatar";
 import { apiFetch } from "../api/client";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
@@ -56,10 +58,10 @@ function MembersPanel({ projectId, members, currentUserId, isOwner, onChanged, o
 
   return (
     <section aria-labelledby="members-title">
-      <h2 id="members-title" className="section-title">👥 Members ({members.length})</h2>
+      <h2 id="members-title" className="section-title"><Users size={17} aria-hidden="true" /> Members ({members.length})</h2>
       <Card>
         {isOwner && (
-          <form onSubmit={addMember} className="row" style={{ marginBottom: "1rem" }}>
+          <form onSubmit={addMember} className="member-add">
             <Input
               label="Add a member by username"
               hideLabel
@@ -70,7 +72,7 @@ function MembersPanel({ projectId, members, currentUserId, isOwner, onChanged, o
               className="grow"
             />
             <label className="visually-hidden" htmlFor="new-member-role">Role for the new member</label>
-            <select id="new-member-role" className="input" style={{ width: "auto" }} value={newRole} onChange={(e) => setNewRole(e.target.value)}>
+            <select id="new-member-role" className="input member-add__role" value={newRole} onChange={(e) => setNewRole(e.target.value)}>
               {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
             </select>
             <Button type="submit" disabled={busy || !username.trim()}>Add</Button>
@@ -79,13 +81,16 @@ function MembersPanel({ projectId, members, currentUserId, isOwner, onChanged, o
 
         {error && <p role="alert" className="small text-danger" style={{ marginBottom: "0.75rem" }}>{error}</p>}
 
-        <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0, "--gap": "0.5rem" }}>
+        <ul className="member-list">
           {members.map((member) => {
             const isMe = member.user_id === currentUserId;
             return (
-              <li key={member.user_id} className="card card--inset row row--between">
-                <span className="small">{member.username}{isMe && " (you)"}</span>
-                <span className="row" style={{ "--gap": "0.5rem" }}>
+              <li key={member.user_id} className="member-list__item">
+                <span className="member-list__who">
+                  <Avatar name={member.username} size="sm" decorative />
+                  <span className="small">{member.username}{isMe && " (you)"}</span>
+                </span>
+                <span className="member-list__actions">
                   {isOwner ? (
                     <>
                       <label className="visually-hidden" htmlFor={`role-${member.user_id}`}>Role of {member.username}</label>

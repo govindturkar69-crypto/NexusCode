@@ -1,6 +1,7 @@
 import { MAX_OUTPUT_CHARS, RUN_TIMEOUT_MS } from "../runners/runController";
 import { CopyButton } from "./AIMarkdown";
 import Button from "./ui/Button";
+import Spinner from "./ui/Spinner";
 
 const STATUS_TEXT = {
   ok: { text: "Finished", tone: "text-success" },
@@ -26,7 +27,7 @@ function RunPanel({ result, running, loading, onClear }) {
     <section className="run-panel" aria-label="Run output">
       <div className="row row--between">
         <div role="status" className="small">
-          {running && !loading && <span className="muted">Running...</span>}
+          {running && !loading && <span className="muted run-panel__running"><Spinner size={12} /> Running...</span>}
           {running && loading?.stage === "starting" && <span className="muted">Starting Python...</span>}
           {running && loading?.stage === "download" && (
             <label htmlFor="python-download" className="muted">

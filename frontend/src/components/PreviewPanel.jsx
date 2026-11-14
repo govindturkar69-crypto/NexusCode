@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildPreviewDocument, defaultEntry, isHtmlFile, resolveProjectPath } from "../editor/preview";
+import { RotateCw, X } from "lucide-react";
 import Button from "./ui/Button";
 
 const MAX_CONSOLE_LINES = 500;
@@ -129,8 +130,8 @@ function PreviewPanel({ files, readFile, refreshKey, preferredEntry, onClose }) 
         <select id="preview-entry" className="input input--sm" value={entry ?? ""} onChange={(e) => setChosen(e.target.value)}>
           {htmlPaths.map((path) => <option key={path} value={path}>{path}</option>)}
         </select>
-        <Button size="sm" variant="ghost" onClick={reload}>↻ Reload</Button>
-        {onClose && <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>}
+        <Button size="sm" variant="ghost" onClick={reload} icon={<RotateCw size={13} aria-hidden="true" />}>Reload</Button>
+        {onClose && <Button size="sm" variant="ghost" onClick={onClose} icon={<X size={13} aria-hidden="true" />}>Close</Button>}
       </div>
       {error && <p role="alert" className="small text-danger" style={{ padding: "0.5rem" }}>{error}</p>}
       {!entry && <p className="muted small" style={{ padding: "0.5rem" }}>Add an .html file to preview it.</p>}

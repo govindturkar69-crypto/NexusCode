@@ -1,11 +1,13 @@
+import { ChevronDown, ChevronRight, FilePlus, Folder, FolderOpen, Pencil, Trash2 } from "lucide-react";
+import FileIcon from "./FileIcon";
 import Button from "./ui/Button";
 
 function RowActions({ label, onNewFile, onRename, onDelete }) {
   return (
     <span className="file-tree__actions">
-      {onNewFile && <Button variant="ghost" size="icon" aria-label={`New file in ${label}`} title="New file" onClick={onNewFile}>+</Button>}
-      <Button variant="ghost" size="icon" aria-label={`Rename ${label}`} title="Rename" onClick={onRename}>✎</Button>
-      <Button variant="ghost" size="icon" aria-label={`Delete ${label}`} title="Delete" onClick={onDelete}>✕</Button>
+      {onNewFile && <Button variant="subtle" size="icon" aria-label={`New file in ${label}`} title="New file" onClick={onNewFile}><FilePlus size={13} aria-hidden="true" /></Button>}
+      <Button variant="subtle" size="icon" aria-label={`Rename ${label}`} title="Rename" onClick={onRename}><Pencil size={12} aria-hidden="true" /></Button>
+      <Button variant="subtle" size="icon" aria-label={`Delete ${label}`} title="Delete" onClick={onDelete}><Trash2 size={12} aria-hidden="true" /></Button>
     </span>
   );
 }
@@ -21,7 +23,11 @@ function Nodes({ nodes, depth, tree }) {
             <li key={`folder:${node.path}`}>
               <div className="file-tree__row" style={indent}>
                 <button type="button" className="file-tree__name" aria-expanded={!collapsed} onClick={() => tree.onToggleFolder(node.path)}>
-                  <span aria-hidden="true">{collapsed ? "▸" : "▾"} 📁</span> {node.name}
+                  <span className="file-tree__icons" aria-hidden="true">
+                    {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                    {collapsed ? <Folder size={14} className="file-icon file-icon--folder" /> : <FolderOpen size={14} className="file-icon file-icon--folder" />}
+                  </span>
+                  <span className="file-tree__label">{node.name}</span>
                 </button>
                 {tree.canEdit && (
                   <RowActions
@@ -41,7 +47,8 @@ function Nodes({ nodes, depth, tree }) {
           <li key={node.file.id}>
             <div className={`file-tree__row ${active ? "file-tree__row--active" : ""}`} style={indent}>
               <button type="button" className="file-tree__name" aria-current={active ? "true" : undefined} onClick={() => tree.onOpen(node.file)}>
-                {node.name}
+                <span className="file-tree__icons file-tree__icons--file" aria-hidden="true"><FileIcon name={node.name} /></span>
+                <span className="file-tree__label">{node.name}</span>
               </button>
               {tree.canEdit && (
                 <RowActions label={node.path} onRename={() => tree.onRenameFile(node.file)} onDelete={() => tree.onDeleteFile(node.file)} />

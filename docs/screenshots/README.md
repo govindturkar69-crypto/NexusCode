@@ -7,6 +7,17 @@ server, driven by headless Chromium (Playwright) at 1440×900 in the dark theme.
 production data and no real accounts or emails appear in them. PNGs are palette-
 optimized (about 195 KB for the set).
 
+**Updated on 2026-11-14 after the C6 UI polish.** These were re-captured the same way, from
+the production build (`vite preview`), with reduced motion on so that no animation is caught
+halfway: `00`, `01`, `02`, `03`, `04` and `08`, plus `frontend/public/og-image.png`.
+`06`, `07` and `10` are **still the pre-C6 images**:
+- `06` and `07` need a real Gemini agent run.
+- `10` needs a real LiveKit call.
+Re-taking those is a manual step and is listed below.
+
+The landing page's own screenshots (`frontend/public/landing/*.webp`, board and editor in
+both themes) come from the same local demo stack.
+
 | File | What it shows | How it was made |
 |------|---------------|-----------------|
 | `00-landing.png` | The public landing page at `/` (signed out). | Automated. |
@@ -20,6 +31,10 @@ optimized (about 195 KB for the set).
 | `10-video-meeting.png` | A real two-person LiveKit call (`demo_priya` and `demo_sam`) with mic / camera / screen-share controls and device pickers. | Automated. The video is Chromium's **fake camera test pattern** and the devices are its fake devices ("Fake Default Audio Input", "fake_device_0"); the call itself was real. |
 
 ## Not captured
+
+- **`06-agent-fix.png`, `07-agent-diff.png` and `10-video-meeting.png` are still the
+  pre-C6 look.** Re-take them with the same flows once a Gemini key and a LiveKit project
+  can be used for a demo run.
 
 - **`05-run-python.png` — needs a manual screenshot.** The automated run clicked Run on
   `src/main.py` but the output did not appear within the 30-second limit, twice

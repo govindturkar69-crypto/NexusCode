@@ -2,6 +2,7 @@ import * as decoding from "lib0/decoding";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import { wsBase } from "../api/client";
+import { colorFor } from "./colors";
 import { ticketedSocketClass } from "./ticketedSocket";
 
 // One collaborative code file: a Yjs document kept in sync with the server over
@@ -20,13 +21,8 @@ export const PERMANENT_CLOSES = {
   4013: "You have too many files open for live editing. Close some tabs and reopen this one.",
 };
 
-const COLORS = ["#e5534b", "#d97706", "#16a34a", "#0891b2", "#2563eb", "#7c3aed", "#db2777", "#65a30d", "#ea580c", "#0d9488"];
-
-export function colorFor(name) {
-  let hash = 0;
-  for (const ch of String(name)) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
-  return COLORS[hash % COLORS.length];
-}
+// Lives in its own module so avatars can use it without pulling Yjs into the main bundle
+export { colorFor } from "./colors";
 
 /**
  * Opens a file's live document. Returns

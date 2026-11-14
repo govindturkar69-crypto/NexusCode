@@ -78,4 +78,44 @@ describe('Projects page', () => {
     await user.keyboard('{Enter}')
     expect(await screen.findByText('Board page')).toBeInTheDocument()
   })
+
+  it('shows skeletons while loading, labelled for screen readers', async () => {
+    stubRoutes({ 'GET /me': [200, ME], 'GET /projects': [200, { projects: [], total: 0 }] })
+    renderProjects()
+    expect(screen.getByRole('status')).toHaveTextContent('Loading projects')
+    expect(await screen.findByText(/No projects yet/)).toBeInTheDocument()
+  })
+
+  it('a failed load explains itself and Try again reloads', async () => {
+    const user = userEvent.setup()
+    stubRoutes({
+      'GET /me': [200, ME],
+      'GET /projects': [[500, { detail: 'Server is unwell' }], [200, { projects: [PROJECT], total: 1 }]],
+    })
+    renderProjects()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your projects")
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('link', { name: 'Alpha' })).toBeInTheDocument()
+  })
+
+  it('creates a project from the dialog, validating the name first', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubRoutes({
+      'GET /me': [200, ME],
+      'GET /projects': [[200, { projects: [], total: 0 }], [200, { projects: [PROJECT], total: 1 }]],
+      'POST /projects': [201, { project: PROJECT, message: 'ok' }],
+    })
+    renderProjects()
+    await user.click(await screen.findByRole('button', { name: 'New project' }))
+    const dialog = screen.getByRole('dialog', { name: 'New project' })
+    await user.click(within(dialog).getByRole('button', { name: 'Create project' }))
+    expect(within(dialog).getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true')
+    expect(within(dialog).getByText('Give the project a name.')).toBeInTheDocument()
+    await user.type(within(dialog).getByLabelText('Name'), 'Alpha')
+    await user.click(within(dialog).getByRole('button', { name: 'Create project' }))
+    expect(await screen.findByRole('link', { name: 'Alpha' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const sent = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
+    expect(JSON.parse(sent[1].body)).toEqual({ name: 'Alpha', description: null })
+  })
 })

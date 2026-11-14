@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { Activity } from "lucide-react";
+import Avatar from "./ui/Avatar";
+import Skeleton, { LoadingRegion } from "./ui/Skeleton";
 import { apiFetch } from "../api/client";
 import { describeActivity, mergeActivity } from "../projects/activity";
 import { formatMessageTime } from "../projects/chat";
@@ -41,17 +44,25 @@ function ActivityPanel({ projectId, refreshKey }) {
 
   return (
     <section className="stack">
-      <h2 className="section-title">📰 Activity</h2>
+      <h2 className="section-title"><Activity size={17} aria-hidden="true" /> Activity</h2>
       <Card>
-        {!loaded && <p role="status" className="muted small">Loading activity...</p>}
+        {!loaded && (
+          <LoadingRegion label="Loading activity…" className="stack">
+            <Skeleton height={12} width="80%" />
+            <Skeleton height={12} width="65%" />
+          </LoadingRegion>
+        )}
         {loaded && entries.length === 0 && !error && <p className="muted small">Nothing has happened here yet.</p>}
         {error && <p role="alert" className="small text-danger">{error}</p>}
         {entries.length > 0 && (
-          <ul className="activity-list" aria-label="Project activity">
-            {entries.map((entry) => (
-              <li key={entry.id} className="small">
-                <strong>{entry.username ?? "Deleted user"}</strong> {describeActivity(entry)}{" "}
-                <time className="hint" dateTime={entry.created_at}>{formatMessageTime(entry.created_at)}</time>
+          <ul className="activity-list motion-stagger" aria-label="Project activity">
+            {entries.map((entry, i) => (
+              <li key={entry.id} className="activity-item" style={{ "--i": i }}>
+                <Avatar name={entry.username ?? "?"} size="xs" decorative />
+                <span>
+                  <strong>{entry.username ?? "Deleted user"}</strong> {describeActivity(entry)}{" "}
+                  <time className="activity-item__time" dateTime={entry.created_at}>{formatMessageTime(entry.created_at)}</time>
+                </span>
               </li>
             ))}
           </ul>

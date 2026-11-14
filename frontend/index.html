@@ -5,6 +5,27 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
+    <!-- Theme and motion before the first paint, so a light-theme user never sees a dark
+         flash. Same keys as src/theme/theme.js and src/motion/motion.js. -->
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement, user = null, token = localStorage.getItem("token");
+          if (token) {
+            var part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+            while (part.length % 4) part += "=";
+            user = JSON.parse(atob(part)).sub || null;
+          }
+          var theme = localStorage.getItem(user ? "theme:" + user : "theme");
+          if (theme !== "light" && theme !== "dark") {
+            theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          }
+          root.dataset.theme = theme;
+          var motion = localStorage.getItem("motion");
+          if (motion === "reduce" || motion === "full") root.dataset.motion = motion;
+        } catch (e) {}
+      })();
+    </script>
     <title>NexusCode — plan, write, run and ship code together</title>
     <meta name="description" content="A workspace for small software teams: Kanban board with roles, multi-file code editor with real-time collaboration, in-browser Python/JS/HTML runners, an AI coding agent, chat and group video." />
     <link rel="canonical" href="https://nexus-code-chi.vercel.app/" />

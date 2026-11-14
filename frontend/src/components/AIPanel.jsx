@@ -3,16 +3,18 @@ import { DiffEditor } from "@monaco-editor/react";
 import { aiErrorText } from "../api/aiErrors";
 import { apiStream } from "../api/client";
 import { useTheme } from "../theme/useTheme";
+import { defineNexusThemes, monacoTheme } from "../editor/monacoThemes";
+import { Bug, FileText, FlaskConical, Lightbulb, RefreshCw, Square } from "lucide-react";
 import AIMarkdown, { CopyButton } from "./AIMarkdown";
 import Button from "./ui/Button";
 import Modal from "./ui/Modal";
 
 const ACTIONS = [
-  ["explain", "💡 Explain"],
-  ["bugs", "🐛 Find bugs"],
-  ["docs", "📄 Generate docs"],
-  ["tests", "🧪 Write tests"],
-  ["refactor", "♻️ Refactor"],
+  ["explain", "Explain", Lightbulb],
+  ["bugs", "Find bugs", Bug],
+  ["docs", "Generate docs", FileText],
+  ["tests", "Write tests", FlaskConical],
+  ["refactor", "Refactor", RefreshCw],
 ];
 
 // Matches the backend limit
@@ -46,7 +48,8 @@ function DiffDialog({ path, language, original, modified, onApply, onClose }) {
         language={language}
         original={original}
         modified={modified}
-        theme={theme === "dark" ? "vs-dark" : "light"}
+        beforeMount={defineNexusThemes}
+        theme={monacoTheme(theme)}
         options={{ readOnly: true, minimap: { enabled: false }, fontSize: 13 }}
       />
     </Modal>
@@ -107,8 +110,8 @@ function AIPanel({ projectId, files, activeFile, activeContent, canEdit, beforeA
   return (
     <div className="stack ai-panel">
       <div className="ai-panel__actions">
-        {ACTIONS.map(([action, label]) => (
-          <Button key={action} size="sm" onClick={() => ask(action)} disabled={streaming || !activeFile}>{label}</Button>
+        {ACTIONS.map(([action, label, Icon]) => (
+          <Button key={action} size="sm" variant="secondary" icon={<Icon size={13} aria-hidden="true" />} onClick={() => ask(action)} disabled={streaming || !activeFile}>{label}</Button>
         ))}
       </div>
 
@@ -147,7 +150,7 @@ function AIPanel({ projectId, files, activeFile, activeContent, canEdit, beforeA
       </div>
 
       <div className="row" style={{ "--gap": "0.5rem" }}>
-        {streaming && <Button size="sm" variant="ghost" onClick={() => controller.current?.abort()}>■ Stop</Button>}
+        {streaming && <Button size="sm" variant="ghost" onClick={() => controller.current?.abort()} icon={<Square size={11} aria-hidden="true" />}>Stop</Button>}
         {reply && !streaming && <CopyButton text={reply} label="Copy reply" />}
         {reply && !streaming && canEdit && target && !onTargetFile && (
           <span className="hint" style={{ margin: 0 }}>Open {target.path} again to apply code from this reply.</span>

@@ -1,15 +1,21 @@
-/* App-wide base styles. Tokens and component classes live in styles/theme.css. */
+/* App-wide base styles. Order: tokens, components, pages, motion; then base elements. */
+@import './styles/tokens.css';
+@import './styles/components.css';
+@import './styles/shell.css';
 @import './styles/theme.css';
+@import './styles/motion.css';
 
 :root {
   font-family: var(--font-sans);
-  line-height: 1.45;
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
   color: var(--color-text);
   background: var(--color-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
 }
 
 *,
@@ -22,14 +28,27 @@ body {
   margin: 0;
   min-height: 100vh;
   background: var(--color-bg);
+  overflow-x: hidden;
 }
 
 p {
   margin: 0;
 }
 
-/* Visible focus ring for keyboard users (buttons, links, checkboxes, cards) */
+h1, h2, h3, h4 { line-height: var(--leading-tight); }
+
+a { color: var(--color-accent-text); }
+
+img, svg, video { max-width: 100%; }
+
+/* Visible focus ring for keyboard users, everywhere */
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
+
+::selection { background: var(--color-accent-soft); }
+
+/* Lucide icons line up with text and follow its colour */
+.icon { flex-shrink: 0; vertical-align: -0.15em; }

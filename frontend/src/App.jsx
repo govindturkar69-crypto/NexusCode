@@ -1,11 +1,13 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import AppBar from "./components/AppBar";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
-import ThemeToggle from "./components/ThemeToggle";
 import AuthProvider from "./auth/AuthProvider";
 import ThemeProvider from "./theme/ThemeProvider";
 import HomeRoute from "./components/HomeRoute";
+import AppShell from "./components/shell/AppShell";
+import PublicHeader from "./components/shell/PublicHeader";
+import { ToastProvider } from "./components/ui/Toast";
+import Spinner from "./components/ui/Spinner";
 
 // Every page is its own chunk, so e.g. Monaco and Recharts only download
 // when their pages are opened.
@@ -24,25 +26,22 @@ const VerifyEmail = lazy(() => import("./pages/AccountPages").then((m) => ({ def
 const OAuthCallback = lazy(() => import("./pages/AccountPages").then((m) => ({ default: m.OAuthCallback })));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const protect = (element) => (
-  <ProtectedRoute>
-    <AppBar />
-    {element}
-  </ProtectedRoute>
-);
-
-// Pages anyone can open, with the theme toggle but not the signed-in controls
-const signedOut = (element) => (
-  <>
-    <div className="app-bar"><ThemeToggle /></div>
-    {element}
-  </>
-);
+// Pages anyone can open: the public header (brand + theme toggle), then the page,
+// fading in on each route change
+function SignedOut({ children }) {
+  const { pathname } = useLocation();
+  return (
+    <>
+      <PublicHeader />
+      <div key={pathname} className="page-transition">{children}</div>
+    </>
+  );
+}
 
 function PageLoading() {
   return (
-    <main className="page">
-      <p role="status" className="muted" style={{ padding: "3rem" }}>Loading...</p>
+    <main className="page page-loading">
+      <Spinner size={20} label="Loading…" />
     </main>
   );
 }
@@ -52,33 +51,30 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
-          <Suspense fallback={<PageLoading />}>
-            <Routes>
-              <Route path="/" element={<HomeRoute />} />
-              <Route
-                path="/login"
-                element={
-                  <>
-                    <div className="app-bar"><ThemeToggle /></div>
-                    <Login />
-                  </>
-                }
-              />
-              <Route path="/forgot-password" element={signedOut(<ForgotPassword />)} />
-              <Route path="/reset-password" element={signedOut(<ResetPassword />)} />
-              <Route path="/verify-email" element={signedOut(<VerifyEmail />)} />
-              <Route path="/oauth/callback" element={signedOut(<OAuthCallback />)} />
-              <Route path="/projects" element={protect(<Projects />)} />
-              <Route path="/projects/:projectId" element={protect(<Board />)} />
-              <Route path="/ai" element={protect(<AIAssistant />)} />
-              <Route path="/projects/:projectId/editor" element={protect(<CodeEditor />)} />
-              <Route path="/dashboard" element={protect(<Dashboard />)} />
-              <Route path="/admin" element={protect(<AdminDashboard />)} />
-              <Route path="/projects/:projectId/meeting" element={protect(<VideoMeeting />)} />
-              <Route path="/settings" element={protect(<Settings />)} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+          <ToastProvider>
+            <Suspense fallback={<PageLoading />}>
+              <Routes>
+                <Route path="/" element={<HomeRoute />} />
+                <Route path="/login" element={<SignedOut><Login /></SignedOut>} />
+                <Route path="/forgot-password" element={<SignedOut><ForgotPassword /></SignedOut>} />
+                <Route path="/reset-password" element={<SignedOut><ResetPassword /></SignedOut>} />
+                <Route path="/verify-email" element={<SignedOut><VerifyEmail /></SignedOut>} />
+                <Route path="/oauth/callback" element={<SignedOut><OAuthCallback /></SignedOut>} />
+                {/* Signed-in pages share one persistent shell (sidebar, header) */}
+                <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+                  <Route path="/projects" element={<Projects />} />
+                  <Route path="/projects/:projectId" element={<Board />} />
+                  <Route path="/ai" element={<AIAssistant />} />
+                  <Route path="/projects/:projectId/editor" element={<CodeEditor />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/projects/:projectId/meeting" element={<VideoMeeting />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Route>
+                <Route path="*" element={<SignedOut><NotFound /></SignedOut>} />
+              </Routes>
+            </Suspense>
+          </ToastProvider>
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>

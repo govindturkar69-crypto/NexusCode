@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
+import { durationMs, motionAllowed } from "../motion/motion";
 import { tokenSubject } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 import { applyTheme, storedTheme, storeTheme, systemTheme, watchSystemTheme } from "./theme";
@@ -27,7 +29,20 @@ function ThemeProvider({ children }) {
   const toggleTheme = useCallback(() => {
     const next = theme === "dark" ? "light" : "dark";
     storeTheme(username, next);
-    setChoice({ username, theme: next });
+    const commit = () => setChoice({ username, theme: next });
+    if (!motionAllowed()) {
+      commit();
+      return;
+    }
+    // A crossfade where the browser has View Transitions, else the colours ease across
+    if (document.startViewTransition) {
+      document.startViewTransition(() => flushSync(commit));
+      return;
+    }
+    const root = document.documentElement;
+    root.classList.add("theme-transition");
+    commit();
+    window.setTimeout(() => root.classList.remove("theme-transition"), durationMs("--duration-base") + 50);
   }, [theme, username]);
 
   const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);

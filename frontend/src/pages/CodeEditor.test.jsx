@@ -78,7 +78,13 @@ const calls = (fetchMock, method, path) =>
   fetchMock.mock.calls.filter(([url, init]) => new URL(url).pathname === path && (init?.method ?? 'GET') === method)
 const sent = (fetchMock, method, path) => JSON.parse(calls(fetchMock, method, path).at(-1)[1].body)
 const tree = () => screen.getByRole('navigation', { name: 'Project files' })
-const tabs = () => screen.getAllByRole('tab').map((t) => t.textContent.replace(' ●', ''))
+// The open-file strip is a group of buttons; the file-name buttons carry the editor-tab__name class
+const openFileButtons = () => {
+  const group = screen.queryByRole('group', { name: 'Open files' })
+  return group ? [...group.querySelectorAll('.editor-tab__name')] : []
+}
+const tabs = () => openFileButtons().map((t) => t.textContent.replace(' ●', ''))
+const openTab = (pattern) => openFileButtons().find((t) => pattern.test(t.textContent))
 
 describe('CodeEditor', () => {
   beforeEach(() => {
@@ -112,7 +118,7 @@ describe('CodeEditor', () => {
       await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
       await waitFor(() => expect(tabs()).toEqual(['b.js', 'a.py']))
       await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('print(1)'))
-      await userEvent.click(screen.getByRole('tab', { name: /b\.js/ }))
+      await userEvent.click(openTab(/b\.js/))
       expect(screen.getByLabelText('Code')).toHaveValue('console.log(2)')
       expect(calls(fetchMock, 'GET', '/code-files/2')).toHaveLength(1)
     })
@@ -202,11 +208,11 @@ describe('CodeEditor', () => {
       const fetchMock = setup('editor', { 'PUT /code-files/2': [200, { code_file: B }] })
       await userEvent.type(await screen.findByLabelText('Code'), '!')
       expect(screen.getByRole('status')).toHaveTextContent(/Unsaved changes/)
-      expect(screen.getByRole('tab', { name: /b\.js/ })).toHaveTextContent('●')
+      expect(openTab(/b\.js/)).toHaveTextContent('●')
       await waitFor(() => expect(calls(fetchMock, 'PUT', '/code-files/2')).toHaveLength(1), { timeout: 3000 })
       expect(sent(fetchMock, 'PUT', '/code-files/2')).toEqual({ content: 'console.log(2)!' })
       await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('All changes saved'))
-      expect(screen.getByRole('tab', { name: /b\.js/ })).not.toHaveTextContent('●')
+      expect(openTab(/b\.js/)).not.toHaveTextContent('●')
     })
 
     it('switching tabs keeps each file separate, and both get saved', async () => {
@@ -306,7 +312,7 @@ describe('CodeEditor', () => {
       expect(calls(fetchMock, 'DELETE', '/code-files/2')).toHaveLength(0)
       await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
       await waitFor(() => expect(within(tree()).queryByRole('button', { name: 'b.js' })).not.toBeInTheDocument())
-      expect(screen.queryAllByRole('tab')).toEqual([])
+      expect(openFileButtons()).toEqual([])
     })
 
     it('deleting a file with unsaved changes does not save them', async () => {
@@ -412,7 +418,7 @@ describe('CodeEditor', () => {
       expect(calls(fetchMock, 'GET', '/projects/7/code/files')).toHaveLength(2)
       expect(await within(tree()).findByRole('button', { name: 'added.py' })).toBeInTheDocument()
       expect(screen.getByText(/deleted or moved by someone else/)).toBeInTheDocument()
-      expect(screen.queryAllByRole('tab')).toEqual([])
+      expect(openFileButtons()).toEqual([])
       vi.useRealTimers()
     })
   })
@@ -700,7 +706,7 @@ describe('CodeEditor', () => {
         await userEvent.click(within(tree()).getByRole('button', { name: 'c.js' }))
         await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('y'))
         expect(screen.queryByText(/ran b\.js/)).not.toBeInTheDocument()
-        await userEvent.click(screen.getByRole('tab', { name: /b\.js/ }))
+        await userEvent.click(openTab(/b\.js/))
         expect(await screen.findByText(/ran b\.js/)).toBeInTheDocument()
       })
 
@@ -822,7 +828,7 @@ describe('CodeEditor', () => {
     it('is only offered to editors', async () => {
       setup('viewer')
       await screen.findByLabelText('Code')
-      expect(screen.queryByRole('button', { name: '🤖 Agent' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument()
     })
 
     it('an accepted edit to an open file updates its tab, and a new file joins the tree', async () => {
@@ -842,10 +848,10 @@ describe('CodeEditor', () => {
         }
       )
       expect(await screen.findByLabelText('Code')).toHaveValue('console.log(2)')
-      await userEvent.click(screen.getByRole('button', { name: '🤖 Agent' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Agent' }))
       await userEvent.type(screen.getByLabelText('Goal'), 'Change the log')
-      await userEvent.click(screen.getByRole('button', { name: '▶ Start' }))
-      await screen.findByText('✅ Done')
+      await userEvent.click(screen.getByRole('button', { name: 'Start' }))
+      await screen.findByText('Done')
       // Nothing saved yet
       expect(calls(base, 'PUT', '/code-files/2')).toHaveLength(0)
       const list = screen.getByRole('list', { name: 'Changes to review' })
@@ -865,10 +871,10 @@ describe('CodeEditor', () => {
       const editor = await screen.findByLabelText('Code')
       await userEvent.clear(editor)
       await userEvent.type(editor, 'typed')
-      await userEvent.click(screen.getByRole('button', { name: '🤖 Agent' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Agent' }))
       await userEvent.type(screen.getByLabelText('Goal'), 'Read it')
-      await userEvent.click(screen.getByRole('button', { name: '▶ Start' }))
-      await screen.findByText('✅ Done')
+      await userEvent.click(screen.getByRole('button', { name: 'Start' }))
+      await screen.findByText('Done')
       const steps = fetchMock.mock.calls.filter(([url]) => new URL(url).pathname === '/ai/agent/runs/5/step')
       expect(JSON.parse(steps[1][1].body).results).toEqual([{ id: 'r1', result: { content: 'typed' } }])
     })
@@ -1012,10 +1018,10 @@ describe('CodeEditor', () => {
       await screen.findByLabelText('Code')
       const session = await liveSession(2)
       act(() => session.text.insert(0, 'console.log(2)'))
-      await userEvent.click(screen.getByRole('button', { name: '🤖 Agent' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Agent' }))
       await userEvent.type(screen.getByLabelText('Goal'), 'Change it')
-      await userEvent.click(screen.getByRole('button', { name: '▶ Start' }))
-      await screen.findByText('✅ Done')
+      await userEvent.click(screen.getByRole('button', { name: 'Start' }))
+      await screen.findByText('Done')
       await userEvent.click(within(screen.getByRole('list', { name: 'Changes to review' })).getByRole('button', { name: 'Accept' }))
       await waitFor(() => expect(session.text.toString()).toBe('console.log(3)'))
       expect(calls(base, 'PUT', '/code-files/2')).toHaveLength(0)
