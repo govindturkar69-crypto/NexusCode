@@ -1,6 +1,7 @@
-/* App-wide base styles. Order: tokens, base elements, components/pages. */
+/* App-wide base styles. Order: tokens, base elements, components/pages, motion. */
 @import './styles/tokens.css';
 @import './styles/theme.css';
+@import './styles/motion.css';
 
 :root {
   font-family: var(--font-sans);

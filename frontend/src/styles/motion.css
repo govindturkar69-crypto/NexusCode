@@ -1,0 +1,104 @@
+/*
+ * Motion layer. Only transform and opacity animate (no layout work), durations and
+ * curves come from tokens.css, and the reduced-motion switch there turns every
+ * movement into a short fade. Usage is documented in docs/DESIGN-SYSTEM.md.
+ */
+@keyframes nx-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes nx-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes nx-rise-in {
+  from { opacity: 0; transform: translate3d(0, var(--motion-distance), 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes nx-drop-in {
+  from { opacity: 0; transform: translate3d(0, calc(var(--motion-distance) * -0.75), 0) scale(var(--motion-scale)); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes nx-scale-in {
+  from { opacity: 0; transform: scale(var(--motion-scale)); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes nx-scale-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(var(--motion-scale)); }
+}
+@keyframes nx-slide-in-right {
+  from { opacity: 0; transform: translate3d(calc(var(--motion-distance) * 3), 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes nx-slide-out-right {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translate3d(calc(var(--motion-distance) * 3), 0, 0); }
+}
+@keyframes nx-slide-in-left {
+  from { transform: translate3d(-100%, 0, 0); }
+  to { transform: none; }
+}
+@keyframes nx-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(calc(1 + (1 - var(--motion-scale)) * 4)); } /* 1.16, or 1 with reduced motion */
+  100% { transform: scale(1); }
+}
+@keyframes nx-shimmer {
+  from { transform: translate3d(-100%, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
+}
+@keyframes nx-spin { to { transform: rotate(360deg); } }
+@keyframes nx-pulse-ring {
+  0% { opacity: 0.7; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.08); }
+}
+@keyframes nx-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes nx-check {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* ---- utilities ---- */
+.motion-fade-in { animation: nx-fade-in var(--duration-base) var(--ease-out) both; }
+.motion-rise-in { animation: nx-rise-in var(--duration-slow) var(--ease-out) both; }
+.motion-scale-in { animation: nx-scale-in var(--duration-base) var(--ease-out) both; }
+.motion-pop { animation: nx-pop var(--duration-slow) var(--ease-spring); }
+/* Lists: give each item style="--i: n" and it starts n stagger steps later (capped) */
+.motion-stagger > * { animation: nx-rise-in var(--duration-slow) var(--ease-out) both; animation-delay: calc(min(var(--i, 0), 10) * var(--stagger)); }
+
+/* Page/route change: a quick fade with a slight rise. Content is never hidden for
+   longer than the animation, and nothing animates on a reload's first paint. */
+.page-transition { animation: nx-rise-in var(--duration-base) var(--ease-out) both; }
+
+/* Scroll reveal (useReveal): only elements that START below the fold are hidden, so
+   the first paint and LCP are untouched. Revealed once, never re-hidden. */
+.reveal-pending { opacity: 0; transform: translate3d(0, calc(var(--motion-distance) * 2), 0); }
+.reveal-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out);
+  transition-delay: calc(min(var(--i, 0), 6) * var(--stagger));
+}
+
+/* Theme switch: colours ease across instead of snapping. Only while switching, so
+   loading a page never animates its colours. */
+:root.theme-transition,
+:root.theme-transition *,
+:root.theme-transition *::before,
+:root.theme-transition *::after {
+  transition: background-color var(--duration-base) var(--ease-in-out),
+    border-color var(--duration-base) var(--ease-in-out),
+    color var(--duration-base) var(--ease-in-out),
+    fill var(--duration-base) var(--ease-in-out),
+    box-shadow var(--duration-base) var(--ease-in-out) !important;
+}
+
+/* View Transitions (theme switch where supported): a short crossfade */
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: var(--duration-base); animation-timing-function: var(--ease-in-out); }
+
+/* Reduced motion: no endless or decorative animations at all */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .skeleton::after,
+  :root:not([data-motion="full"]) .pulse-ring::after { animation: none; }
+  :root:not([data-motion="full"]) .spinner { animation-duration: 1.6s; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
+:root[data-motion="reduce"] .skeleton::after,
+:root[data-motion="reduce"] .pulse-ring::after { animation: none; }
+:root[data-motion="reduce"] .spinner { animation-duration: 1.6s; }
