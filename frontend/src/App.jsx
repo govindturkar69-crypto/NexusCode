@@ -6,6 +6,7 @@ import ThemeToggle from "./components/ThemeToggle";
 import AuthProvider from "./auth/AuthProvider";
 import ThemeProvider from "./theme/ThemeProvider";
 import HomeRoute from "./components/HomeRoute";
+import { ToastProvider } from "./components/ui/Toast";
 
 // Every page is its own chunk, so e.g. Monaco and Recharts only download
 // when their pages are opened.
@@ -52,6 +53,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
+          <ToastProvider>
           <Suspense fallback={<PageLoading />}>
             <Routes>
               <Route path="/" element={<HomeRoute />} />
@@ -79,6 +81,7 @@ function App() {
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          </ToastProvider>
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>

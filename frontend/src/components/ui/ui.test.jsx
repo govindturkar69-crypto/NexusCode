@@ -76,8 +76,12 @@ describe('Modal', () => {
     await user.click(screen.getByRole('button', { name: 'Open dialog' }))
     await user.tab() // input -> Inside
     expect(screen.getByRole('button', { name: 'Inside' })).toHaveFocus()
+    await user.tab() // -> the close button, last in the dialog
+    expect(screen.getByRole('button', { name: 'Close dialog' })).toHaveFocus()
     await user.tab() // wraps back to the input
     expect(screen.getByLabelText('Name')).toHaveFocus()
+    await user.tab({ shift: true }) // and backwards out of the first wraps to the last
+    expect(screen.getByRole('button', { name: 'Close dialog' })).toHaveFocus()
   })
 })
 

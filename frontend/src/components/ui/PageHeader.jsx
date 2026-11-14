@@ -1,14 +1,15 @@
-// "$ eyebrow" line, page title, and optional actions on the right.
-// tone: accent (default) | danger | success
-function PageHeader({ eyebrow, title, actions, tone, children }) {
+// Page title with an optional description and actions on the right.
+// `eyebrow`/`tone` are accepted for older call sites but no longer shown: the app
+// shell's breadcrumbs say where you are.
+function PageHeader({ title, description, actions, children }) {
   return (
     <header className="page-header">
       <div className="page-header__top">
-        <div>
-          {eyebrow && <div className={`eyebrow ${tone ? `eyebrow--${tone}` : ""}`}>$ {eyebrow}</div>}
+        <div className="page-header__text">
           <h1 className="page-title">{title}</h1>
+          {description && <p className="page-header__description">{description}</p>}
         </div>
-        {actions && <div className="row">{actions}</div>}
+        {actions && <div className="page-header__actions">{actions}</div>}
       </div>
       {children}
     </header>
