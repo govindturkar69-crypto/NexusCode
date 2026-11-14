@@ -6,9 +6,10 @@ import ThemeToggle from "../ThemeToggle";
 function PublicHeader({ showAuthLinks = false }) {
   return (
     <header className="public-header">
-      <Link to="/" className="brand" aria-label="NexusCode home">
+      <Link to="/" className="brand">
         <span className="brand__mark" aria-hidden="true">N</span>
         <span className="brand__name">Nexus<span>Code</span></span>
+        <span className="visually-hidden"> home</span>
       </Link>
       <div className="public-header__actions">
         {showAuthLinks && (

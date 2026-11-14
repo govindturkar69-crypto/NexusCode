@@ -138,9 +138,10 @@ function AppShell() {
 
       <aside id={sidebarId} ref={sidebarRef} className="sidebar" aria-label="Sidebar">
         <div className="sidebar__brand">
-          <Link to="/projects" className="brand" aria-label="NexusCode home">
+          <Link to="/projects" className="brand">
             <span className="brand__mark" aria-hidden="true">N</span>
             <span className="brand__name">Nexus<span>Code</span></span>
+            <span className="visually-hidden"> home</span>
           </Link>
           <button type="button" className="sidebar__close btn btn--subtle btn--icon" onClick={() => setDrawerOpen(false)} aria-label="Close navigation">
             <X size={18} aria-hidden="true" />
@@ -164,9 +165,12 @@ function AppShell() {
               menuClassName="project-switcher__menu"
               items={switcherItems}
               renderTrigger={(props) => (
-                <button type="button" className="project-switcher__button" {...props} aria-label={`Project: ${currentProject?.name ?? "loading"}. Switch project`}>
+                <button type="button" className="project-switcher__button" {...props} aria-label={undefined}>
                   <span className="project-switcher__avatar" aria-hidden="true">{(currentProject?.name ?? "?").slice(0, 1).toUpperCase()}</span>
+                  {/* The name is read from the visible text, so voice control can say it */}
+                  <span className="visually-hidden">Project: </span>
                   <span className="project-switcher__name">{currentProject?.name ?? "Project"}</span>
+                  <span className="visually-hidden">. Switch project</span>
                   <ChevronsUpDown size={14} aria-hidden="true" />
                 </button>
               )}
@@ -235,8 +239,9 @@ function AppShell() {
                   </div>
                 }
                 renderTrigger={(props) => (
-                  <button type="button" className="user-menu__trigger" {...props} aria-label={`Account menu for ${user.username}`}>
+                  <button type="button" className="user-menu__trigger" {...props} aria-label={undefined}>
                     <Avatar name={user.username} size="sm" decorative />
+                    <span className="visually-hidden">Account menu for {user.username}</span>
                   </button>
                 )}
               />
