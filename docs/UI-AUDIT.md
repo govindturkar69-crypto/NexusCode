@@ -136,3 +136,34 @@ Lazy-loading the shell would save signed-out visitors about 5 kB gzip. For signe
 - It now holds the design tokens, the component library, the shell, the motion layer and every page's styles.
 - That is 12.4 kB gzip.
 - There is no CSS framework or font file. The editor's 86.9 kB CSS is Monaco's own, split with its route.
+
+## Accessibility and performance after C6
+
+The same script (`quality.mjs`: axe-core 4.14, Playwright, Chromium) ran against the same local production build as the baseline. It covers 12 pages in both themes.
+
+The after-run waits 600 ms before running axe, so that entrance animations have finished. Without the wait, text that is still fading in reads as low contrast. The baseline pages had no entrance animations.
+
+| Check | Before | After |
+| --- | --- | --- |
+| axe critical | 2 nodes (aria-required-children, editor tabs) | **0** |
+| axe serious | 43 nodes (color-contrast 31, nested-interactive 12) | **0** |
+| axe moderate | 14 nodes (region) | **0** |
+| axe minor | 2 nodes (aria-allowed-role) | **0** |
+| Horizontal scroll at 320 px | none | none (12 pages) |
+| Landing FCP / LCP / CLS / TBT | 92 / 528 ms / 0 / 0 ms | 68 / 440 ms / 0 / 0 ms |
+| Landing JS | 87 kB | 99 kB |
+| Editor FCP / LCP / CLS / TBT | 84 / 704 ms / 0.005 / 143 ms | 76 / 484 ms / 0.001 / 83 ms |
+
+All figures are the median of 3 runs. These are Lighthouse-style metrics read from the browser's performance APIs; Lighthouse itself is not installed.
+
+What fixed the axe findings:
+- The editor's open-file strip is now a labelled group with `aria-current`, not a tablist holding Close buttons.
+- Kanban cards have a separate drag handle, so there are no nested interactive controls.
+- Every page sits inside one `<main>`: `Page` is now a `div`.
+- The brand link, project switcher and account menu take their names from their visible text plus visually hidden words.
+- Contrast now passes in both themes, including accent text on its soft tint (light theme #0550ae).
+
+Also checked:
+- Keyboard: the shell's skip link, drawer focus return and inert background, menu and tab arrow keys, the modal focus trap, and Kanban drag with Space and the arrow keys (recorded in a Playwright trace).
+- Reduced motion: `motion/motion.test.jsx`, plus the Settings → Appearance → Motion switch.
+- Touch targets grow to 44 px under `(pointer: coarse)`.
