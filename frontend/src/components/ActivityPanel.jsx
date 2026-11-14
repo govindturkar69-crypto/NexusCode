@@ -43,7 +43,7 @@ function ActivityPanel({ projectId, refreshKey }) {
   }
 
   return (
-    <section className="stack">
+    <section className="stack" id="activity">
       <h2 className="section-title"><Activity size={17} aria-hidden="true" /> Activity</h2>
       <Card>
         {!loaded && (

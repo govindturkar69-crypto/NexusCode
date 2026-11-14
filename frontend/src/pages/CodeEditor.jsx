@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { MonacoBinding } from "y-monaco";
 import { downloadProjectZip } from "../api/archive";
@@ -13,6 +13,7 @@ import { isHtmlFile } from "../editor/preview";
 import { collectPythonFiles } from "../runners/pythonProject";
 import { runnerFor, UNSUPPORTED_MESSAGE } from "../runners/runnerFor";
 import { useCodeRunner } from "../runners/useCodeRunner";
+import { useDoParam } from "../utils/useDoParam";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
 import AgentPanel from "../components/AgentPanel";
@@ -412,6 +413,20 @@ function CodeEditor() {
     closeTabs(ids);
     setFiles((prev) => prev.filter((file) => !gone.has(file.id)));
   }
+
+  // ?do=new-file / ?do=agent / ?do=open&file=path (from the command palette), once the files are loaded
+  const [searchParams] = useSearchParams();
+  useDoParam(
+    {
+      "new-file": () => canEdit && setDialog({ kind: "new-file", folder: "" }),
+      open: () => {
+        const wanted = files.find((file) => file.path === searchParams.get("file"));
+        if (wanted) openFile(wanted);
+      },
+      agent: () => canEdit && !showAgent && toggleAgent(),
+    },
+    loadState === "ready",
+  );
 
   function exportZip() {
     setExporting(0);

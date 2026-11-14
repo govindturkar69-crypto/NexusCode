@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Calendar, CodeXml, FileText, Flag, FolderOpen, GripVertical, Plus, Sparkles, Trash2, Upload, Video } from "lucide-react";
 import { apiFetch, apiFetchAll } from "../api/client";
@@ -24,6 +24,7 @@ import PageHeader from "../components/ui/PageHeader";
 import Skeleton, { LoadingRegion } from "../components/ui/Skeleton";
 import { useToast } from "../components/ui/toastContext";
 import Tooltip from "../components/ui/Tooltip";
+import { useDoParam } from "../utils/useDoParam";
 
 // Mirrors the backend allowlist (app/services/storage.py); the server still validates
 const UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.zip,.txt,.md,.csv,.json,.log,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.css,.sql,.yml,.yaml,.toml,.ini";
@@ -112,10 +113,25 @@ function Board() {
   const navigate = useNavigate();
   const toast = useToast();
   const { project, role, canEdit, isOwner, error: projectError, reload: reloadProject } = useProject(projectId);
+  // ?do=new-task (from the command palette): put the cursor in the new-task field
+
   const [members, setMembers] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  // From the command palette: ?do=new-task focuses the new-task field, ?do=task&task=ID opens that task
+  const [searchParams] = useSearchParams();
+  const wantedTask = Number(searchParams.get("task"));
+  useDoParam(
+    {
+      "new-task": () => canEdit && document.getElementById("new-task-title")?.focus(),
+      task: () => {
+        const found = tasks.find((t) => t.id === wantedTask);
+        if (found) setEditingTask(found);
+      },
+    },
+    tasksLoaded && project !== null,
+  );
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [title, setTitle] = useState("");
@@ -263,7 +279,7 @@ function Board() {
       <div className="board-toolbar">
         {canEdit && (
           <form onSubmit={createTask} className="board-toolbar__add">
-            <Input label="New task title" hideLabel placeholder="Add a task…" value={title} onChange={(e) => setTitle(e.target.value)} className="grow" />
+            <Input id="new-task-title" label="New task title" hideLabel placeholder="Add a task…" value={title} onChange={(e) => setTitle(e.target.value)} className="grow" />
             <Button type="submit" disabled={!title.trim()} loading={adding} icon={<Plus size={16} aria-hidden="true" />}>Add task</Button>
             <Button variant="secondary" icon={<Sparkles size={15} aria-hidden="true" />} onClick={() => setSuggesting(true)}>Generate tasks</Button>
           </form>
