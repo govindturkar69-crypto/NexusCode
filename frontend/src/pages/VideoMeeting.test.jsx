@@ -134,7 +134,7 @@ describe('VideoMeeting', () => {
     expect(screen.getByLabelText('olivia (you)')).toBeInTheDocument()
     expect(screen.getByLabelText('eddie')).toHaveAttribute('data-speaking', 'true')
     expect(screen.getByTestId('video-2')).toBeInTheDocument()
-    for (const name of ['🎤 Mute', '📹 Camera off', '🖥️ Share screen', '📵 Leave']) {
+    for (const name of ['Mute', 'Camera off', 'Share screen', 'Leave']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
     expect(screen.getByLabelText('Microphone')).toHaveValue('audioinput-1')
@@ -143,10 +143,10 @@ describe('VideoMeeting', () => {
 
   it('leaves cleanly, stopping its tracks, and can join again', async () => {
     const { room } = await joinCall()
-    await userEvent.click(screen.getByRole('button', { name: '📵 Leave' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Leave' }))
     expect(room.disconnect).toHaveBeenCalledWith(true)
     expect(status()).toHaveTextContent('You left the meeting.')
-    expect(screen.getByRole('button', { name: '📹 Join again' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Join again' })).toBeInTheDocument()
   })
 
   it('ends the call when you navigate away', async () => {
@@ -208,7 +208,7 @@ describe('VideoMeeting', () => {
     lk.cameraError = Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' })
     await joinCall()
     expect(await screen.findByText(/The browser blocked your camera/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '📵 Leave' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Leave' })).toBeInTheDocument()
   })
 
   it('says when there is no microphone', async () => {
@@ -230,6 +230,6 @@ describe('VideoMeeting', () => {
     act(() => room.emit('disconnected', 4))
     expect(await screen.findByRole('alert')).toHaveTextContent('You were removed from this meeting.')
     expect(room.cameraTrack.stop).toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: '📹 Join again' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Join again' })).toBeInTheDocument()
   })
 })

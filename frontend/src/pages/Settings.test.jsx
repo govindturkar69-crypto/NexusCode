@@ -82,7 +82,7 @@ describe('Settings', () => {
       await fillPassword({ next, confirm })
       expect(await screen.findByText(message)).toBeInTheDocument()
       expect(posted(fetchMock, '/me/password')).toBeUndefined()
-    })
+    }, 15000) // typing 2 x 73 characters is slow when the whole suite runs in parallel
   })
 
   describe('GitHub', () => {

@@ -1,3 +1,4 @@
+import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
 import { PROVIDERS, startOAuth } from "../api/oauth";
@@ -18,7 +19,7 @@ function SignInMethodsSection({ methods, error: loadError, reload, notice, onDis
   if (!methods) {
     return (
       <section className="stack">
-        <h2 className="section-title">🔐 Sign-in methods</h2>
+        <h2 className="section-title section-title--icon"><ShieldCheck size={18} aria-hidden="true" /> Sign-in methods</h2>
         <Card className="stack">
           {loadError ? <Alert>{loadError}</Alert> : <p role="status" className="muted small">Loading...</p>}
         </Card>
@@ -55,7 +56,7 @@ function SignInMethodsSection({ methods, error: loadError, reload, notice, onDis
 
   return (
     <section className="stack">
-      <h2 className="section-title">🔐 Sign-in methods</h2>
+      <h2 className="section-title section-title--icon"><ShieldCheck size={18} aria-hidden="true" /> Sign-in methods</h2>
       <Card className="stack">
         {notice && <Alert tone="success" onDismiss={onDismissNotice}>{notice}</Alert>}
         <Alert>{error}</Alert>

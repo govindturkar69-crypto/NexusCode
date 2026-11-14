@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { AlertTriangle, KeyRound, Laptop } from "lucide-react";
 import { apiFetch } from "../api/client";
 import { startGithubLink } from "../api/github";
 import { useAuth } from "../auth/useAuth";
 import Alert from "../components/ui/Alert";
-import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import AppearanceSection from "../components/AppearanceSection";
 import EmailSection from "../components/EmailSection";
+import GithubIcon from "../components/icons/GithubIcon";
 import SignInMethodsSection from "../components/SignInMethodsSection";
 import { useSignInMethods } from "../auth/useSignInMethods";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
@@ -55,7 +57,7 @@ function PasswordSection() {
 
   return (
     <section className="stack">
-      <h2 className="section-title">🔑 Change password</h2>
+      <h2 className="section-title section-title--icon"><KeyRound size={18} aria-hidden="true" /> Change password</h2>
       <Card as="form" onSubmit={submit} className="stack">
         {saved && <Alert tone="success" onDismiss={() => setSaved(false)}>Password changed. Other devices have been signed out.</Alert>}
         <Alert>{error}</Alert>
@@ -63,7 +65,7 @@ function PasswordSection() {
         <Input label="New password" type="password" autoComplete="new-password" required hint="8 to 72 bytes." value={next} onChange={(e) => setNext(e.target.value)} />
         <Input label="Confirm new password" type="password" autoComplete="new-password" required value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
         <div>
-          <Button type="submit" disabled={busy}>{busy ? "Saving..." : "Change password"}</Button>
+          <Button type="submit" loading={busy}>{busy ? "Saving..." : "Change password"}</Button>
         </div>
       </Card>
     </section>
@@ -93,14 +95,14 @@ function SetPasswordSection({ onSet }) {
 
   return (
     <section className="stack">
-      <h2 className="section-title">🔑 Set a password</h2>
+      <h2 className="section-title section-title--icon"><KeyRound size={18} aria-hidden="true" /> Set a password</h2>
       <Card as="form" onSubmit={submit} className="stack">
         <p className="small muted">You sign in with Google or GitHub. Add a password to also sign in with your username, and to delete your account.</p>
         <Alert>{error}</Alert>
         <Input label="New password" type="password" autoComplete="new-password" required hint="8 to 72 bytes." value={next} onChange={(e) => setNext(e.target.value)} />
         <Input label="Confirm new password" type="password" autoComplete="new-password" required value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
         <div>
-          <Button type="submit" disabled={busy}>{busy ? "Saving..." : "Set password"}</Button>
+          <Button type="submit" loading={busy}>{busy ? "Saving..." : "Set password"}</Button>
         </div>
       </Card>
     </section>
@@ -142,7 +144,7 @@ function GitHubSection() {
 
   return (
     <section className="stack">
-      <h2 className="section-title">🐙 GitHub repositories</h2>
+      <h2 className="section-title section-title--icon"><GithubIcon size={18} /> GitHub repositories</h2>
       <Card className="stack">
         <Alert>{error}</Alert>
         {status === null && !error && <p role="status" className="muted small">Checking your connection...</p>}
@@ -242,7 +244,7 @@ function DeleteAccountSection({ hasPassword }) {
 
   return (
     <section className="stack">
-      <h2 className="section-title">⚠️ Delete account</h2>
+      <h2 className="section-title section-title--icon section-title--danger"><AlertTriangle size={18} aria-hidden="true" /> Delete account</h2>
       <Card className="stack">
         <p className="muted small">
           This can't be undone. Your chat messages stay in shared projects under your old name, marked as removed.
@@ -323,10 +325,10 @@ function SessionsSection() {
 
   return (
     <section className="stack">
-      <h2 className="section-title">💻 Sessions</h2>
+      <h2 className="section-title section-title--icon"><Laptop size={18} aria-hidden="true" /> Sessions</h2>
       <Card className="stack">
         <p className="small muted">Signed in somewhere you've lost track of? This signs out every other browser and device. You stay signed in here.</p>
-        <div><Button variant="ghost" onClick={signOutOthers} disabled={busy}>{busy ? "Signing out..." : "Sign out of other devices"}</Button></div>
+        <div><Button variant="secondary" onClick={signOutOthers} loading={busy}>{busy ? "Signing out..." : "Sign out of other devices"}</Button></div>
         {message && <Alert tone="success" onDismiss={() => setMessage("")}>{message}</Alert>}
         <Alert>{error}</Alert>
       </Card>
@@ -355,11 +357,11 @@ function Settings() {
 
   return (
     <Page width={640}>
-      <BackLink to="/projects">All projects</BackLink>
-      <PageHeader eyebrow="settings" title="Profile and settings">
+      <PageHeader title="Profile and settings">
         {user && <p className="muted small">Signed in as <strong>{user.username}</strong></p>}
       </PageHeader>
-      <div className="stack" style={{ gap: "2rem" }}>
+      <div className="stack settings-sections">
+        <AppearanceSection />
         <EmailSection>{({ info }) => <VerifyEmailButton info={info} />}</EmailSection>
         <SignInMethodsSection methods={methods} error={methodsError} reload={reload} notice={notice} onDismissNotice={() => setNotice("")} />
         {passwordSet && <Alert tone="success" onDismiss={() => setPasswordSet("")}>{passwordSet}</Alert>}

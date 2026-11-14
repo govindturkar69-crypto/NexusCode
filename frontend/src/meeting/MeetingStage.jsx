@@ -10,6 +10,7 @@ import {
   VideoTrack,
 } from '@livekit/components-react'
 import { Track } from 'livekit-client'
+import { Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Video, VideoOff } from 'lucide-react'
 import Button from '../components/ui/Button'
 import { mediaErrorText } from './messages'
 
@@ -30,7 +31,7 @@ function Tile({ trackRef }) {
 
   return (
     <figure
-      className={`meeting-tile${speaking && !screen ? ' meeting-tile--speaking' : ''}${screen ? ' meeting-tile--screen' : ''}`}
+      className={`meeting-tile motion-scale-in${speaking && !screen ? ' meeting-tile--speaking' : ''}${screen ? ' meeting-tile--screen' : ''}`}
       aria-label={label}
       data-speaking={speaking && !screen ? 'true' : 'false'}
     >
@@ -40,7 +41,7 @@ function Tile({ trackRef }) {
         <div className="meeting-tile__placeholder" aria-hidden="true">{initials(name)}</div>
       )}
       <figcaption className="meeting-tile__name">
-        {!screen && micMuted && <span aria-label="microphone off" title="Microphone off">🔇 </span>}
+        {!screen && micMuted && <span className="meeting-tile__muted" role="img" aria-label="microphone off" title="Microphone off"><MicOff size={13} aria-hidden="true" /></span>}
         {label}
       </figcaption>
     </figure>
@@ -84,7 +85,7 @@ export default function MeetingStage({ onLeave, onProblem }) {
 
   return (
     <section aria-label="Meeting">
-      <p className="small muted" aria-live="polite">
+      <p className="small muted meeting-count" aria-live="polite">
         {participants.length === 1 ? "You're the only one here." : `${participants.length} people in the meeting`}
       </p>
 
@@ -95,16 +96,19 @@ export default function MeetingStage({ onLeave, onProblem }) {
       </div>
 
       <div className="meeting-controls row" role="toolbar" aria-label="Call controls">
-        <Button variant="ghost" onClick={() => mic.toggle()} disabled={mic.pending} aria-pressed={!mic.enabled}>
-          {mic.enabled ? '🎤 Mute' : '🔇 Unmute'}
+        <Button className={`meeting-control ${mic.enabled ? '' : 'is-off'}`} variant="secondary" onClick={() => mic.toggle()} disabled={mic.pending} aria-pressed={!mic.enabled}
+          icon={mic.enabled ? <Mic size={16} aria-hidden="true" /> : <MicOff size={16} aria-hidden="true" />}>
+          {mic.enabled ? 'Mute' : 'Unmute'}
         </Button>
-        <Button variant="ghost" onClick={() => camera.toggle()} disabled={camera.pending} aria-pressed={!camera.enabled}>
-          {camera.enabled ? '📹 Camera off' : '📷 Camera on'}
+        <Button className={`meeting-control ${camera.enabled ? '' : 'is-off'}`} variant="secondary" onClick={() => camera.toggle()} disabled={camera.pending} aria-pressed={!camera.enabled}
+          icon={camera.enabled ? <Video size={16} aria-hidden="true" /> : <VideoOff size={16} aria-hidden="true" />}>
+          {camera.enabled ? 'Camera off' : 'Camera on'}
         </Button>
-        <Button variant="ghost" onClick={() => screen.toggle()} disabled={screen.pending} aria-pressed={screen.enabled}>
-          {screen.enabled ? '🛑 Stop sharing' : '🖥️ Share screen'}
+        <Button className={`meeting-control ${screen.enabled ? 'is-active' : ''}`} variant="secondary" onClick={() => screen.toggle()} disabled={screen.pending} aria-pressed={screen.enabled}
+          icon={screen.enabled ? <MonitorX size={16} aria-hidden="true" /> : <MonitorUp size={16} aria-hidden="true" />}>
+          {screen.enabled ? 'Stop sharing' : 'Share screen'}
         </Button>
-        <Button variant="danger-solid" onClick={onLeave}>📵 Leave</Button>
+        <Button className="meeting-control" variant="danger-solid" onClick={onLeave} icon={<PhoneOff size={16} aria-hidden="true" />}>Leave</Button>
       </div>
 
       <div className="meeting-devices row">

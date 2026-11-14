@@ -1,3 +1,4 @@
+import { Mail } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import Alert from "./ui/Alert";
@@ -73,7 +74,7 @@ function EmailSection({ children }) {
 
   return (
     <section className="stack">
-      <h2 className="section-title">✉️ Email</h2>
+      <h2 className="section-title section-title--icon"><Mail size={18} aria-hidden="true" /> Email</h2>
       <Card className="stack">
         {info === null && !error && <p role="status" className="muted small">Loading...</p>}
         {sending && !sending.enabled && <p className="small muted">{sending.message}</p>}

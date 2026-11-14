@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PROVIDERS, startOAuth } from "../api/oauth";
+import GithubIcon from "./icons/GithubIcon";
 import Button from "./ui/Button";
 
 // "Continue with Google" and friends, for the providers this server has set up.
@@ -20,10 +21,10 @@ function ProviderButtons({ options, returnTo }) {
   }
 
   return (
-    <div className="stack" style={{ "--gap": "0.5rem" }}>
-      <p className="muted small" style={{ textAlign: "center", margin: 0 }}>or</p>
+    <div className="stack provider-buttons motion-fade-in" style={{ "--gap": "0.5rem" }}>
+      <p className="provider-buttons__or"><span>or</span></p>
       {enabled.map((id) => (
-        <Button key={id} variant="ghost" block disabled={busy !== null} onClick={() => go(id)}>
+        <Button key={id} variant="secondary" block disabled={busy !== null} loading={busy === id} icon={id === "github" ? <GithubIcon size={16} /> : null} onClick={() => go(id)}>
           {busy === id ? "Opening..." : `Continue with ${PROVIDERS[id].name}`}
         </Button>
       ))}

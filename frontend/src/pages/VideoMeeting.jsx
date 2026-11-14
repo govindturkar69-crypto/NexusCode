@@ -4,8 +4,8 @@ import { livekitUrl } from "../meeting/config";
 import MeetingStage from "../meeting/MeetingStage";
 import { NOT_CONFIGURED } from "../meeting/messages";
 import { useMeetingRoom } from "../meeting/useMeetingRoom";
+import { Users, Video } from "lucide-react";
 import Alert from "../components/ui/Alert";
-import BackLink from "../components/ui/BackLink";
 import Button from "../components/ui/Button";
 import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
@@ -26,14 +26,9 @@ function VideoMeeting() {
 
   return (
     <Page width={1100}>
-      <BackLink to={`/projects/${projectId}`}>Back to the project</BackLink>
-      <PageHeader eyebrow={`video-meeting --project ${projectId}`} title="Video Meeting" tone="success">
-        <p
-          role="status"
-          aria-live="polite"
-          className={`small ${phase === "connected" ? "text-success" : phase === "reconnecting" ? "text-danger" : "muted"}`}
-          style={{ marginTop: "0.5rem" }}
-        >
+      <PageHeader title="Video Meeting">
+        <p role="status" aria-live="polite" className={`small meeting-status meeting-status--${configured ? phase : "off"}`}>
+          <span className="meeting-status__dot" aria-hidden="true" />
           {configured ? STATUS[phase] : NOT_CONFIGURED}
         </p>
       </PageHeader>
@@ -52,12 +47,14 @@ function VideoMeeting() {
               <MeetingStage onLeave={leave} onProblem={(text) => text && setNotice(text)} />
             </RoomContext.Provider>
           ) : (
-            <div className="card" style={{ marginTop: "1rem" }}>
-              <p className="muted" style={{ marginTop: 0 }}>
+            <div className="card meeting-lobby motion-rise-in">
+              <span className="meeting-lobby__icon" aria-hidden="true"><Users size={26} /></span>
+              <h2 className="meeting-lobby__title">{phase === "left" ? "You left the meeting" : "Ready to join?"}</h2>
+              <p className="muted meeting-lobby__text">
                 Everyone in this project can join. Your browser will ask to use your camera and microphone.
               </p>
-              <Button onClick={join} disabled={phase === "joining"}>
-                {phase === "joining" ? "Joining…" : phase === "left" || error ? "📹 Join again" : "📹 Join meeting"}
+              <Button size="lg" onClick={join} loading={phase === "joining"} icon={<Video size={17} aria-hidden="true" />}>
+                {phase === "joining" ? "Joining…" : phase === "left" || error ? "Join again" : "Join meeting"}
               </Button>
             </div>
           )}
