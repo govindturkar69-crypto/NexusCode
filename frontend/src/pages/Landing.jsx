@@ -4,6 +4,8 @@ import {
   ArrowRight, Bot, Code2, KeyRound, LayoutGrid, MessageSquare, Play, Sparkles, Users, Video,
 } from "lucide-react";
 import GithubIcon from "../components/icons/GithubIcon";
+import { loadLogin, prefetchOn } from "../routes/prefetch";
+import { prefetchWhenIdle } from "../routes/prefetchWhenIdle";
 import { FEATURES, PAGE_TITLE, REPO_URL, SHOTS, STACK, STEPS } from "../landing/content";
 import { useReveal } from "../motion/useReveal";
 
@@ -62,6 +64,9 @@ function Landing() {
     };
   }, []);
 
+  // Visitors here usually sign in next: fetch that page's code while idle
+  useEffect(() => prefetchWhenIdle(loadLogin), []);
+
   return (
     <main className="landing">
       <section className="landing-hero motion-stagger" aria-labelledby="landing-title">
@@ -76,10 +81,10 @@ function Landing() {
           collaboration, in-browser runners, an AI coding agent, chat and group video, in one place.
         </p>
         <div className="landing-actions" style={{ "--i": 3 }}>
-          <Link className="btn btn--primary btn--lg" to="/login?mode=signup">
+          <Link className="btn btn--primary btn--lg" to="/login?mode=signup" {...prefetchOn(loadLogin)}>
             Sign up free<ArrowRight size={16} aria-hidden="true" />
           </Link>
-          <Link className="btn btn--secondary btn--lg" to="/login">Sign in</Link>
+          <Link className="btn btn--secondary btn--lg" to="/login" {...prefetchOn(loadLogin)}>Sign in</Link>
           <a className="btn btn--ghost btn--lg" href={REPO_URL} target="_blank" rel="noopener noreferrer">
             <GithubIcon size={16} />View on GitHub{" "}<span className="visually-hidden">(opens in a new tab)</span>
           </a>
@@ -139,8 +144,8 @@ function Landing() {
         <h2 id="cta-title">Try it with your team</h2>
         <p className="muted landing-cta__text">Make a project, invite a teammate, and start on the board.</p>
         <div className="landing-actions">
-          <Link className="btn btn--primary btn--lg" to="/login?mode=signup">Create an account</Link>
-          <Link className="btn btn--secondary btn--lg" to="/login">Sign in</Link>
+          <Link className="btn btn--primary btn--lg" to="/login?mode=signup" {...prefetchOn(loadLogin)}>Create an account</Link>
+          <Link className="btn btn--secondary btn--lg" to="/login" {...prefetchOn(loadLogin)}>Sign in</Link>
         </div>
       </Reveal>
 

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import ThemeToggle from "../ThemeToggle";
+import { loadLogin, prefetchOn } from "../../routes/prefetch";
 
 // Header for signed-out pages (landing, sign-in, password reset): the brand, the
 // theme toggle and, on the landing page, the way in.
@@ -14,8 +15,8 @@ function PublicHeader({ showAuthLinks = false }) {
       <div className="public-header__actions">
         {showAuthLinks && (
           <>
-            <Link to="/login" className="btn btn--subtle">Sign in</Link>
-            <Link to="/login?mode=signup" className="btn btn--primary">Sign up</Link>
+            <Link to="/login" className="btn btn--subtle public-header__signin" {...prefetchOn(loadLogin)}>Sign in</Link>
+            <Link to="/login?mode=signup" className="btn btn--primary" {...prefetchOn(loadLogin)}>Sign up</Link>
           </>
         )}
         <ThemeToggle />
