@@ -18,3 +18,15 @@ describe('vercel.json headers for video meetings', () => {
     expect(withCsp).toEqual(['/assets/agentPythonWorker-(.*)', '/assets/agentJsWorker-(.*)'])
   })
 })
+
+describe('vercel.json caching', () => {
+  const cacheFor = (source) => rules.find((r) => r.source === source)?.headers.find(({ key }) => key === 'Cache-Control')?.value
+
+  it("caches Vite's content-hashed /assets files for a year", () => {
+    expect(cacheFor('/assets/(.*)')).toBe('public, max-age=31536000, immutable')
+  })
+
+  it('never marks the app document immutable, so a deploy is picked up at once', () => {
+    expect(cacheFor('/(.*)')).toBeUndefined()
+  })
+})
