@@ -156,7 +156,7 @@ API docs: `http://127.0.0.1:8000/docs`. Every variable is described in [`backend
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Video meetings (the endpoint answers 503 until all three are set). |
 | `LOG_LEVEL`, `LOG_FORMAT`, `SENTRY_*` | Logging and error tracking (optional). |
 
-Optional features (AI, email, Google and GitHub sign-in, video) stay off until their variables are set: the app still starts, the login page only offers what the server has configured, and the routes of a feature that is off answer a clear 503 that the UI shows.
+Optional features (AI, email, Google and GitHub sign-in, video) stay off until their variables are set: the app still starts, the login page shows the Google and GitHub buttons straight away and disables any the server reports as not set up, and the routes of a feature that is off answer a clear 503 that the UI shows.
 
 **OAuth callback URLs** to register with the providers (local / production):
 - Google: `http://localhost:8000/auth/google/callback`, `https://nexuscode-backend-wbt4.onrender.com/auth/google/callback`
