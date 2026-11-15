@@ -17,7 +17,7 @@ import { CONNECT_FAILED, disconnectText, joinErrorText, mediaErrorText, NOT_CONF
  * camera light goes off.
  */
 // Stops our own camera, microphone and screen tracks (the camera light goes off)
-export function stopLocalTracks(room) {
+function stopLocalTracks(room) {
   for (const publication of room.localParticipant?.trackPublications?.values?.() ?? []) {
     publication.track?.stop()
   }

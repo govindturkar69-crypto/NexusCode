@@ -9,12 +9,12 @@ import { ticketedSocketClass } from "./ticketedSocket";
 // /ws/code-files/{id}, plus who else is here (awareness). The editor binds its
 // Monaco model to `text` once the first sync has arrived.
 
-export const TEXT_NAME = "content";
+const TEXT_NAME = "content";
 export const MESSAGE_SESSION = 100;
-export const CLOSE_RESYNC = 4005;
+const CLOSE_RESYNC = 4005;
 
 // Close codes from the server that mean "don't try again": reconnecting can't fix them
-export const PERMANENT_CLOSES = {
+const PERMANENT_CLOSES = {
   4001: "You no longer have access to this project.",
   4004: "This file was deleted.",
   4009: "This file is too large to edit together. Your last change couldn't be saved.",

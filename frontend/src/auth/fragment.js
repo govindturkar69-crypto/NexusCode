@@ -3,11 +3,11 @@ import { useEffect, useState } from "react";
 // Email links carry their token in the URL fragment, which browsers never send to
 // servers or in Referer headers.
 
-export function readFragmentParam(name) {
+function readFragmentParam(name) {
   return new URLSearchParams(window.location.hash.slice(1)).get(name);
 }
 
-export function clearFragment() {
+function clearFragment() {
   if (window.location.hash) window.history.replaceState(null, "", window.location.pathname + window.location.search);
 }
 

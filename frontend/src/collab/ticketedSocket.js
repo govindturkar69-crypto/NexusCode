@@ -9,7 +9,7 @@ import { apiFetch } from "../api/client";
 
 export const CLOSE_NO_ACCESS = 4001;
 
-export function fetchTicket(projectId) {
+function fetchTicket(projectId) {
   return apiFetch("/ws-ticket", { method: "POST", body: { project_id: Number(projectId) } }).then((data) => data.ticket);
 }
 
