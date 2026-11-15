@@ -68,6 +68,12 @@ In the editor, **Export ZIP** downloads the code, `tasks.json` and a README; **I
 ZIP** previews a ZIP first and refuses `..` paths, symlinks and binaries. (As
 `demo_sam`, a viewer, the palette has no editing actions and there is no Import.)
 
+**5:45 — Version history (15s)**
+In the editor click **History** on `src/weather.py`: the timeline (who, when, saved
+or restored, labels), and the diff of an older version against the current text.
+**Restore this version**, confirm, and the other window sees the text change at
+once; the history keeps the old text as well.
+
 **6:00 — Chat and activity (20s)**
 The project chat (seeded conversation, who is online) and the activity feed showing
 the task move and the agent run.
