@@ -48,13 +48,20 @@ function selfHostPyodide() {
 
 // `vite preview` sends the same headers as Vercel, so the built app, including the
 // agent workers' Content-Security-Policy, can be checked locally. Only the
-// patterns vercel.json uses are supported: literal paths and (.*).
+// patterns vercel.json uses are supported: literal paths, (.*), and
+// /((?!a/|b/).*) ("every path except these folders", for the app document's CSP).
+function sourcePattern(source) {
+  const except = source.match(/^\/\(\(\?!((?:[\w-]+\/\|?)+)\)\.\*\)$/)
+  if (except) {
+    const folders = except[1].split('|').filter(Boolean)
+    return new RegExp(`^/(?!(?:${folders.join('|')}))(.*)$`)
+  }
+  if (/[:?+*]/.test(source.replaceAll('(.*)', ''))) throw new Error(`vercel.json: unsupported source ${source}`)
+  return new RegExp(`^${source.replaceAll('.', '\\.').replaceAll('(\\.*)', '(.*)')}$`)
+}
+
 function previewWithVercelHeaders() {
-  const rules = JSON.parse(readFileSync(join(HERE, 'vercel.json'), 'utf-8')).headers.map(({ source, headers }) => {
-    if (/[:?+*]/.test(source.replaceAll('(.*)', ''))) throw new Error(`vercel.json: unsupported source ${source}`)
-    const pattern = new RegExp(`^${source.replaceAll('.', '\\.').replaceAll('(\\.*)', '(.*)')}$`)
-    return { pattern, headers }
-  })
+  const rules = JSON.parse(readFileSync(join(HERE, 'vercel.json'), 'utf-8')).headers.map(({ source, headers }) => ({ pattern: sourcePattern(source), headers }))
   return {
     name: 'preview-with-vercel-headers',
     configurePreviewServer(server) {
