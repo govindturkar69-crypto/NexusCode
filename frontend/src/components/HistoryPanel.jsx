@@ -22,6 +22,13 @@ const SOURCES = {
   import: { label: "Imported", Icon: FileArchive },
 };
 
+// Screen readers announce each side of the diff by name. Monaco's EditContext
+// input ignores the diff-level aria options, so each inner editor is named here.
+function nameDiffEditors(diffEditor) {
+  diffEditor.getOriginalEditor().updateOptions({ ariaLabel: "This version (read only)" });
+  diffEditor.getModifiedEditor().updateOptions({ ariaLabel: "The current text (read only)" });
+}
+
 const absolute = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 /**
@@ -208,8 +215,18 @@ function HistoryPanel({ file, currentContent, canRestore, beforeRestore, onResto
                   original={chosenText}
                   modified={currentContent ?? ""}
                   beforeMount={defineNexusThemes}
+                  onMount={nameDiffEditors}
                   theme={monacoTheme(theme)}
-                  options={{ readOnly: true, renderSideBySide: !narrow, minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, renderOverviewRuler: false }}
+                  options={{
+                    readOnly: true,
+                    renderSideBySide: !narrow,
+                    minimap: { enabled: false },
+                    fontSize: 13,
+                    scrollBeyondLastLine: false,
+                    renderOverviewRuler: false,
+                    originalAriaLabel: "This version (read only)",
+                    modifiedAriaLabel: "The current text (read only)",
+                  }}
                 />
               </div>
             )}
