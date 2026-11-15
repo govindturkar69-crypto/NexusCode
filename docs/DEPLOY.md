@@ -29,6 +29,62 @@ isn't configured. No database migration is involved.
 4. Check: preflight shows `[ OK ] LiveKit vars`, then do the meeting smoke test
    in step 9.
 
+## Rate-limit client IP (`TRUSTED_PROXY_HOPS`): one-time check
+
+Per-IP rate limits (login, sign-up, password reset, email verification, OAuth)
+key on the client's IP address. Behind Render's proxy that address is in
+`X-Forwarded-For`, which a caller can also write into. The API therefore reads the
+entry `TRUSTED_PROXY_HOPS` places from the **right**, which is the one Render's
+proxy added (`backend/app/core/client_ip.py`). uvicorn runs with
+`--no-proxy-headers`, so nothing else reads the header.
+
+- **Setting:** Render → backend service → Environment: `TRUSTED_PROXY_HOPS`. Start
+  with **1**; unset also means 1. `0` ignores the header, which is only right with no
+  proxy at all. After a deploy, the first log lines say which value is in use:
+  `Client IP for rate limits: X-Forwarded-For entry N from the right`.
+- **Verify it once** after the first deploy, and again whenever Render's networking
+  changes. You need two different internet connections, such as home Wi-Fi
+  (network **A**) and your phone's mobile data through a hotspot (network **B**).
+  There is no debug endpoint: the login limit (5 a minute per IP) is the probe. Use a
+  username that doesn't exist, so no real account is touched. In PowerShell, replace
+  `<backend>` with the Render URL:
+
+  ```powershell
+  $u = "https://<backend>/login"; $body = "username=ratelimit-check-nobody&password=not-the-password"
+  ```
+
+  **Check 1: no shared bucket.** On network A, run 6 failed logins:
+  ```powershell
+  1..6 | ForEach-Object { curl.exe -s -o NUL -w "%{http_code}`n" -X POST $u -d $body }
+  ```
+  Expect `401` five times, then `429`. **Within the same minute**, switch to network B
+  and send one:
+  ```powershell
+  curl.exe -s -o NUL -w "%{http_code}`n" -X POST $u -d $body
+  ```
+  Expect **`401`**. A `429` here means everyone shares one bucket: the key landed
+  on a proxy's address, not yours.
+
+  **Check 2: no bypass.** Wait at least 60 seconds. Then on network A, send 6 failed
+  logins, each claiming a different `X-Forwarded-For`:
+  ```powershell
+  1..6 | ForEach-Object { curl.exe -s -o NUL -w "%{http_code}`n" -H "X-Forwarded-For: 10.9.8.$_" -X POST $u -d $body }
+  ```
+  Expect `401` five times, then **`429`**. Six `401`s mean the caller's own entry is
+  being trusted.
+
+- **If a check fails:**
+
+  | Check 1 (B not limited) | Check 2 (spoof still limited) | Change `TRUSTED_PROXY_HOPS` to |
+  | --- | --- | --- |
+  | passes | passes | nothing: done |
+  | **fails** | passes | **2** (one more proxy than assumed), redeploy, re-run both checks |
+  | passes | **fails** | **one less** (2 → 1), redeploy, re-run both checks |
+  | fails | fails | **1**, redeploy, re-run. If it still fails, Render isn't appending to the header; record it in docs/FINAL-REVIEW.md (H1) |
+
+  Changing an environment variable on Render redeploys the service, which takes a
+  few minutes. Each check needs a fresh minute of the limit window.
+
 ## 1. Back up the database first
 Take a fresh dump before anything that could touch data (always before a
 migration). Use your read-only backup script; it reads the password from
