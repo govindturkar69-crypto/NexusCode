@@ -23,7 +23,7 @@ import PathDialog from "../components/PathDialog";
 import PreviewPanel from "../components/PreviewPanel";
 import PushToGithubDialog from "../components/PushToGithubDialog";
 import RunPanel from "../components/RunPanel";
-import { Bot, Download, FilePlus, FolderPlus, Monitor, Play, Square, Upload, Users, X } from "lucide-react";
+import { Bot, Download, FilePlus, FolderPlus, History, Monitor, Play, Square, Upload, Users, X } from "lucide-react";
 import FileIcon from "../components/FileIcon";
 import GithubIcon from "../components/icons/GithubIcon";
 import Alert from "../components/ui/Alert";
@@ -40,6 +40,7 @@ const LANGUAGE_NAMES = {
 };
 
 const ImportZipDialog = lazy(() => import("../components/ImportZipDialog"));
+const HistoryPanel = lazy(() => import("../components/HistoryPanel"));
 
 // Self-hosted Monaco (no CDN); must run before <Editor> mounts
 import "../editor/monacoSetup";
@@ -89,6 +90,7 @@ function CodeEditor() {
   const [deleting, setDeleting] = useState(false);
   const [showPush, setShowPush] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [historyFor, setHistoryFor] = useState(null); // file id whose history is open
   const [exporting, setExporting] = useState(null); // download progress 0..1 (or 0 while unknown), null when idle
   const [pushed, setPushed] = useState(null);
   const [showAgent, setShowAgent] = useState(false);
@@ -544,6 +546,9 @@ function CodeEditor() {
                 </>
               )}
             </span>
+            <Button variant="secondary" onClick={() => setHistoryFor(activeId)} disabled={loadState !== "ready" || activeId === null} icon={<History size={15} aria-hidden="true" />} title="Earlier versions of the open file">
+              History
+            </Button>
             <Button variant="secondary" onClick={exportZip} loading={exporting !== null} disabled={loadState !== "ready"} icon={<Download size={15} aria-hidden="true" />} title="Download the code, tasks and a README as a ZIP">
               {exporting !== null && exporting < 1 ? `Exporting ${Math.round(exporting * 100)}%` : "Export ZIP"}
             </Button>
@@ -823,6 +828,26 @@ function CodeEditor() {
         />
       )}
 
+      {historyFor !== null && filesById.get(historyFor) && (
+        <Suspense fallback={null}>
+          <HistoryPanel
+            file={filesById.get(historyFor)}
+            currentContent={contents[historyFor]}
+            canRestore={canEdit}
+            // Land the editor's pending autosave first, so it can't overwrite the restore
+            beforeRestore={() => flush(historyFor)}
+            onRestored={(text) => {
+              // Live files get the restore through Yjs; others take the text now,
+              // so the next autosave has nothing different to send
+              if (!collab.isLive(historyFor) && text !== undefined) {
+                contentsRef.current = { ...contentsRef.current, [historyFor]: text };
+                setContents((prev) => ({ ...prev, [historyFor]: text }));
+              }
+            }}
+            onClose={() => setHistoryFor(null)}
+          />
+        </Suspense>
+      )}
       {showImport && (
         <Suspense fallback={null}>
           <ImportZipDialog

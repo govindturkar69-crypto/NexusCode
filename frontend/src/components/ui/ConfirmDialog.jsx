@@ -1,9 +1,10 @@
 import Button from "./Button";
 import Modal from "./Modal";
 
-// "Are you sure?" for destructive actions. Cancel is the default focus, so
-// pressing Enter right away doesn't delete anything.
-function ConfirmDialog({ title, message, confirmLabel = "Delete", busy = false, onConfirm, onCancel }) {
+// "Are you sure?" for destructive or far-reaching actions. Cancel is the default
+// focus, so pressing Enter right away doesn't do anything. tone "primary" is for
+// actions that change things but lose nothing (e.g. restoring a version).
+function ConfirmDialog({ title, message, confirmLabel = "Delete", busy = false, tone = "danger", onConfirm, onCancel }) {
   return (
     <Modal
       title={title}
@@ -13,7 +14,7 @@ function ConfirmDialog({ title, message, confirmLabel = "Delete", busy = false, 
           <Button variant="ghost" onClick={onCancel} disabled={busy} autoFocus>
             Cancel
           </Button>
-          <Button variant="danger-solid" onClick={onConfirm} disabled={busy}>
+          <Button variant={tone === "primary" ? "primary" : "danger-solid"} onClick={onConfirm} loading={busy}>
             {busy ? "Working..." : confirmLabel}
           </Button>
         </>
