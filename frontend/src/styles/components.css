@@ -154,7 +154,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent);
 .badge--neutral, .badge--muted, .badge--viewer { background: var(--color-surface-raised); color: var(--color-text-muted); }
 .badge--accent, .badge--owner, .badge--priority-medium { background: var(--color-accent-soft); color: var(--color-accent-text); }
 .badge--success, .badge--editor { background: var(--color-success-soft); color: var(--color-success); }
-.badge--danger, .badge--overdue, .badge--priority-high { background: var(--color-danger-soft); color: var(--color-danger); }
+.badge--danger, .badge--overdue, .badge--priority-high { background: var(--color-danger-soft); color: var(--color-danger-on-soft); }
 .badge--warning { background: var(--color-warning-soft); color: var(--color-warning); }
 .badge--priority-low { background: var(--color-surface-raised); color: var(--color-text-muted); }
 

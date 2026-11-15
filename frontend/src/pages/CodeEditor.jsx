@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useS
 import { useParams, useSearchParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { MonacoBinding } from "y-monaco";
+import { destroyOnce } from "../collab/destroyOnce";
 import { downloadProjectZip } from "../api/archive";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/useAuth";
@@ -221,7 +222,8 @@ function CodeEditor() {
     const session = collab.get(activeId);
     const model = editorInstance.getModel();
     if (!session || !model) return undefined;
-    const binding = new MonacoBinding(session.text, model, new Set([editorInstance]), session.awareness);
+    // destroyOnce: the binding also destroys itself when Monaco disposes the model
+    const binding = destroyOnce(new MonacoBinding(session.text, model, new Set([editorInstance]), session.awareness));
     return () => binding.destroy();
   }, [collab, editorInstance, activeId, activeLive]);
 

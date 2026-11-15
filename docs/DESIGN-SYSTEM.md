@@ -28,6 +28,7 @@ Every colour, size and duration is a CSS variable on `:root`.
 - Each status has a solid tone and a `-soft` tint for backgrounds: accent, danger, success and warning.
   - `--color-accent-text` is the accent for text.
   - `--color-on-accent` and `--color-on-danger` are for text on solid fills.
+  - `--color-danger-on-soft` is for danger text on the `-soft` tint (badges). In light mode it is a shade darker than `--color-danger`, so it keeps 4.5:1 even on tinted surfaces.
 - Also `--color-focus`, `--color-backdrop` and the skeleton colours.
 - Every text pair meets **WCAG AA (4.5:1)** on `bg`, `surface` and `surface-raised` in both themes. That includes accent text on its soft tint: light theme #0550ae on the soft accent is 6.2:1.
 - After C6, axe finds no violations on any page in either theme.

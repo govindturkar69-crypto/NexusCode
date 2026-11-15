@@ -16,6 +16,10 @@ from app.core.config import settings
 # bcrypt, cost 12: the same algorithm and cost passlib used, so every existing
 # $2b$12$ hash still verifies (see tests/test_legacy_auth.py)
 password_hasher = PasswordHash((BcryptHasher(rounds=12),))
+# Checked against when there's no real hash (unknown username, Google/GitHub-only
+# account), so a failed login takes the same bcrypt time either way and the
+# response time doesn't reveal which usernames exist
+_TIMING_DUMMY_HASH = password_hasher.hash("nexuscode-timing-dummy")
 
 # Required setting with no default (see app/core/config.py): a missing secret
 # stops the server instead of falling back to a value in the source code.
@@ -37,8 +41,10 @@ def hash_password(password: str) -> str:
     return password_hasher.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str | None) -> bool:
-    # Accounts made through Google or GitHub have no password: nothing matches it
+    # Accounts made through Google or GitHub have no password: nothing matches it,
+    # but still spend the bcrypt time (see _TIMING_DUMMY_HASH)
     if not hashed_password:
+        password_hasher.verify(plain_password, _TIMING_DUMMY_HASH)
         return False
     try:
         return password_hasher.verify(plain_password, hashed_password)
