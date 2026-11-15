@@ -380,3 +380,15 @@ smoke run all pass.
 The one High (H1) weakens the per-IP throttling but not authentication: every
 guess still costs a bcrypt check, and signed-in routes are limited per user. Fix it
 first among the decisions, once Render's proxy header is confirmed.
+
+## Maintainer decisions (2026-11-15)
+
+- **H1:** key the limiter on the rightmost `X-Forwarded-For` entry, after confirming
+  on Render that one proxy hop appends it.
+- **M3:** 30 uploads a minute per user and at most 200 files per project.
+- **M4:** add a migration check, a Docker build and pip-audit to CI; keep the tag pins.
+- **M5:** add a CSP in report-only mode first, then enforce it.
+- L1, L3, L4 and L9 follow the recommendations in the decision list.
+
+None of these is implemented on this branch. They change behaviour or CI, so they
+come in a follow-up.
