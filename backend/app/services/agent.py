@@ -60,7 +60,6 @@ STEP_DEADLINE_SECONDS = 150
 MAX_RETRIES = 3
 RETRY_SECONDS = 2
 
-RUNNABLE_EXTENSIONS = (".py", ".js", ".mjs", ".cjs")
 RUN_STATUSES = ("ok", "error", "timeout", "output-limit", "stopped", "crashed", "unsupported")
 
 SYSTEM_INSTRUCTION = """You are the coding agent inside NexusCode, a collaborative code editor.
