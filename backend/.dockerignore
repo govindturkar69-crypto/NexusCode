@@ -4,10 +4,14 @@
 !.env.example
 venv/
 .venv/
-__pycache__/
-*.pyc
-*.pyo
+# Caches anywhere in the tree (a bare "__pycache__/" only matches at the root)
+**/__pycache__/
+**/*.pyc
+**/*.pyo
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .git/
 Dockerfile
 .dockerignore
