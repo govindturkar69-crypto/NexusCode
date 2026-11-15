@@ -41,7 +41,8 @@ def signup(request: Request, user: UserCreate, background: BackgroundTasks, db: 
 @limiter.limit(LOGIN_LIMIT)
 def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     db_user = db.query(UserModel).filter(UserModel.username == form_data.username).first()
-    if not db_user or not verify_password(form_data.password, db_user.hashed_password):
+    # verify_password runs bcrypt even for an unknown username (no timing difference)
+    if not verify_password(form_data.password, db_user.hashed_password if db_user else None) or db_user is None:
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
     access_token = session_token_for(db_user)

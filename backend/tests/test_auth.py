@@ -101,3 +101,20 @@ def test_cors_allows_frontend_and_localhost_only(client):
 
 def test_removed_todos_routes_are_gone(client):
     assert client.get("/todos").status_code == 404
+
+
+def test_failed_logins_spend_the_same_bcrypt_work_whether_or_not_the_user_exists(client, make_user, monkeypatch):
+    """An unknown username used to fail before bcrypt ran, so its fast reply revealed
+    which usernames exist. Now every failed login runs exactly one bcrypt check."""
+    from app.core import security
+
+    make_user("realuser")
+    calls = []
+    real_verify = security.password_hasher.verify
+    monkeypatch.setattr(security.password_hasher, "verify", lambda *a, **k: calls.append(1) or real_verify(*a, **k))
+    for username in ("realuser", "nobody-by-this-name"):
+        calls.clear()
+        r = client.post("/login", data={"username": username, "password": "wrong-password-1"})
+        assert r.status_code == 401
+        assert r.json()["detail"] == "Incorrect username or password"
+        assert len(calls) == 1, username
