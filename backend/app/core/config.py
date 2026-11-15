@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     livekit_api_key: str | None = None
     livekit_api_secret: str | None = None
 
+    # Reverse proxies in front of the app (app/core/client_ip.py). The client IP
+    # for rate limits is the X-Forwarded-For entry this many places from the
+    # right; 0 ignores the header. Render has one proxy, hence the default.
+    trusted_proxy_hops: int = Field(default=1, ge=0, strict=False)
+
     # Observability (app/core/observability.py)
     log_level: str = "INFO"
     log_format: str = "json"  # or "text" for local development

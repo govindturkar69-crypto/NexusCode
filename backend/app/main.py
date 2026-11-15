@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
+from app.core.client_ip import is_https
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.observability import configure_logging, init_sentry
@@ -53,6 +54,10 @@ configure_logging(settings.log_level, settings.log_format)
 SENTRY_ENABLED = init_sentry(settings.sentry_dsn, settings.sentry_environment, settings.sentry_traces_sample_rate)
 
 logger = logging.getLogger("nexuscode")
+logger.info(
+    "Client IP for rate limits: X-Forwarded-For entry %d from the right (TRUSTED_PROXY_HOPS; 0 = TCP peer)",
+    settings.trusted_proxy_hops,
+)
 email_service.log_configuration()
 access_logger = logging.getLogger("nexuscode.access")
 
@@ -144,8 +149,8 @@ async def log_requests(request: Request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     # HSTS only when the request actually came over HTTPS (behind Render's proxy
-    # the scheme comes from X-Forwarded-Proto via --proxy-headers)
-    if request.url.scheme == "https":
+    # that's its X-Forwarded-Proto; see app/core/client_ip.py)
+    if is_https(request):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     # Health checks run every 30 s; keep them out of the normal log level
     level = logging.DEBUG if request.url.path == "/health" else logging.INFO

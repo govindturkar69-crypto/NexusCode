@@ -35,4 +35,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 # Bring the schema up to date (refuses to touch an un-stamped legacy DB),
 # then hand PID 1 over to uvicorn so it receives stop signals directly.
-CMD ["sh", "-c", "python scripts/migrate.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+# --no-proxy-headers: uvicorn must not rewrite the client address from
+# X-Forwarded-For (a client can write that header); app/core/client_ip.py reads it
+# safely, counting TRUSTED_PROXY_HOPS from the right.
+CMD ["sh", "-c", "python scripts/migrate.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers"]

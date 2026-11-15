@@ -3,15 +3,16 @@ Request rate limits (slowapi). Counters live in process memory, which is
 right for a single instance; several instances would need a shared store
 (e.g. Limiter(storage_uri="redis://...")).
 
-Behind Render's proxy the client IP comes from X-Forwarded-For, so uvicorn
-runs with --proxy-headers (see Dockerfile).
+Per-IP limits key on app.core.client_ip.rate_limit_key: the X-Forwarded-For
+entry TRUSTED_PROXY_HOPS places from the right (the address Render's proxy
+saw), never one the caller wrote.
 """
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
+from app.core.client_ip import limiter_key
 from app.core.security import decode_access_token
 
 LOGIN_LIMIT = "5/minute"
@@ -41,10 +42,10 @@ def user_or_ip(request: Request) -> str:
         username = decode_access_token(header[7:])
         if username:
             return f"user:{username}"
-    return f"ip:{get_remote_address(request)}"
+    return f"ip:{limiter_key(request)}"
 
 
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=limiter_key)
 
 
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
