@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Board from './Board'
 import AuthProvider from '../auth/AuthProvider'
+import { ToastProvider } from '../components/ui/Toast'
 import { fakeJwt, inOneHour, stubRoutes } from '../test/helpers'
 
 class FakeSocket {
@@ -197,3 +198,55 @@ describe('Board task breakdown', () => {
   })
 })
 
+
+describe('Board upload limits', () => {
+  beforeEach(() => {
+    vi.stubGlobal('WebSocket', FakeSocket)
+  })
+
+  async function uploadWith(response) {
+    localStorage.setItem('token', fakeJwt({ sub: 'me', exp: inOneHour() }))
+    stubRoutes({
+      'GET /me': [200, { id: 1, username: 'me', is_admin: false }],
+      'GET /projects/7': [200, { project: { id: 7, name: 'Team board', role: 'editor' } }],
+      'GET /projects/7/members': [200, { members: [{ user_id: 1, username: 'me', role: 'editor', created_at: '' }] }],
+      'GET /projects/7/tasks': [200, { tasks: [], total: 0 }],
+      'GET /projects/7/files': [200, { files: [], total: 0 }],
+      'GET /projects/7/messages': [200, { messages: [], next_cursor: null }],
+      'GET /projects/7/activity': [200, { activity: [], total: 0 }],
+      'POST /ws-ticket': [200, { ticket: 't', expires_in: 30 }],
+      'POST /projects/7/files': response,
+    })
+    const { container } = render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={['/projects/7']}>
+          <AuthProvider>
+            <Routes>
+              <Route path="/projects/:projectId" element={<Board />} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      </ToastProvider>
+    )
+    await screen.findByText('Team board')
+    const input = await waitFor(() => {
+      const el = container.querySelector('input[type="file"]')
+      expect(el).not.toBeNull()
+      return el
+    })
+    await userEvent.upload(input, new File(['hello'], 'notes.txt', { type: 'text/plain' }))
+  }
+
+  it('explains the per-minute limit in a toast', async () => {
+    await uploadWith([429, { detail: 'Too many requests (30 per 1 minute). Please wait and try again.' }])
+    expect(await screen.findByText('Too many uploads')).toBeInTheDocument()
+    expect(screen.getByText(/up to 30 files a minute/)).toBeInTheDocument()
+  })
+
+  it("explains a full project with the server's message", async () => {
+    const detail = 'This project already has 200 uploaded files, the most it can hold. Delete some to upload more.'
+    await uploadWith([409, { detail }])
+    expect(await screen.findByText("This project's file space is full")).toBeInTheDocument()
+    expect(screen.getByText(detail)).toBeInTheDocument()
+  })
+})
