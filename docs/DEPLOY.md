@@ -85,6 +85,60 @@ proxy added (`backend/app/core/client_ip.py`). uvicorn runs with
   Changing an environment variable on Render redeploys the service, which takes a
   few minutes. Each check needs a fresh minute of the limit window.
 
+## Content-Security-Policy for the app (report-only for now)
+
+`frontend/vercel.json` sends `Content-Security-Policy-Report-Only` on every app page
+(every path except `/assets/` and `/pyodide/`, whose worker scripts keep their own
+policies). In report-only mode the browser **blocks nothing**: it only logs what it
+would block. The policy allows:
+
+| Directive | Allows | Why |
+| --- | --- | --- |
+| `script-src` | `'self'` plus one `sha256-…` hash | the app bundles, and index.html's inline theme script (the hash is checked by `vercelHeaders.test.js`) |
+| `style-src` | `'self' 'unsafe-inline'` | Monaco and drag-and-drop inject `<style>` elements and style attributes at run time; they can't be hashed. No inline **scripts** are allowed. |
+| `connect-src` | `'self'`, the Render API (`https://` and `wss://`), `https://*.livekit.cloud`, `wss://*.livekit.cloud`, `https://*.sentry.io` | API, chat and live-editing sockets, video meetings, error reports |
+| `img-src` | `'self' data: blob: https://res.cloudinary.com` | icons, previews and uploaded images |
+| `worker-src` | `'self' blob:` | Monaco and the code runners |
+| `media-src` | `'self' blob: mediastream:` | meeting video |
+| `object-src`, `base-uri`, `form-action`, `frame-ancestors` | `'none'` / `'self'` / `'self'` / `'none'` | lock-down |
+
+**The origins are written into `vercel.json`, not read from env vars,** because
+Vercel headers are static. If the Render API URL changes (it must match
+`VITE_API_URL`), or LiveKit moves off LiveKit Cloud (`VITE_LIVEKIT_URL` not on
+`*.livekit.cloud`), edit `connect-src` in `frontend/vercel.json` and the expected
+list in `frontend/src/meeting/vercelHeaders.test.js`.
+
+**Checked locally:** 16 pages and flows on the demo stack, with these exact
+headers, report nothing except one known case: the **HTML preview**. A preview is
+a sandboxed `srcdoc` frame, so it inherits the page's policy, and the project's own
+inline `<script>`s (plus the console-capture script) are reported. The scripts
+still run, because the policy is report-only. Video calls to LiveKit Cloud can only
+be checked on the live site.
+
+**Watch it on the live site** (after this is deployed to Vercel):
+1. Open the site in Chrome, open DevTools (F12) → **Console**, and tick
+   *Preserve log*.
+2. Type `[Report Only]` in the console filter box.
+3. Use the app the way people do: sign in, board and chat, the editor (open a file,
+   Run, History), a **video meeting with a second person**, analytics, settings,
+   the admin page.
+4. Every line shown is something the policy would block. Expected: **none**, apart
+   from the preview's inline scripts. For each other line, note the blocked URL and
+   directive, and add the origin to that directive in `vercel.json` (and the test).
+
+**Switching to enforcing** (a later, separate change):
+1. Give the HTML preview its own document first: for example a static
+   `/preview-frame.html`, excluded from the policy like `/assets/`, which receives
+   the HTML by `postMessage`. Otherwise enforcing breaks every preview that has
+   scripts.
+2. Watch report-only on the live site for a few days of normal use with no
+   unexplained `[Report Only]` lines.
+3. In `frontend/vercel.json`, rename the key `Content-Security-Policy-Report-Only`
+   to `Content-Security-Policy`, update `vercelHeaders.test.js` (it asserts
+   report-only today), deploy, and repeat the walk-through above. Lines now read
+   `Refused to …` instead of `[Report Only]`.
+4. Rollback: rename the key back and redeploy. Vercel deploys in about a minute.
+
 ## 1. Back up the database first
 Take a fresh dump before anything that could touch data (always before a
 migration). Use your read-only backup script; it reads the password from
