@@ -51,6 +51,64 @@ jobs:
       - name: Pytest
         run: pytest --cov=. --cov-report=term
 
+  migrations:
+    name: Backend (migrations + pip-audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nexuscode_migrations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # A fresh, empty CI database: proves the migration chain runs from nothing
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/nexuscode_migrations?sslmode=disable
+      # Dummy values the app's settings require at import; nothing secret
+      JWT_SECRET: ci-only-dummy-jwt-secret-not-used-for-anything
+      FRONTEND_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt pip-audit==2.10.1
+      - name: Dummy Fernet key
+        run: echo "GITHUB_TOKEN_ENC_KEY=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" >> "$GITHUB_ENV"
+      - name: Upgrade an empty database to head
+        run: alembic upgrade head
+      - name: Models match the migrations
+        run: alembic check
+      - name: Audit Python dependencies
+        run: pip-audit -r requirements.txt
+
+  docker:
+    name: Backend Docker image (build only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: false
+          tags: nexuscode-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   frontend:
     name: Frontend (eslint + vitest + build + audit)
     runs-on: ubuntu-latest
