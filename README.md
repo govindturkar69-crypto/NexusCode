@@ -229,9 +229,9 @@ Current results (run on this branch):
 
 | Suite | Result |
 |---|---|
-| Backend, SQLite | 1086 passed |
-| Backend, Postgres (throwaway) | 1086 passed |
-| Frontend (Vitest) | 812 passed (58 files) |
+| Backend, SQLite | 1410 passed |
+| Backend, Postgres (throwaway) | 1410 passed |
+| Frontend (Vitest) | 817 passed (59 files) |
 | ruff · eslint · vite build | clean |
 
 CI runs the same on every push and pull request (backend against Postgres 16).

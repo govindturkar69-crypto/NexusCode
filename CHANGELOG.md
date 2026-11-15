@@ -13,7 +13,9 @@ as one pull request into `main`. Tags mark the stable points.
   username exists, so response times don't reveal accounts.
 - **Fix:** the code editor no longer logs "[yjs] Tried to remove event handler that
   doesn't exist" (the y-monaco binding was destroyed twice).
-- **Performance:** Vercel caches the content-hashed `/assets` files for a year.
+- **Performance:** Vercel caches the content-hashed `/assets` files for a year. A
+  query-count test guards the list endpoints against N+1 queries.
+- **Accessibility:** danger badges keep 4.5:1 contrast in light mode (admin page).
 - **Docs:** `SECURITY.md`, `CONTRIBUTING.md`, this changelog, and the full review in
   [docs/FINAL-REVIEW.md](docs/FINAL-REVIEW.md).
 
