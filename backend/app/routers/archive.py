@@ -18,6 +18,7 @@ from app.models import (
 from app.routers.code import MAX_FILES_PER_PROJECT
 from app.services import project_archive as archive
 from app.services.activity import publish, record
+from app.services.versions import record_creation
 
 router = APIRouter(tags=["code"])
 
@@ -87,7 +88,11 @@ def import_code(
     if len(existing) + len(to_create) > MAX_FILES_PER_PROJECT:
         raise HTTPException(status_code=409, detail=f"A project can have at most {MAX_FILES_PER_PROJECT} files.")
     for path, content in to_create:
-        db.add(CodeFileModel(project_id=project.id, path=path, language=archive.language_for_path(path), content=content))
+        code_file = CodeFileModel(project_id=project.id, path=path, language=archive.language_for_path(path), content=content)
+        db.add(code_file)
+        db.flush()
+        # Each imported file starts its history with what the ZIP held
+        record_creation(db, code_file, current_user.id, source="import")
     name = (file.filename or "archive.zip").rsplit("/", 1)[-1][:100]
     if to_create:
         record(db, project.id, current_user.id, "code_created", f"{len(to_create)} file{'s' if len(to_create) != 1 else ''} from {name}")

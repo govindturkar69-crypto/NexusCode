@@ -268,9 +268,9 @@ def slow_saves(monkeypatch):
     manager = collab_router.collab
     real_save = manager._save
 
-    def slow(file_id, text, state):
+    def slow(file_id, text, state, snapshot=None):
         time.sleep(0.3)
-        real_save(file_id, text, state)
+        real_save(file_id, text, state, snapshot)
 
     monkeypatch.setattr(manager, "_save", slow)
 

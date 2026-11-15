@@ -5,6 +5,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -205,6 +206,37 @@ class CodeFileModel(TimestampMixin, Base):
     project = relationship("ProjectModel", back_populates="code_files")
     # Its live-editing document, once someone has opened it (see services/collab.py)
     yjs = relationship("CodeFileYjsModel", cascade="all, delete-orphan", uselist=False)
+    # Deleted with the file by the ORM (SQLite here runs without FK enforcement),
+    # and by ON DELETE CASCADE for anything deleting rows directly in Postgres
+    versions = relationship("CodeFileVersionModel", cascade="all, delete-orphan")
+
+
+VERSION_SOURCES = ("save", "autosnapshot", "restore", "import")
+
+
+class CodeFileVersionModel(Base):
+    """A snapshot of a code file's text, taken on the server whenever a save
+    commits (throttled; see services/versions.py and docs/VERSION-HISTORY.md).
+    Restoring adds a new row with source 'restore'; history is never rewritten."""
+
+    __tablename__ = "code_file_versions"
+    __table_args__ = (
+        CheckConstraint("source IN (" + ", ".join(f"'{s}'" for s in VERSION_SOURCES) + ")", name="ck_code_file_versions_source"),
+        Index("ix_code_file_versions_file_created", "file_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    file_id = Column(Integer, ForeignKey("code_files.id", ondelete="CASCADE"), nullable=False)
+    # Denormalised so every read can be scoped to the project without a join
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(String, nullable=False)
+    content_hash = Column(String(64), nullable=False)
+    author_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    label = Column(String(200), nullable=True)
+    source = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    author = relationship("UserModel")
 
 
 class CodeFileYjsModel(Base):

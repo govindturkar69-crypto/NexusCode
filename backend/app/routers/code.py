@@ -22,6 +22,7 @@ from app.schemas.project import (
 )
 from app.services.activity import publish, record
 from app.services.code_paths import language_for_path, path_conflict
+from app.services.versions import SnapshotRequest, record_creation
 
 router = APIRouter(tags=["code"])
 
@@ -90,6 +91,9 @@ def create_code_file(
         raise HTTPException(status_code=409, detail=problem)
     code_file = CodeFileModel(project_id=project.id, path=body.path, language=language_for_path(body.path), content=body.content)
     db.add(code_file)
+    db.flush()
+    # A file created with content starts its history with that content
+    record_creation(db, code_file, current_user.id)
     record(db, project.id, current_user.id, "code_created", body.path)
     _commit_paths(db, body.path)
     db.refresh(code_file)
@@ -110,11 +114,12 @@ def save_code_file(
     body: CodeFileContent,
     code_file: CodeFileModel = Depends(require_project_role("editor", "code_file")),
     db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
     """Autosave, so it doesn't send the content back or add to the activity feed.
     The change goes through the file's live document, so people editing it live
     see it, and nothing they typed is overwritten by a stale copy."""
-    collab.replace_text(code_file.id, body.content)
+    collab.replace_text(code_file.id, body.content, SnapshotRequest(source="save", author_user_id=current_user.id))
     db.refresh(code_file)
     return {"code_file": code_file}
 
@@ -225,7 +230,12 @@ def get_legacy_code_file(project: ProjectModel = Depends(require_project_role("v
 
 
 @router.put("/projects/{project_id}/code", response_model=CodeFileSavedResponse)
-def update_legacy_code_file(update: CodeFileUpdate, project: ProjectModel = Depends(require_project_role("editor")), db: Session = Depends(get_db)):
+def update_legacy_code_file(
+    update: CodeFileUpdate,
+    project: ProjectModel = Depends(require_project_role("editor")),
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
     code_file = _oldest_file(db, project.id)
     if not code_file:
         code_file = _new_legacy_file(project.id, update.language)
@@ -234,6 +244,6 @@ def update_legacy_code_file(update: CodeFileUpdate, project: ProjectModel = Depe
     code_file.language = update.language
     db.commit()
     # Through the live document, like the multi-file save
-    collab.replace_text(code_file.id, update.content)
+    collab.replace_text(code_file.id, update.content, SnapshotRequest(source="save", author_user_id=current_user.id))
     db.refresh(code_file)
     return {"message": "Code saved", "code_file": code_file}
