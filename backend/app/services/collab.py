@@ -42,6 +42,7 @@ from pycrdt import (
 from starlette.concurrency import run_in_threadpool
 
 from app.schemas.project import MAX_CODE_FILE_CHARS
+from app.services.versions import SnapshotRequest
 
 logger = logging.getLogger("nexuscode")
 
@@ -189,6 +190,10 @@ class Room:
     # client id -> (clock, state JSON, owning connection)
     awareness: dict[int, tuple[int, str, Connection]] = field(default_factory=dict)
     dirty: bool = False
+    # Who last edited (for the snapshot's author), and a snapshot a writer asked
+    # for (REST save, restore); carried until a save commits (see flush)
+    last_editor: int | None = None
+    pending_snapshot: "SnapshotRequest | None" = None
     save_task: asyncio.Task | None = None
     # One save at a time, and a flush waits for a save already in progress
     save_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -212,7 +217,7 @@ class CollabManager:
     The rooms of this process. Storage is plugged in, so tests and the router
     can share one manager:
       load(file_id)                 -> (project id, Yjs state bytes or None, content) or None
-      save(file_id, text, state)    writes the text (and the state) to the database
+      save(file_id, text, state, snapshot)  writes the text (and the state), and snapshots it
       roles(pairs)                  -> {(project id, user id): "editor" | "viewer" | None}
     """
 
@@ -248,6 +253,8 @@ class CollabManager:
                 # saved straight away
                 doc.apply_update(backfill_update(content))
                 room.dirty = True
+                # Nobody changed anything: this save isn't a version
+                room.pending_snapshot = SnapshotRequest(skip=True)
             self.rooms[file_id] = room
             await self.flush(room)
             return room
@@ -283,7 +290,9 @@ class CollabManager:
         if gone:
             await self._broadcast(room, awareness_message(encode_awareness(gone)), skip=conn)
         if not room.connections:
-            await self.flush(room)
+            # final: the state people left the file in is snapshotted even if the
+            # last snapshot is recent
+            await self.flush(room, final=True)
             self._unload_if_idle(room)
 
     def leave_soon(self, room: Room, conn: Connection) -> asyncio.Task:
@@ -351,6 +360,7 @@ class CollabManager:
         if room.doc.get_state() == before:
             return  # nothing new (already had it)
         room.dirty = True
+        room.last_editor = conn.user_id
         self._schedule_save(room)
         await self._broadcast(room, create_update_message(update), skip=conn)
 
@@ -440,24 +450,31 @@ class CollabManager:
         # stop the wait but never a save that has started
         await asyncio.shield(self.flush(room))
 
-    async def flush(self, room: Room) -> None:
+    async def flush(self, room: Room, final: bool = False) -> None:
         """Writes the room's text (and state) now, if it changed. If a save is
         already running, this waits for it first, so when flush returns, everything
-        up to now is in the database (leaving, shutdown and readers rely on that)."""
+        up to now is in the database (leaving, shutdown and readers rely on that).
+        final marks the save when the room empties (and shutdown), so the snapshot
+        throttle is skipped and the state people left is kept."""
         async with room.save_lock:
             if not room.dirty:
                 return
             room.dirty = False
+            snapshot = room.pending_snapshot or SnapshotRequest(author_user_id=room.last_editor)
+            room.pending_snapshot = None
+            snapshot.final = snapshot.final or final
             text, state = str(room.text), room.doc.get_update()
             try:
-                await run_in_threadpool(self._save, room.file_id, text, state)
+                await run_in_threadpool(self._save, room.file_id, text, state, snapshot)
             except Exception:
                 room.dirty = True
+                # Kept for the retry, so e.g. a restore's version row isn't lost
+                room.pending_snapshot = snapshot
                 logger.exception("Couldn't save collaborative file %s", room.file_id)
 
     async def flush_all(self) -> None:
         for room in list(self.rooms.values()):
-            await self.flush(room)
+            await self.flush(room, final=True)
 
     async def flush_file(self, file_id: int) -> None:
         room = self.rooms.get(file_id)
@@ -527,13 +544,19 @@ class CollabManager:
 
     # ---- changes from outside the editor ----
 
-    async def replace_text(self, file_id: int, text: str) -> bool:
+    async def replace_text(self, file_id: int, text: str, snapshot: SnapshotRequest | None = None) -> bool:
         """Makes the file's text `text`, through its document, changing only the part
         that differs so other people's cursors stay put. Saved before returning.
+        `snapshot` says how to snapshot this save (REST save, restore); a restore's
+        `force` saves even when the text is unchanged, so its version row is written.
         False if the file doesn't exist."""
         room = await self.room(file_id)
         if room is None:
             return False
+        if snapshot is not None and snapshot.force:
+            # A restore writes its version row even when the text is unchanged
+            room.pending_snapshot = snapshot
+            room.dirty = True
         current = str(room.text)
         if current != text:
             start = 0
@@ -550,6 +573,10 @@ class CollabManager:
                 if inserted:
                     room.text.insert(start, inserted)
             room.dirty = True
+            if snapshot is not None:
+                room.pending_snapshot = snapshot
+                if snapshot.author_user_id is not None:
+                    room.last_editor = snapshot.author_user_id
             await self._broadcast(room, create_update_message(room.doc.get_update(before)))
         await self.flush(room)
         self._unload_if_idle(room)

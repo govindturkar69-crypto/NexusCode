@@ -20,6 +20,7 @@ from app.core.database import SessionLocal
 from app.core.deps import project_role, role_at_least
 from app.core.security import consume_ws_ticket
 from app.models import CodeFileModel, CodeFileYjsModel, UserModel
+from app.services import versions as versions_service
 from app.services.collab import (
     CLOSE_FILE_DELETED,
     CLOSE_GOING_AWAY,
@@ -43,12 +44,16 @@ def load_file(file_id: int):
         return code_file.project_id, (saved.state if saved else None), code_file.content or ""
 
 
-def save_file(file_id: int, text: str, state: bytes) -> None:
-    """Writes the document and its text together, so they never disagree."""
+def save_file(file_id: int, text: str, state: bytes, snapshot=None) -> None:
+    """Writes the document and its text together, so they never disagree, then
+    snapshots the committed text (docs/VERSION-HISTORY.md). A restore's snapshot
+    is part of the same transaction, so a restore happens fully or not at all;
+    any other snapshot failure is logged and the save stays saved."""
     with SessionLocal() as db:
         code_file = db.get(CodeFileModel, file_id)
         if code_file is None:
             return  # deleted meanwhile
+        project_id = code_file.project_id
         saved = db.get(CodeFileYjsModel, file_id)
         if saved is None:
             db.add(CodeFileYjsModel(code_file_id=file_id, state=state))
@@ -56,7 +61,20 @@ def save_file(file_id: int, text: str, state: bytes) -> None:
             saved.state = state
         if code_file.content != text:
             code_file.content = text
+        if snapshot is not None and snapshot.source == "restore":
+            versions_service.take_snapshot(db, file_id, project_id, text, snapshot)
         db.commit()
+        if snapshot is None or snapshot.source == "restore" or snapshot.skip:
+            return
+        # The save is committed; a snapshot problem must never undo or fail it
+        try:
+            if versions_service.take_snapshot(db, file_id, project_id, text, snapshot):
+                db.commit()
+            else:
+                db.rollback()
+        except Exception:
+            db.rollback()
+            logger.exception("Couldn't snapshot file %s", file_id)
 
 
 def current_roles(pairs: set[tuple[int, int]]) -> dict[tuple[int, int], str | None]:
@@ -79,8 +97,11 @@ collab = CollabManager(load_file, save_file, current_roles)
 
 # For plain `def` routes, which run in a worker thread: these hop onto the event loop
 
-def replace_text(file_id: int, text: str) -> bool:
-    return anyio.from_thread.run(collab.replace_text, file_id, text)
+def replace_text(file_id: int, text: str, snapshot=None) -> bool:
+    async def run():
+        return await collab.replace_text(file_id, text, snapshot)
+
+    return anyio.from_thread.run(run)
 
 
 def flush_project(project_id: int) -> None:

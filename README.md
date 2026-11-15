@@ -29,6 +29,7 @@
 | 📂 | **Files, dashboards** | Upload project files (Cloudinary), a personal analytics dashboard, and an admin dashboard for admin accounts. |
 | ⌨️ | **Command palette** | **Ctrl/Cmd+K** (or the header's Search button) finds pages, actions, projects and the current project's tasks and files with fuzzy matching and recent items. Editing actions only appear for owners and editors. |
 | 📈 | **Project analytics** | Per project, for the last 7, 14 or 30 days: burn-up/down, throughput, cycle time (median and 90th percentile), workload per member, overdue tasks, activity and recently edited files. Every chart has a text summary and a data table. |
+| 🕘 | **File version history** | Every code file keeps up to 50 versions, snapshotted on the server as it is saved (at most one a minute, never duplicates, plus the state everyone leaves it in). Browse them with author and time, diff any version against the current text in Monaco, and (owners and editors) restore it: people editing live see the restore at once, and the old text stays in the history. |
 | 🗜️ | **ZIP export and import** | Any member downloads the code (with its folders), `tasks.json` and a README as a ZIP. Owners and editors import a ZIP after a preview: duplicates are skipped or kept as renamed copies, and unsafe or binary entries are refused with a reason. |
 
 <table>
@@ -43,6 +44,10 @@
   <tr>
     <td><img src="docs/screenshots/11-command-palette.png" alt="The command palette over the board, with fuzzy matches highlighted" /></td>
     <td><img src="docs/screenshots/12-analytics.png" alt="The project analytics page: summary stats, burn-up and burn-down, throughput, workload and activity" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/14-version-history.png" alt="The version history of src/weather.py: a timeline of three versions and a diff of one against the current text, with Restore this version" /></td>
+    <td><img src="docs/screenshots/13-zip-import.png" alt="The ZIP import preview with new files, a duplicate and skipped entries" /></td>
   </tr>
 </table>
 
@@ -288,6 +293,7 @@ Clicking **Join** asks `POST /projects/{id}/meeting/token` for a LiveKit token (
 - **Video** needs a LiveKit project; without its settings the meeting page says video isn't configured.
 - **Analytics completion times** come from the activity feed's moves to Done, which name tasks by title. A done task created straight into Done, renamed after finishing, or sharing its title can't be dated: it's counted as "undated" and left out of the charts over time, never guessed. Saving code isn't an activity event, so "files" means recently edited files, not edit counts. Days are UTC.
 - **ZIP import** takes text and code only (UTF-8, no binaries), at most 5 MB, 300 entries, 1 MB per file and 10 MB unpacked, within the 500-file project limit. Tasks in an imported `tasks.json` aren't imported.
+- **Version history** is snapshotted at most once a minute per file (plus whenever everyone leaves a live file), so not every keystroke is a version, and the 50 newest are kept. Files that existed before the feature start their history with their next save.
 - **Command palette in the code editor:** inside Monaco, Ctrl/Cmd+K stays Monaco's own chord prefix, so open the palette from the header's Search button there.
 
 ---

@@ -389,6 +389,8 @@ describe('CodeEditor', () => {
       expect(screen.queryByRole('button', { name: /Push to GitHub/ })).not.toBeInTheDocument()
       // Any member may download the project; only owners and editors import into it
       expect(screen.getByRole('button', { name: 'Export ZIP' })).toBeInTheDocument()
+      // Viewers can browse a file's history (restoring is checked in HistoryPanel.test.jsx)
+      expect(screen.getByRole('button', { name: 'History' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Import ZIP' })).not.toBeInTheDocument()
       await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
       await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('print(1)'))

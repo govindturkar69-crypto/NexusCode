@@ -14,6 +14,7 @@ const PHRASES = {
   code_created: (target) => `created ${target}`,
   code_renamed: (target) => `renamed ${target}`,
   code_deleted: (target) => `deleted ${target}`,
+  code_restored: (target) => `restored ${target}`,
   agent_started: (target) => `started the AI agent: "${target}"`,
   agent_applied: (target) => `accepted AI agent changes: ${target}`,
 };

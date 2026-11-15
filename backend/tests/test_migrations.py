@@ -510,3 +510,40 @@ def test_0015_adds_an_empty_yjs_table_and_removes_it(scratch_engine):
     with scratch_engine.connect() as conn:
         assert conn.execute(text("SELECT content FROM code_files WHERE id = 1")).scalar() == "x = 1"
     _upgrade(scratch_engine, "0015_code_file_yjs")
+
+
+def test_0016_adds_the_versions_table_with_cascades_and_removes_it(scratch_engine):
+    _upgrade(scratch_engine, "0015_code_file_yjs")
+    with scratch_engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, username, hashed_password) VALUES (1, 'alice', 'h1')"))
+        conn.execute(text("INSERT INTO projects (id, name, owner_id) VALUES (1, 'P', 1)"))
+        conn.execute(text("INSERT INTO code_files (id, project_id, path, content, language) VALUES (1, 1, 'a.py', 'x = 1', 'python')"))
+    _upgrade(scratch_engine, "0016_code_file_versions")
+    tables = inspect(scratch_engine).get_table_names()
+    assert "code_file_versions" in tables
+    indexes = {i["name"] for i in inspect(scratch_engine).get_indexes("code_file_versions")}
+    assert {"ix_code_file_versions_file_created", "ix_code_file_versions_project_id"} <= indexes
+    with scratch_engine.begin() as conn:
+        # Nothing is backfilled: history starts with the next save
+        assert conn.execute(text("SELECT count(*) FROM code_file_versions")).scalar() == 0
+        conn.execute(text("INSERT INTO code_file_versions (file_id, project_id, content, content_hash, source) VALUES (1, 1, 'x = 1', 'h', 'save')"))
+    with scratch_engine.connect() as conn:
+        with pytest.raises(Exception, match="(?i)check|constraint"):
+            conn.execute(text("INSERT INTO code_file_versions (file_id, project_id, content, content_hash, source) VALUES (1, 1, 'x', 'h', 'bogus')"))
+        conn.rollback()
+    _downgrade(scratch_engine, "0015_code_file_yjs")
+    assert "code_file_versions" not in inspect(scratch_engine).get_table_names()
+    with scratch_engine.connect() as conn:
+        assert conn.execute(text("SELECT content FROM code_files WHERE id = 1")).scalar() == "x = 1"
+    _upgrade(scratch_engine, "0016_code_file_versions")
+
+
+def test_0016_round_trip_on_the_test_database():
+    """Down to 0015 and back up on the configured test database: SQLite normally,
+    the throwaway Postgres when TEST_DATABASE_URL points at one."""
+    _downgrade(engine, "0015_code_file_yjs")
+    assert "code_file_versions" not in inspect(engine).get_table_names()
+    _upgrade(engine, "head")
+    assert "code_file_versions" in inspect(engine).get_table_names()
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0016_code_file_versions"

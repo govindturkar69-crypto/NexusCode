@@ -79,7 +79,13 @@ browser**, not on the server. The server never runs user code.
 - **Security middleware**: per-response `X-Content-Type-Options`, `X-Frame-Options`,
   `Referrer-Policy`, and HSTS over HTTPS; CORS restricted to configured origins;
   rate limiting (slowapi, in-memory) on sensitive endpoints incl. `/ws-ticket`.
-- **Migrations**: Alembic, single head `0015_code_file_yjs`.
+- **Migrations**: Alembic, single head `0016_code_file_versions`.
+- **Version history** (`services/versions.py`, `routers/versions.py`, design in
+  `docs/VERSION-HISTORY.md`): snapshots are taken inside `save_file`, the one save
+  path, under each live room's save lock, from the committed text. Throttled to one a
+  minute per file and de-duplicated by hash; the last save before a room empties is
+  always kept; 50 per file. Restore goes through the live Yjs document and commits
+  the text, document and a new `restore` version in one transaction.
 - **Config**: `pydantic-settings` (`app/core/config.py`); DB via `DATABASE_URL` or
   individual `DB_*` vars (`app/core/database.py`).
 
@@ -114,6 +120,9 @@ browser**, not on the server. The server never runs user code.
   left to Monaco's chords.
 - **Project analytics page** (`pages/ProjectAnalytics.jsx`, lazy): Recharts charts in
   their own lazy chunk; each chart is a figure with a summary and a data table.
+- **Version history panel** (`components/HistoryPanel.jsx`, lazy): timeline, Monaco
+  `DiffEditor` against the editor's current text, restore with a confirm dialog;
+  the editor lands its pending autosave first so it can't overwrite a restore.
 - **ZIP**: export downloads with progress (`api/archive.js`); the import dialog
   (lazy) uploads with XHR for upload progress and shows the server's preview.
 

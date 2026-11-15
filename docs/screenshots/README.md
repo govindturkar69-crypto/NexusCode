@@ -43,6 +43,12 @@ one real completion; the seeded done tasks were created as done and show as unda
 | `12-analytics.png` | The project analytics page for the last 14 days. |
 | `13-zip-import.png` | The ZIP import preview: new files, one that already exists (skip or rename) and three skipped entries (a `..` path, a symlink and a PNG). |
 
+## Added in C9 (2026-11-15)
+
+| File | What it shows |
+|------|---------------|
+| `14-version-history.png` | The History panel for `src/weather.py`: three versions (a labelled save, another member's save, a restore) and the diff of one against the current text. The history was made through the normal API as `demo_priya` and `demo_alex` on the local demo stack, waiting out the one-minute snapshot throttle. |
+
 ## Not captured
 
 - **`06-agent-fix.png`, `07-agent-diff.png` and `10-video-meeting.png` are still the

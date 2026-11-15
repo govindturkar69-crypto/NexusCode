@@ -30,6 +30,8 @@ OAUTH_LIMIT = "20/minute"
 WS_TICKET_LIMIT = "60/minute"
 # A meeting token is fetched once per Join click (LiveKit reconnects reuse it)
 MEETING_TOKEN_LIMIT = "20/minute"
+# Restoring a file version rewrites content for everyone in the file
+RESTORE_LIMIT = "10/minute"
 
 
 def user_or_ip(request: Request) -> str:

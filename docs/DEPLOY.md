@@ -73,7 +73,7 @@ deploy.
 ## 4. Note the current migration head (for rollback)
 Record what revision production is on now, so you know the downgrade target if
 you need it. The backup from step 1 and the preflight output both show it (e.g.
-`0015_code_file_yjs`).
+`0015_code_file_yjs`, or `0016_code_file_versions` after phase C9).
 
 ## 5. Merge to `main`
 Merge the PR. Render and Vercel start deploying automatically.
@@ -98,6 +98,14 @@ Supabase SQL editor (safe; does not touch data). For each new table:
 ```sql
 ALTER TABLE public.<new_table> ENABLE ROW LEVEL SECURITY;
 ```
+**Phase C9 (`0016_code_file_versions`)** adds one table, so run once after that
+deploy:
+```sql
+ALTER TABLE public.code_file_versions ENABLE ROW LEVEL SECURITY;
+```
+Like the other tables it gets no policies: the backend connects as the table
+owner, so the app is unaffected, and Supabase's public API can't read it.
+
 Re-running preflight's RLS check (or the audit query) should then show every
 table protected. The app connects as the table owner, so RLS does not change
 its behaviour; it only closes Supabase's public API.
