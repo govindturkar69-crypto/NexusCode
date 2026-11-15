@@ -40,7 +40,9 @@ outside the repo).
 Preflight checks required env vars, DB connectivity, that the DB is at the
 alembic head, RLS on every public table, and (with `--health-url`) a running
 `/health`. It only runs `SELECT`s and never prints a value. Expect
-`RESULT: OK`; fix any FAIL before going further.
+`RESULT: OK`; fix any FAIL before going further. (Against a fresh local database
+the RLS check always FAILs, because RLS is turned on by hand in Supabase in step 8;
+only production must pass it.)
 
 **Point it at production.** Preflight reads `backend/.env`, but environment
 variables override it. A local `.env` usually has `DB_PASSWORD` and no
