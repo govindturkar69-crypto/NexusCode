@@ -253,6 +253,8 @@ class CollabManager:
                 # saved straight away
                 doc.apply_update(backfill_update(content))
                 room.dirty = True
+                # Nobody changed anything: this save isn't a version
+                room.pending_snapshot = SnapshotRequest(skip=True)
             self.rooms[file_id] = room
             await self.flush(room)
             return room

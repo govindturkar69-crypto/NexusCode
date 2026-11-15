@@ -117,6 +117,18 @@ def test_a_save_snapshots_once_the_window_has_passed_and_never_duplicates(client
     assert [v.content for v in rows(code_file)] == ["v3\n", "v1\n"]
 
 
+def test_opening_a_file_live_for_the_first_time_is_not_a_version(client, owner, project, code_file):
+    """The lazy backfill (saved text -> first live document) changes nothing, so it
+    must neither add a version nor start the throttle window for the next real save."""
+    age_versions(code_file)
+    before = [v.id for v in rows(code_file)]
+    YClient(client, owner, project, code_file).close()
+    assert [v.id for v in rows(code_file)] == before
+    save(client, owner, code_file, "a real change\n")
+    newest = rows(code_file)[0]
+    assert (newest.source, newest.content) == ("save", "a real change\n")
+
+
 def test_live_editing_snapshots_when_the_room_empties_even_inside_the_window(client, owner, project, code_file):
     with YClient(client, owner, project, code_file) as alice:
         alice.edit(0, "# typed live\n")

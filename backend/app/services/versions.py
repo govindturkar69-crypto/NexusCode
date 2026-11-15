@@ -41,6 +41,9 @@ class SnapshotRequest:
     final: bool = False
     # True (restore) forces a save even when the text is unchanged
     force: bool = False
+    # True for the save that only turns a file's existing text into its first live
+    # document (the lazy backfill): no user changed anything, so no snapshot
+    skip: bool = False
 
 
 def content_hash(text: str) -> str:

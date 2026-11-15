@@ -64,7 +64,7 @@ def save_file(file_id: int, text: str, state: bytes, snapshot=None) -> None:
         if snapshot is not None and snapshot.source == "restore":
             versions_service.take_snapshot(db, file_id, project_id, text, snapshot)
         db.commit()
-        if snapshot is None or snapshot.source == "restore":
+        if snapshot is None or snapshot.source == "restore" or snapshot.skip:
             return
         # The save is committed; a snapshot problem must never undo or fail it
         try:
