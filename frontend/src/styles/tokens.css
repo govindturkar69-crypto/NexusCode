@@ -23,6 +23,7 @@
   --color-danger: #ff7b72;
   --color-danger-solid: #da3633;
   --color-danger-soft: rgba(248, 81, 73, 0.14);
+  --color-danger-on-soft: #ff7b72;
   --color-on-danger: #ffffff;
   --color-success: #56d364;
   --color-success-soft: rgba(63, 185, 80, 0.15);
@@ -125,6 +126,8 @@
   --color-danger: #cf222e;
   --color-danger-solid: #cf222e;
   --color-danger-soft: rgba(207, 34, 46, 0.08);
+  /* a shade darker than the danger colour, for 4.5:1 on the soft tint over tinted surfaces (was 4.44:1) */
+  --color-danger-on-soft: #b62324;
   --color-on-danger: #ffffff;
   --color-success: #187733;
   --color-success-soft: rgba(26, 127, 55, 0.1);

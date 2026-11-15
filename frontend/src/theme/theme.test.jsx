@@ -171,4 +171,16 @@ describe('theme', () => {
     expect(names(light)).toEqual(names(root))
     expect(names(light).length).toBeGreaterThan(5)
   })
+
+  it('danger badge text keeps 4.5:1 on its tint, even on the tinted admin surface', () => {
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../styles/tokens.css'), 'utf-8')
+    const light = css.match(/:root\[data-theme="light"\] \{([\s\S]*?)\n\}/)[1]
+    const hex = light.match(/--color-danger-on-soft: (#[0-9a-f]{6})/)[1]
+    const lum = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+      .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0)
+    const contrast = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05)
+    // #f3e7ea is the badge background axe measured on the admin page (soft tint over a tinted row)
+    expect(contrast(hex, '#f3e7ea')).toBeGreaterThanOrEqual(4.5)
+  })
 })
