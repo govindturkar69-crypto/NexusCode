@@ -291,10 +291,17 @@ Clicking **Join** asks `POST /projects/{id}/meeting/token` for a LiveKit token (
 - **In-browser running:** Python has the standard library only, JavaScript runs one file at a time, and other languages can't run.
 - **Email:** without a verified domain at Resend, email only reaches the Resend account owner's address.
 - **Video** needs a LiveKit project; without its settings the meeting page says video isn't configured.
+- **Browsers:** developed and tested in Chromium (Chrome, Edge). Video meetings need WebRTC with camera and microphone permission. Other modern browsers should work but are not tested.
 - **Analytics completion times** come from the activity feed's moves to Done, which name tasks by title. A done task created straight into Done, renamed after finishing, or sharing its title can't be dated: it's counted as "undated" and left out of the charts over time, never guessed. Saving code isn't an activity event, so "files" means recently edited files, not edit counts. Days are UTC.
 - **ZIP import** takes text and code only (UTF-8, no binaries), at most 5 MB, 300 entries, 1 MB per file and 10 MB unpacked, within the 500-file project limit. Tasks in an imported `tasks.json` aren't imported.
 - **Version history** is snapshotted at most once a minute per file (plus whenever everyone leaves a live file), so not every keystroke is a version, and the 50 newest are kept. Files that existed before the feature start their history with their next save.
 - **Command palette in the code editor:** inside Monaco, Ctrl/Cmd+K stays Monaco's own chord prefix, so open the palette from the header's Search button there.
+
+---
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) (report vulnerabilities privately) and the [CHANGELOG](CHANGELOG.md). The last full review is [docs/FINAL-REVIEW.md](docs/FINAL-REVIEW.md).
 
 ---
 
