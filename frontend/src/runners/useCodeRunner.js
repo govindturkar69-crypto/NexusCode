@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { runJavaScript } from "./runJavaScript";
 import { runPython } from "./runPython";
+import { baseName } from "../editor/fileTree";
 
 const RUNNERS = { javascript: runJavaScript, python: runPython };
 const EMPTY = { output: [], outcome: null };
 
-function baseName(path) {
-  return path.slice(path.lastIndexOf("/") + 1);
-}
 
 /**
  * Runs files one at a time, in this browser, with what's in the editor. Each file
