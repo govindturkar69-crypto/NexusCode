@@ -19,7 +19,7 @@ import { apiFetch, apiStream, ApiError } from "../api/client";
 // It resolves with the end event. It never rejects, except for an error starting
 // the run (no permission, quota), which the caller shows as is.
 
-export const MAX_STEP_RETRIES = 2;
+const MAX_STEP_RETRIES = 2;
 const RETRY_DELAY_MS = 3000;
 const RATE_LIMIT_DELAY_MS = 15000;
 
@@ -33,7 +33,7 @@ function wait(ms, signal) {
   });
 }
 
-export function startAgentRun(projectId, goal) {
+function startAgentRun(projectId, goal) {
   return apiFetch(`/ai/projects/${projectId}/agent/runs`, { method: "POST", body: { goal } });
 }
 

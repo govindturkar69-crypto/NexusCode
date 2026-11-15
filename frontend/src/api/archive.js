@@ -54,7 +54,7 @@ export async function downloadProjectZip(projectId, { onProgress = () => {}, sav
   return { name, size: blob.size };
 }
 
-export function saveBlob(blob, name) {
+function saveBlob(blob, name) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

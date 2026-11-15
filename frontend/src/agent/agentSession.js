@@ -4,13 +4,11 @@ import { reportAccepted } from "./runAgent";
 import { runJavaScript } from "../runners/runJavaScript";
 import { collectPythonFiles } from "../runners/pythonProject";
 import { runPython } from "../runners/runPython";
+import { baseName } from "../editor/fileTree";
 
 const RUNNERS = { python: runPython, javascript: runJavaScript };
 const REPORT_DELAY_MS = 1500;
 
-function baseName(path) {
-  return path.slice(path.lastIndexOf("/") + 1);
-}
 
 /**
  * Everything an Agent panel keeps between renders that isn't React state: the

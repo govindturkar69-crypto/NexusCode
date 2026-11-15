@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.timeutil import aware_utc
 from app.models import CodeFileModel, CodeFileVersionModel
 from app.schemas.project import MAX_CODE_FILE_CHARS
 
@@ -50,10 +51,6 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _aware(value: datetime) -> datetime:
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
-
-
 def latest_version(db: Session, file_id: int) -> CodeFileVersionModel | None:
     return (
         db.query(CodeFileVersionModel)
@@ -78,7 +75,7 @@ def take_snapshot(db: Session, file_id: int, project_id: int, text: str, request
     if request.source in THROTTLED_SOURCES and latest is not None:
         if latest.content_hash == digest:
             return False
-        if not request.final and _aware(latest.created_at) > datetime.now(UTC) - timedelta(seconds=SNAPSHOT_EVERY_SECONDS):
+        if not request.final and aware_utc(latest.created_at) > datetime.now(UTC) - timedelta(seconds=SNAPSHOT_EVERY_SECONDS):
             return False
     db.add(
         CodeFileVersionModel(

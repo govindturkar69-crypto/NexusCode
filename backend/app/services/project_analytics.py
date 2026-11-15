@@ -23,17 +23,13 @@ from statistics import median
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.timeutil import aware_utc
 from app.models import TASK_STATUSES, ActivityModel, CodeFileModel, TaskModel, UserModel
 
 RANGES = (7, 14, 30)
 DONE_SUFFIX = " → Done"
 TOP = 5
 OVERDUE_LISTED = 10
-
-
-def _aware(value: datetime) -> datetime:
-    # SQLite gives naive datetimes (stored as UTC); Postgres gives aware ones
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def _day(value) -> str:
@@ -49,7 +45,7 @@ def _p90(values: list[float]) -> float:
 
 
 def project_analytics(db: Session, project_id: int, days: int, now: datetime | None = None) -> dict:
-    now = _aware(now or datetime.now(UTC))
+    now = aware_utc(now or datetime.now(UTC))
     today = now.date()
     start = today - timedelta(days=days - 1)
     start_at = datetime.combine(start, time.min, tzinfo=UTC)
@@ -76,14 +72,14 @@ def project_analytics(db: Session, project_id: int, days: int, now: datetime | N
     )
     finished_times: dict[str, list[datetime]] = defaultdict(list)
     for target, created_at in moves:
-        finished_times[target[: -len(DONE_SUFFIX)]].append(_aware(created_at))
+        finished_times[target[: -len(DONE_SUFFIX)]].append(aware_utc(created_at))
     title_counts = Counter(task.title for task in tasks)
     done_at: dict[int, datetime] = {}
     undated = 0
     for task in tasks:
         if task.status != "done":
             continue
-        created = _aware(task.created_at)
+        created = aware_utc(task.created_at)
         candidates = [t for t in finished_times.get(task.title, []) if t >= created] if title_counts[task.title] == 1 else []
         if candidates:
             done_at[task.id] = max(candidates)
@@ -93,7 +89,7 @@ def project_analytics(db: Session, project_id: int, days: int, now: datetime | N
     # --- burn-up / burn-down: per day, the scope (tasks created by then) and how
     # many of them were finished by then. Undated done tasks are left out of both.
     in_charts = [task for task in tasks if task.status != "done" or task.id in done_at]
-    created_days = sorted(_aware(task.created_at).date() for task in in_charts)
+    created_days = sorted(aware_utc(task.created_at).date() for task in in_charts)
     finished_days = sorted(done_at[task.id].date() for task in in_charts if task.id in done_at)
     burn = []
     for day in day_list:
@@ -114,7 +110,7 @@ def project_analytics(db: Session, project_id: int, days: int, now: datetime | N
 
     # --- cycle time: creation to Done, for tasks finished in the range
     durations = [
-        (done_at[task.id] - _aware(task.created_at)).total_seconds() / 86400
+        (done_at[task.id] - aware_utc(task.created_at)).total_seconds() / 86400
         for task in tasks
         if task.id in done_at and done_at[task.id] >= start_at
     ]
@@ -200,7 +196,7 @@ def project_analytics(db: Session, project_id: int, days: int, now: datetime | N
         .scalar()
     )
     recent_files = [
-        {"path": path, "updated_at": _aware(updated_at).isoformat()}
+        {"path": path, "updated_at": aware_utc(updated_at).isoformat()}
         for path, updated_at in (
             db.query(CodeFileModel.path, CodeFileModel.updated_at)
             .filter(CodeFileModel.project_id == project_id, CodeFileModel.updated_at >= start_at)

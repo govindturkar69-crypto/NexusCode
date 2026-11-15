@@ -12,11 +12,8 @@ import {
 import { Track } from 'livekit-client'
 import { Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Video, VideoOff } from 'lucide-react'
 import Button from '../components/ui/Button'
+import { initials } from '../components/ui/avatarColors'
 import { mediaErrorText } from './messages'
-
-function initials(name) {
-  return (name || '?').trim().slice(0, 2).toUpperCase()
-}
 
 // One person's camera, or their screen share
 function Tile({ trackRef }) {

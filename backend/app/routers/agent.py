@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, get_db
 from app.core.deps import _authorize, get_current_user, require_project_role
 from app.core.rate_limit import AGENT_STEP_LIMIT, AI_LIMIT, limiter, user_or_ip
+from app.core.timeutil import aware_utc
 from app.models import AgentRunModel, ProjectModel, UserModel
 from app.schemas.agent import (
     AgentAccepted,
@@ -42,10 +43,6 @@ router = APIRouter(prefix="/ai", tags=["agent"])
 
 RUN_NOT_FOUND = "Agent run not found"
 ACTIVE = "running"
-
-
-def _aware(value: datetime) -> datetime:
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def run_out(run: AgentRunModel) -> dict:
@@ -207,7 +204,7 @@ def _cap_reason(run: AgentRunModel, history_chars: int) -> tuple[str, str] | Non
         return "capped", f"The agent used all {agent.MAX_STEPS} steps for this run."
     if run.tokens >= agent.MAX_RUN_TOKENS:
         return "capped", "The agent reached this run's token limit."
-    if datetime.now(UTC) - _aware(run.created_at) > timedelta(seconds=agent.MAX_RUN_SECONDS):
+    if datetime.now(UTC) - aware_utc(run.created_at) > timedelta(seconds=agent.MAX_RUN_SECONDS):
         return "capped", f"The run reached its {agent.MAX_RUN_SECONDS // 60}-minute time limit."
     if history_chars > agent.MAX_HISTORY_CHARS:
         return "capped", "The conversation got too long for one run."
@@ -233,7 +230,7 @@ def step(request: Request, run_id: int, body: AgentStepRequest, db: Session = De
     run = _own_run(run_id, db, current_user, lock=True)
     if run.status != ACTIVE:
         raise HTTPException(status_code=409, detail="This run has ended. Start a new one.")
-    stale = datetime.now(UTC) - _aware(run.updated_at) > timedelta(seconds=agent.STEP_DEADLINE_SECONDS + 30)
+    stale = datetime.now(UTC) - aware_utc(run.updated_at) > timedelta(seconds=agent.STEP_DEADLINE_SECONDS + 30)
     if run.phase == "thinking" and not stale:
         raise HTTPException(status_code=409, detail="The agent is already working on a step.")
 

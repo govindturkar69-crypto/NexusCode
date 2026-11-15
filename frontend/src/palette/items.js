@@ -4,7 +4,7 @@ import { apiFetch, apiFetchAll } from "../api/client";
 // functions; CommandPalette.jsx renders and filters it.
 
 const EDIT_ROLES = new Set(["editor", "owner"]);
-export const canEditRole = (role) => EDIT_ROLES.has(role);
+const canEditRole = (role) => EDIT_ROLES.has(role);
 
 // Tasks and files of a project, fetched once per minute at most while browsing
 const cache = new Map();

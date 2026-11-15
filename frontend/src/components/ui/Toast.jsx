@@ -86,4 +86,3 @@ export function ToastProvider({ children }) {
   );
 }
 
-export default ToastProvider;
