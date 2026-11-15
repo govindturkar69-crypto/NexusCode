@@ -33,6 +33,8 @@ WS_TICKET_LIMIT = "60/minute"
 MEETING_TOKEN_LIMIT = "20/minute"
 # Restoring a file version rewrites content for everyone in the file
 RESTORE_LIMIT = "10/minute"
+# Per user. Each upload goes to the one shared Cloudinary account (review M3)
+UPLOAD_LIMIT = "30/minute"
 
 
 def user_or_ip(request: Request) -> str:

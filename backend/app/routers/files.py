@@ -1,10 +1,20 @@
 import logging
+import threading
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import Pagination, get_current_user, require_project_role
+from app.core.rate_limit import UPLOAD_LIMIT, limiter, user_or_ip
 from app.models import FileModel, ProjectModel, UserModel
 from app.schemas.project import FileListResponse, FileResponse
 from app.services import storage
@@ -14,16 +24,45 @@ logger = logging.getLogger("nexuscode")
 
 router = APIRouter(tags=["files"])
 
+# Uploaded files a project can hold (review M3). Deleting a file frees its slot.
+MAX_UPLOADED_FILES_PER_PROJECT = 200
+PROJECT_FILE_LIMIT_MESSAGE = (
+    f"This project already has {MAX_UPLOADED_FILES_PER_PROJECT} uploaded files, the most it can hold. "
+    "Delete some to upload more."
+)
+# The final count and the insert run under this lock (one process) and, on
+# Postgres, a row lock on the project, so two uploads can't both take the last slot
+_quota_lock = threading.Lock()
+
+
+def _uploaded_count(db: Session, project_id: int) -> int:
+    return db.query(FileModel).filter(FileModel.project_id == project_id).count()
+
+
+def _discard(stored: storage.StoredFile) -> None:
+    """Remove an asset that was uploaded but not kept (best effort)."""
+    try:
+        storage.delete_project_file(stored.public_id, stored.resource_type)
+    except Exception:
+        logger.exception("Couldn't delete unkept Cloudinary asset %s", stored.public_id)
+
 
 # A plain `def` (not async): FastAPI runs it in a worker thread, so the
 # file read and the Cloudinary upload don't block the event loop.
 @router.post("/projects/{project_id}/files", status_code=201, response_model=FileResponse)
+@limiter.limit(UPLOAD_LIMIT, key_func=user_or_ip)
 def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     project: ProjectModel = Depends(require_project_role("editor")),
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
+    # Refuse early, before anything is read or sent to Cloudinary...
+    if _uploaded_count(db, project.id) >= MAX_UPLOADED_FILES_PER_PROJECT:
+        raise HTTPException(status_code=409, detail=PROJECT_FILE_LIMIT_MESSAGE)
+    db.rollback()  # end the read transaction; the upload below can take a while
+
     # Read one byte past the limit so oversized files are detected without
     # loading arbitrarily large bodies (the middleware already checked
     # Content-Length; this is the definitive check).
@@ -37,18 +76,25 @@ def upload_file(
         logger.exception("Cloudinary upload failed (project %s)", project.id)
         raise HTTPException(status_code=502, detail="File storage is unavailable. Please try again.") from e
 
-    new_file = FileModel(
-        filename=filename,
-        url=stored.url,
-        public_id=stored.public_id,
-        resource_type=stored.resource_type,
-        content_type=stored.content_type,
-        size_bytes=stored.size_bytes,
-        project_id=project.id,
-    )
-    db.add(new_file)
-    record(db, project.id, current_user.id, "file_uploaded", filename)
-    db.commit()
+    # ...and decide for real here, where uploads that ran at the same time queue up
+    with _quota_lock:
+        db.query(ProjectModel.id).filter(ProjectModel.id == project.id).with_for_update().one()
+        if _uploaded_count(db, project.id) >= MAX_UPLOADED_FILES_PER_PROJECT:
+            db.rollback()
+            _discard(stored)
+            raise HTTPException(status_code=409, detail=PROJECT_FILE_LIMIT_MESSAGE)
+        new_file = FileModel(
+            filename=filename,
+            url=stored.url,
+            public_id=stored.public_id,
+            resource_type=stored.resource_type,
+            content_type=stored.content_type,
+            size_bytes=stored.size_bytes,
+            project_id=project.id,
+        )
+        db.add(new_file)
+        record(db, project.id, current_user.id, "file_uploaded", filename)
+        db.commit()
     db.refresh(new_file)
     publish(project.id, "file_uploaded")
     return {"message": "File uploaded", "file": new_file}
