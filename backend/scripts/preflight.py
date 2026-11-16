@@ -13,6 +13,7 @@ Checks:
   - /health reachable (only when --health-url / PREFLIGHT_HEALTH_URL is given)
   - Gemini key for the AI features (SKIP when none is set: the AI is off)
   - LiveKit vars all present and LIVEKIT_URL is ws(s):// (SKIP when none is set)
+  - TRUSTED_PROXY_HOPS is a whole number >= 0 when set (default 1)
 
 It is deliberately self-contained: it does not import the app, so it runs even
 when required env vars are missing (that is one of the things it reports).
@@ -201,6 +202,18 @@ def check_livekit(env: dict) -> None:
         report(OK, "LiveKit vars")
 
 
+def check_proxy_hops(env: dict) -> None:
+    """Same rule as app.core.config (an int >= 0). The value isn't secret, but like
+    every check here it isn't printed: only whether it's set and valid."""
+    raw = env.get("TRUSTED_PROXY_HOPS", "").strip()
+    if not raw:
+        report(OK, "TRUSTED_PROXY_HOPS", "not set: the default (1 proxy, right for Render) applies")
+    elif raw.isdigit():
+        report(OK, "TRUSTED_PROXY_HOPS", "set; verify it with docs/DEPLOY.md")
+    else:
+        report(FAIL, "TRUSTED_PROXY_HOPS", "must be a whole number >= 0 (Render: 1)")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Pre-deploy preflight (read-only).")
     parser.add_argument("--health-url", default=os.environ.get("PREFLIGHT_HEALTH_URL"))
@@ -215,6 +228,7 @@ def main() -> int:
     check_health(args.health_url)
     check_gemini(env)
     check_livekit(env)
+    check_proxy_hops(env)
     print()
     if _failed:
         print("RESULT: FAIL - fix the items above before deploying.")

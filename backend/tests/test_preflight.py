@@ -93,3 +93,15 @@ def test_gemini_is_optional_skip_when_unset_ok_when_set():
     lines, failed = run(preflight.check_gemini, {"AGENT_GEMINI_API_KEY": "secret-value-2"})
     assert not failed and lines[0][0] == preflight.OK and "agent only" in lines[0][2]
 
+
+
+def test_trusted_proxy_hops_ok_when_unset_or_whole_fails_otherwise_and_is_never_printed():
+    lines, failed = run(preflight.check_proxy_hops, {})
+    assert lines[0][0] == preflight.OK and not failed
+    for good in ("0", "1", "2"):
+        lines, failed = run(preflight.check_proxy_hops, {"TRUSTED_PROXY_HOPS": good})
+        assert lines[0][0] == preflight.OK and not failed
+    for bad in ("-1", "1.5", "two"):
+        lines, failed = run(preflight.check_proxy_hops, {"TRUSTED_PROXY_HOPS": bad})
+        assert lines[0][0] == preflight.FAIL and failed
+        assert bad not in " ".join(map(str, lines))

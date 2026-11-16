@@ -26,7 +26,7 @@ gaps** across all 90 routes.
 
 ## Findings
 
-### H1 🟨 Per-IP rate limits can be bypassed by sending `X-Forwarded-For`
+### H1 ✅ (C11b; verify on Render) Per-IP rate limits could be bypassed by sending `X-Forwarded-For`
 
 - **Where:** `backend/Dockerfile:38` (`--proxy-headers --forwarded-allow-ips='*'`);
   `backend/app/core/rate_limit.py:47` (`key_func=get_remote_address`).
@@ -72,7 +72,7 @@ gaps** across all 90 routes.
   Tested in `destroyOnce.test.js`, which first reproduces the warning without the
   guard, and checked in the browser smoke run (no console errors).
 
-### M3 🟨 File uploads: no rate limit and no per-project quota
+### M3 ✅ (C11b) File uploads: no rate limit and no per-project quota
 
 - **Where:** `backend/app/routers/files.py` (no `@limiter.limit`), `backend/app/services/storage.py`.
 - **Evidence:** each upload is capped (`MAX_UPLOAD_BYTES`, enforced by middleware and
@@ -83,7 +83,7 @@ gaps** across all 90 routes.
   (c) keep it as it is.
   Either changes behaviour, so it's left for the maintainer.
 
-### M4 🟨 CI doesn't check migrations, the Docker build or Python dependencies
+### M4 ✅ (C11b, verified locally) CI didn't check migrations, the Docker build or Python dependencies
 
 - **Where:** `.github/workflows/ci.yml`.
 - **Evidence:** CI runs ruff, pytest (Postgres 16), eslint, Vitest, vite build and
@@ -94,7 +94,7 @@ gaps** across all 90 routes.
   against the service Postgres, a `docker build` of `backend/`, and `pip-audit -r
   requirements.txt`. All three pass locally (see Proof).
 
-### M5 🟨 No Content-Security-Policy on the app document
+### M5 🔄 (C11b: report-only; enforcing waits for F1) No Content-Security-Policy on the app document
 
 - **Where:** `frontend/vercel.json`. Only the two agent worker bundles have a CSP.
 - **Evidence:** this is intentional and tested (`vercelHeaders.test.js`), so LiveKit's
@@ -390,5 +390,94 @@ first among the decisions, once Render's proxy header is confirmed.
 - **M5:** add a CSP in report-only mode first, then enforce it.
 - L1, L3, L4 and L9 follow the recommendations in the decision list.
 
-None of these is implemented on this branch. They change behaviour or CI, so they
-come in a follow-up.
+None of these was implemented in C11. They were done in C11b.
+
+## C11b: decisions implemented (branch `phase-c11b-hardening`)
+
+- **H1 resolved in code; verify on Render.**
+  - `backend/app/core/client_ip.py` is now the single source of a client address.
+    It takes the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` places from the right
+    (default 1, validated as a whole number ≥ 0), and falls back to the TCP peer when
+    the header is missing, too short or malformed.
+  - IPv6 is normalised and grouped by /64; IPv4-mapped IPv6 counts as IPv4.
+  - Every slowapi key uses it, and HSTS's https check uses the same rule for
+    `X-Forwarded-Proto`.
+  - uvicorn runs with `--no-proxy-headers`, and the startup log shows the value in use.
+  - A guard test fails if any other module reads `request.client` or the forwarding
+    headers.
+  - Tests:
+    - a spoofed leftmost entry never changes the key;
+    - a 6th failed login is limited even with a new spoofed entry each time;
+    - two real clients don't share a bucket;
+    - IPv6, whitespace, ports, malformed values and too few entries are handled.
+  - Preflight checks the setting, and `docs/DEPLOY.md` has the two-network
+    verification for Render.
+- **M3 resolved.** 30 uploads a minute per user (429), and at most 200 uploaded
+  files per project (409, before anything is sent to Cloudinary).
+  - The definitive count runs under a lock (plus a project row lock on Postgres),
+    so racing uploads can't overshoot; a losing upload's asset is deleted again.
+  - Deleting a file frees its place.
+  - The board explains both limits in a toast.
+  - Tests include 8 uploads racing for the last 2 places.
+- **M4 resolved.** CI has two new parallel jobs:
+  - **Backend (migrations + pip-audit):** `alembic upgrade head` on an empty
+    Postgres 16, then `alembic check`, then `pip-audit -r requirements.txt`;
+  - **Backend Docker image (build only):** Buildx with the GitHub Actions layer
+    cache; nothing is pushed.
+
+  Actions stay pinned by tag, and the token is still `contents: read`.
+
+  **Verified locally (2026-11-16)**, using the jobs' exact commands:
+  - in `python:3.12-slim` (Python 3.12.16) against an empty throwaway Postgres:
+    `pip install -r requirements.txt pip-audit==2.10.1` succeeded;
+    `alembic upgrade head` reached `0016_code_file_versions`; `alembic check`
+    reported "No new upgrade operations detected"; and `pip-audit -r
+    requirements.txt` found no known vulnerabilities;
+  - `docker build` of `backend/` succeeded. The image is 80,808,595 B, runs as
+    `appuser`, and has no dev tools. With dummy env (no Gemini, LiveKit or Resend
+    keys), `/health` returned 200 and HEALTHCHECK reported healthy.
+
+  Two parts can only be proven by the first CI run on GitHub: the Buildx layer
+  cache (`type=gha`), and the runner itself. The local build used the classic
+  builder on the same Dockerfile.
+- **M5 in progress (report-only).** `Content-Security-Policy-Report-Only` is sent on
+  every app page. On the local demo stack, 16 pages and flows report nothing except
+  the HTML preview's own inline scripts (its sandboxed `srcdoc` frame inherits the
+  policy). Enforcing needs the preview moved to its own document first. The live
+  watch and the switch to enforcing are in `docs/DEPLOY.md`.
+
+### C11b proof (2026-11-16)
+
+| Check | Result |
+| --- | --- |
+| ruff | clean |
+| Backend, fresh throwaway Postgres 18 (`sslmode=disable`) | **1438 passed**, including the 8-thread upload race |
+| Backend, SQLite | **1438 passed** |
+| Frontend (Vitest) | **826 passed** (60 files) |
+| eslint · vite build | clean; main chunk 294.08 kB (94.37 kB gzip) |
+| `npm audit --omit=dev` | 0 vulnerabilities |
+| `pip-audit -r requirements.txt` (python:3.12-slim) | no known vulnerabilities |
+| CI migration commands (python:3.12-slim, empty Postgres) | `alembic upgrade head` → `0016`; `alembic check`: no new operations |
+| Docker | built (80,808,595 B, `appuser`, no dev tools); `/health` **200** with dummy env and no Gemini, LiveKit or Resend keys; HEALTHCHECK **healthy** |
+| Playwright smoke run, with vercel.json's headers including the report-only CSP | **11/11** steps, **0** console errors, **0** CSP reports, **0** failed requests |
+| CSP crawl (16 pages and flows) | only the HTML preview's inline scripts (F1) |
+| Startup log | `Client IP for rate limits: X-Forwarded-For entry 1 from the right` |
+
+### Follow-up F1 🟨 Move the HTML preview to its own document before enforcing the CSP
+
+- **Where:** `frontend/src/components/PreviewPanel.jsx` (`<iframe sandbox="allow-scripts" srcDoc=…>`).
+- **Evidence:** the local CSP crawl (16 pages and flows) reports exactly one thing:
+  in the editor's Preview, the previewed project's inline `<script>` and the
+  console-capture script violate `script-src`. A `srcdoc` document inherits its
+  parent's policy, so an enforced policy would break every preview with scripts.
+  Report-only blocks nothing, and the preview still runs.
+- **Fix (recommended):** serve a static, sandboxed `/preview-frame.html`:
+  - exclude it from the app policy;
+  - give it its own policy: inline scripts allowed, no network
+    (`default-src 'none'; script-src 'unsafe-inline'; …`);
+  - send it the HTML by `postMessage`.
+  
+  The alternative is to serve that frame from a separate origin. Details are in
+  `docs/DEPLOY.md` ("Switching to enforcing", step 1).
+- **Status:** not started. This is a behaviour change to the preview, so it gets its
+  own branch and tests. **Don't enforce the CSP until this lands.**

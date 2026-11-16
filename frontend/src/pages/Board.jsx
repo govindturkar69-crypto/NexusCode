@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Calendar, CodeXml, FileText, Flag, FolderOpen, GripVertical, Plus, Sparkles, Trash2, Upload, Video } from "lucide-react";
 import { apiFetch, apiFetchAll } from "../api/client";
+import { describeUploadError } from "../api/uploadErrors";
 import { useAuth } from "../auth/useAuth";
 import { useProject } from "../projects/useProject";
 import { filterByAssignee, isOverdue, moveTask } from "../projects/tasks";
@@ -214,7 +215,12 @@ function Board() {
         toast({ title: "File uploaded", description: selectedFile.name, tone: "success" });
         return fetchFiles();
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        // The upload limits get a clear toast; anything else shows inline as before
+        const limit = describeUploadError(err);
+        if (limit) toast({ ...limit, tone: "error" });
+        else setError(err.message);
+      })
       .finally(() => setUploading(false));
   }
 

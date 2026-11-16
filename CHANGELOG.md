@@ -3,7 +3,26 @@
 Notable changes, newest first. The project was built in phases (C1 to C11), each merged
 as one pull request into `main`. Tags mark the stable points.
 
-## C11: final review (unreleased)
+## C11b: hardening (unreleased)
+
+- **Security:** per-IP rate limits key on the address Render's proxy appended to
+  `X-Forwarded-For` (`TRUSTED_PROXY_HOPS`, default 1), never the caller's own entry.
+  uvicorn no longer trusts forwarding headers.
+- **Uploads:** at most 30 a minute per person and 200 per project, enforced race-safely;
+  the board explains both limits.
+- **CI:** migrations from an empty database plus `alembic check`, `pip-audit`, and a
+  Docker build (cached, not pushed), as parallel jobs.
+- **Security:** a report-only Content-Security-Policy on the app pages, tuned on the
+  local stack; how to watch it live and enforce it later is in docs/DEPLOY.md.
+  Before it is enforced, the HTML preview needs its own document (follow-up F1 in
+  docs/FINAL-REVIEW.md).
+- **Verified:**
+  - backend 1438 tests on Postgres and on SQLite, frontend 826;
+  - the new CI commands, run locally;
+  - the Docker image's `/health` and HEALTHCHECK;
+  - the smoke run, with no CSP reports.
+
+## C11: final review ([v1.3](https://github.com/govindturkar69-crypto/NexusCode/releases/tag/v1.3), #32)
 
 - **Security:** an authorization matrix test is built from the app's own routes.
   Every route needs a user or is explicitly public. Every project route checks the
