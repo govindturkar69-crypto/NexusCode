@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { Calendar, CodeXml, FileText, Flag, FolderOpen, GripVertical, Plus, Sparkles, Trash2, Upload, Video } from "lucide-react";
+import { Calendar, CodeXml, FileText, Flag, FolderOpen, GripVertical, Plus, Search, Sparkles, Trash2, Upload, Video, X } from "lucide-react";
 import { apiFetch, apiFetchAll } from "../api/client";
 import { describeUploadError } from "../api/uploadErrors";
 import { useAuth } from "../auth/useAuth";
 import { useProject } from "../projects/useProject";
-import { filterByAssignee, isOverdue, moveTask } from "../projects/tasks";
+import { filterTasks, isOverdue, moveTask, progress } from "../projects/tasks";
+import { isTypingTarget, plainKey } from "../shortcuts/shortcuts";
 import ActivityPanel from "../components/ActivityPanel";
 import ChatPanel from "../components/ChatPanel";
 import TaskModal from "../components/TaskModal";
@@ -140,6 +141,22 @@ function Board() {
     tasksLoaded && project !== null,
   );
   const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [query, setQuery] = useState("");
+
+  // "n" new task, "/" filter (see shortcuts/shortcuts.js); not while typing or in a dialog
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.defaultPrevented || isTypingTarget(event.target) || document.querySelector('[role="dialog"]')) return;
+      const target = plainKey(event, "n") ? "new-task-title" : plainKey(event, "/") ? "task-search" : null;
+      const field = target && document.getElementById(target);
+      if (!field) return;
+      event.preventDefault();
+      field.focus();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   const [suggesting, setSuggesting] = useState(false);
   const [title, setTitle] = useState("");
   const [adding, setAdding] = useState(false);
@@ -260,8 +277,14 @@ function Board() {
       .finally(() => fetchTasks());
   }
 
-  const filtering = assigneeFilter !== "";
-  const visibleTasks = filterByAssignee(tasks, assigneeFilter);
+  const filtering = assigneeFilter !== "" || priorityFilter !== "" || query.trim() !== "";
+  const visibleTasks = filterTasks(tasks, { assignee: assigneeFilter, priority: priorityFilter, query });
+  const { done: doneCount, total: totalCount, percent } = progress(tasks);
+  function clearFilters() {
+    setAssigneeFilter("");
+    setPriorityFilter("");
+    setQuery("");
+  }
 
   return (
     <Page width={1240}>
@@ -296,17 +319,40 @@ function Board() {
             <Button variant="secondary" icon={<Sparkles size={15} aria-hidden="true" />} onClick={() => setSuggesting(true)}>Generate tasks</Button>
           </form>
         )}
-        <div className="board-toolbar__filter">
-          <label htmlFor="assignee-filter" className="small muted">Assignee</label>
+        <div className="board-toolbar__filter" role="group" aria-label="Filter tasks">
+          <div className="board-search">
+            <Search size={14} aria-hidden="true" className="board-search__icon" />
+            <input id="task-search" type="search" className="input input--sm" placeholder="Filter tasks" aria-label="Filter tasks by text" aria-keyshortcuts="/" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          <label htmlFor="assignee-filter" className="visually-hidden">Assignee</label>
           <select id="assignee-filter" className="input input--sm" value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
-            <option value="">Everyone</option>
+            <option value="">Anyone</option>
+            {user && <option value={String(user.id)}>Assigned to me</option>}
             <option value="unassigned">Unassigned</option>
-            {members.map((member) => (
+            {members.filter((member) => member.user_id !== user?.id).map((member) => (
               <option key={member.user_id} value={member.user_id}>{member.username}</option>
             ))}
           </select>
-          {filtering && canEdit && <span className="hint" style={{ margin: 0 }}>Clear the filter to drag tasks.</span>}
+          <label htmlFor="priority-filter" className="visually-hidden">Priority</label>
+          <select id="priority-filter" className="input input--sm" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
+            <option value="">Any priority</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          {filtering && (
+            <Button variant="subtle" size="sm" icon={<X size={13} aria-hidden="true" />} onClick={clearFilters}>Clear</Button>
+          )}
         </div>
+      </div>
+      <div className="board-status">
+        <div className="board-progress" role="progressbar" aria-label="Tasks done" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-valuetext={`${doneCount} of ${totalCount} tasks done`}>
+          <span style={{ width: `${percent}%` }} />
+        </div>
+        <span className="small muted">{doneCount} of {totalCount} done</span>
+        <span role="status" className="small muted board-status__filter">
+          {filtering ? `Showing ${visibleTasks.length} of ${tasks.length} tasks${canEdit ? ". Clear the filters to drag tasks." : ""}` : ""}
+        </span>
       </div>
 
       {!tasksLoaded ? (
@@ -330,7 +376,7 @@ function Board() {
                       </header>
                       <div ref={provided.innerRef} {...provided.droppableProps} className="kanban__list">
                         {columnTasks.length === 0 && !snapshot.isDraggingOver && (
-                          <p className="kanban__empty">{canEdit ? "Drop tasks here" : "No tasks"}</p>
+                          <p className="kanban__empty">{filtering ? "No matching tasks" : canEdit ? (status === "todo" ? "Add a task above, or press N" : "Drag tasks here") : "No tasks"}</p>
                         )}
                         {columnTasks.map((task, index) => (
                           <TaskCard

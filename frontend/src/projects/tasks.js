@@ -28,3 +28,21 @@ export function filterByAssignee(tasks, filter) {
   if (filter === "unassigned") return tasks.filter((t) => t.assignee_id == null);
   return tasks.filter((t) => String(t.assignee_id) === filter);
 }
+
+// Every board filter at once: assignee ("" = everyone, "unassigned", or a user id),
+// priority ("" = any) and free text over the title and description
+export function filterTasks(tasks, { assignee = "", priority = "", query = "" } = {}) {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return filterByAssignee(tasks, assignee).filter((t) => {
+    if (priority && t.priority !== priority) return false;
+    if (!words.length) return true;
+    const text = `${t.title} ${t.description ?? ""} ${t.assignee_username ?? ""}`.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+}
+
+// Share of tasks done, for the board's progress bar
+export function progress(tasks) {
+  const done = tasks.filter((t) => t.status === "done").length;
+  return { done, total: tasks.length, percent: tasks.length ? Math.round((done / tasks.length) * 100) : 0 };
+}

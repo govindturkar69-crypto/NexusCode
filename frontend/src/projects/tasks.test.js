@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { filterByAssignee, isOverdue, localToday, moveTask } from './tasks'
+import { filterByAssignee, filterTasks, isOverdue, localToday, moveTask, progress } from './tasks'
 
 const t = (id, status) => ({ id, status })
 const ids = (list, status) => list.filter((x) => x.status === status).map((x) => x.id)
@@ -56,5 +56,23 @@ describe('filterByAssignee', () => {
     expect(filterByAssignee(tasks, '')).toHaveLength(3)
     expect(filterByAssignee(tasks, 'unassigned').map((x) => x.id)).toEqual([2])
     expect(filterByAssignee(tasks, '8').map((x) => x.id)).toEqual([3])
+  })
+})
+
+describe('filterTasks and progress', () => {
+  const tasks = [
+    { id: 1, title: 'Fix login', description: 'OAuth bug', priority: 'high', status: 'todo', assignee_id: 2, assignee_username: 'ana' },
+    { id: 2, title: 'Write docs', priority: 'low', status: 'done', assignee_id: null },
+  ]
+  it('combines text, priority and assignee', () => {
+    expect(filterTasks(tasks, { query: 'oauth' }).map((t) => t.id)).toEqual([1])
+    expect(filterTasks(tasks, { query: 'ANA fix' }).map((t) => t.id)).toEqual([1])
+    expect(filterTasks(tasks, { priority: 'low' }).map((t) => t.id)).toEqual([2])
+    expect(filterTasks(tasks, { assignee: 'unassigned', priority: 'high' })).toEqual([])
+    expect(filterTasks(tasks)).toHaveLength(2)
+  })
+  it('counts done tasks', () => {
+    expect(progress(tasks)).toEqual({ done: 1, total: 2, percent: 50 })
+    expect(progress([])).toEqual({ done: 0, total: 0, percent: 0 })
   })
 })

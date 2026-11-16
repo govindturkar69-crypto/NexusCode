@@ -71,6 +71,14 @@
 .board-toolbar__add { flex: 1 1 520px; display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .board-toolbar__add .field { flex: 1 1 220px; }
 .board-toolbar__filter { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.board-search { position: relative; display: flex; align-items: center; }
+.board-search__icon { position: absolute; left: 9px; color: var(--color-text-muted); pointer-events: none; }
+.board-search .input { padding-left: 28px; width: 180px; }
+.board-status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin: calc(var(--space-2) * -1) 0 var(--space-4); }
+.board-progress { width: 160px; height: 6px; border-radius: var(--radius-full); background: var(--color-surface-raised); overflow: hidden; }
+.board-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--color-success); transition: width var(--duration-slow) var(--ease-out); }
+.board-status__filter:empty { display: none; }
+@media (max-width: 600px) { .board-search, .board-search .input { width: 100%; flex: 1 1 100%; } }
 
 .kanban { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
 .kanban__column {

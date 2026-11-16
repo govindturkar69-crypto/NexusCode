@@ -90,7 +90,35 @@ describe('Board is role-aware', () => {
     await user.selectOptions(screen.getByLabelText('Assignee'), 'unassigned')
     expect(screen.getByRole('button', { name: 'A task' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Late task' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Clear the filter to drag/)).toBeInTheDocument()
+    expect(screen.getByText(/Clear the filters to drag/)).toBeInTheDocument()
+  })
+
+  it('filters by priority and text, says how many match, and clears in one click', async () => {
+    const user = userEvent.setup()
+    renderBoard('editor', [OVERDUE])
+    await screen.findByRole('button', { name: 'Late task' })
+    await user.selectOptions(screen.getByLabelText('Priority'), 'high')
+    expect(screen.queryByRole('button', { name: 'A task' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Late task' })).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Priority'), '')
+    await user.type(screen.getByRole('searchbox', { name: 'Filter tasks by text' }), 'late')
+    expect(screen.queryByRole('button', { name: 'A task' })).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Showing 1 of 2 tasks')
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByRole('button', { name: 'A task' })).toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: 'Filter tasks by text' })).toHaveValue('')
+  })
+
+  it('shows how much is done, and N and / jump to the fields', async () => {
+    const user = userEvent.setup()
+    renderBoard('editor', [{ ...OVERDUE, status: 'done' }])
+    await screen.findByRole('button', { name: 'Late task' })
+    expect(screen.getByRole('progressbar', { name: 'Tasks done' })).toHaveAttribute('aria-valuetext', '1 of 2 tasks done')
+    await user.keyboard('n')
+    expect(screen.getByRole('textbox', { name: 'New task title' })).toHaveFocus()
+    await user.click(document.body)
+    await user.keyboard('/')
+    expect(screen.getByRole('searchbox', { name: 'Filter tasks by text' })).toHaveFocus()
   })
 
   it('opens the edit modal from a card and refreshes after saving', async () => {
