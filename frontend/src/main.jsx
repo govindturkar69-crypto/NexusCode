@@ -23,6 +23,14 @@ initSentry().catch(() => {})
 // request does the same job.
 if (!hasValidToken()) warmUpServer()
 
+// Installable app: the service worker caches the app shell only (see public/sw.js).
+// Production builds only, after the page has loaded, as its own small chunk.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    import('./pwa/register.js').then((pwa) => pwa.start()).catch(() => {})
+  })
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
