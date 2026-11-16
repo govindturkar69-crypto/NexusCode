@@ -14,6 +14,13 @@ as one pull request into `main`. Tags mark the stable points.
   Docker build (cached, not pushed), as parallel jobs.
 - **Security:** a report-only Content-Security-Policy on the app pages, tuned on the
   local stack; how to watch it live and enforce it later is in docs/DEPLOY.md.
+  Before it is enforced, the HTML preview needs its own document (follow-up F1 in
+  docs/FINAL-REVIEW.md).
+- **Verified:**
+  - backend 1438 tests on Postgres and on SQLite, frontend 826;
+  - the new CI commands, run locally;
+  - the Docker image's `/health` and HEALTHCHECK;
+  - the smoke run, with no CSP reports.
 
 ## C11: final review ([v1.3](https://github.com/govindturkar69-crypto/NexusCode/releases/tag/v1.3), #32)
 

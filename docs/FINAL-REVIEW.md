@@ -83,7 +83,7 @@ gaps** across all 90 routes.
   (c) keep it as it is.
   Either changes behaviour, so it's left for the maintainer.
 
-### M4 ✅ (C11b) CI didn't check migrations, the Docker build or Python dependencies
+### M4 ✅ (C11b, verified locally) CI didn't check migrations, the Docker build or Python dependencies
 
 - **Where:** `.github/workflows/ci.yml`.
 - **Evidence:** CI runs ruff, pytest (Postgres 16), eslint, Vitest, vite build and
@@ -94,7 +94,7 @@ gaps** across all 90 routes.
   against the service Postgres, a `docker build` of `backend/`, and `pip-audit -r
   requirements.txt`. All three pass locally (see Proof).
 
-### M5 🔄 (C11b: report-only) No Content-Security-Policy on the app document
+### M5 🔄 (C11b: report-only; enforcing waits for F1) No Content-Security-Policy on the app document
 
 - **Where:** `frontend/vercel.json`. Only the two agent worker bundles have a CSP.
 - **Evidence:** this is intentional and tested (`vercelHeaders.test.js`), so LiveKit's
@@ -426,11 +426,42 @@ None of these was implemented in C11. They were done in C11b.
     cache; nothing is pushed.
 
   Actions stay pinned by tag, and the token is still `contents: read`.
+
+  **Verified locally (2026-11-16)**, using the jobs' exact commands:
+  - in `python:3.12-slim` (Python 3.12.16) against an empty throwaway Postgres:
+    `pip install -r requirements.txt pip-audit==2.10.1` succeeded;
+    `alembic upgrade head` reached `0016_code_file_versions`; `alembic check`
+    reported "No new upgrade operations detected"; and `pip-audit -r
+    requirements.txt` found no known vulnerabilities;
+  - `docker build` of `backend/` succeeded. The image is 80,808,595 B, runs as
+    `appuser`, and has no dev tools. With dummy env (no Gemini, LiveKit or Resend
+    keys), `/health` returned 200 and HEALTHCHECK reported healthy.
+
+  Two parts can only be proven by the first CI run on GitHub: the Buildx layer
+  cache (`type=gha`), and the runner itself. The local build used the classic
+  builder on the same Dockerfile.
 - **M5 in progress (report-only).** `Content-Security-Policy-Report-Only` is sent on
   every app page. On the local demo stack, 16 pages and flows report nothing except
   the HTML preview's own inline scripts (its sandboxed `srcdoc` frame inherits the
   policy). Enforcing needs the preview moved to its own document first. The live
   watch and the switch to enforcing are in `docs/DEPLOY.md`.
+
+### C11b proof (2026-11-16)
+
+| Check | Result |
+| --- | --- |
+| ruff | clean |
+| Backend, fresh throwaway Postgres 18 (`sslmode=disable`) | **1438 passed**, including the 8-thread upload race |
+| Backend, SQLite | **1438 passed** |
+| Frontend (Vitest) | **826 passed** (60 files) |
+| eslint · vite build | clean; main chunk 294.08 kB (94.37 kB gzip) |
+| `npm audit --omit=dev` | 0 vulnerabilities |
+| `pip-audit -r requirements.txt` (python:3.12-slim) | no known vulnerabilities |
+| CI migration commands (python:3.12-slim, empty Postgres) | `alembic upgrade head` → `0016`; `alembic check`: no new operations |
+| Docker | built (80,808,595 B, `appuser`, no dev tools); `/health` **200** with dummy env and no Gemini, LiveKit or Resend keys; HEALTHCHECK **healthy** |
+| Playwright smoke run, with vercel.json's headers including the report-only CSP | **11/11** steps, **0** console errors, **0** CSP reports, **0** failed requests |
+| CSP crawl (16 pages and flows) | only the HTML preview's inline scripts (F1) |
+| Startup log | `Client IP for rate limits: X-Forwarded-For entry 1 from the right` |
 
 ### Follow-up F1 🟨 Move the HTML preview to its own document before enforcing the CSP
 
