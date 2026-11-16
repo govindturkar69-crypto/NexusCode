@@ -1,0 +1,97 @@
+/*
+ * Accent presets and the high-contrast mode (Settings > Appearance). Generated from
+ * src/theme/appearance.js, which is the source of truth; theme/appearance.test.js
+ * checks the two match and that every combination meets WCAG AA.
+ * Blue is the default and lives in tokens.css.
+ */
+:root[data-accent="violet"] {
+  --color-accent: #a371f7;
+  --color-accent-hover: #bc8cff;
+  --color-accent-text: #bc8cff;
+  --color-accent-soft: rgba(163, 113, 247, 0.14);
+  --color-on-accent: #0b1220;
+  --color-focus: #a371f7;
+}
+:root[data-theme="light"][data-accent="violet"] {
+  --color-accent: #8250df;
+  --color-accent-hover: #6639ba;
+  --color-accent-text: #6639ba;
+  --color-accent-soft: rgba(130, 80, 223, 0.1);
+  --color-on-accent: #ffffff;
+  --color-focus: #8250df;
+}
+:root[data-accent="green"] {
+  --color-accent: #3fb950;
+  --color-accent-hover: #56d364;
+  --color-accent-text: #56d364;
+  --color-accent-soft: rgba(63, 185, 80, 0.14);
+  --color-on-accent: #0b1220;
+  --color-focus: #3fb950;
+}
+:root[data-theme="light"][data-accent="green"] {
+  --color-accent: #1a7f37;
+  --color-accent-hover: #116329;
+  --color-accent-text: #116329;
+  --color-accent-soft: rgba(26, 127, 55, 0.1);
+  --color-on-accent: #ffffff;
+  --color-focus: #1a7f37;
+}
+:root[data-accent="orange"] {
+  --color-accent: #f0883e;
+  --color-accent-hover: #ffa657;
+  --color-accent-text: #ffa657;
+  --color-accent-soft: rgba(240, 136, 62, 0.14);
+  --color-on-accent: #0b1220;
+  --color-focus: #f0883e;
+}
+:root[data-theme="light"][data-accent="orange"] {
+  --color-accent: #bc4c00;
+  --color-accent-hover: #953800;
+  --color-accent-text: #953800;
+  --color-accent-soft: rgba(188, 76, 0, 0.1);
+  --color-on-accent: #ffffff;
+  --color-focus: #bc4c00;
+}
+:root[data-accent="pink"] {
+  --color-accent: #f778ba;
+  --color-accent-hover: #ff9bce;
+  --color-accent-text: #ff9bce;
+  --color-accent-soft: rgba(247, 120, 186, 0.14);
+  --color-on-accent: #0b1220;
+  --color-focus: #f778ba;
+}
+:root[data-theme="light"][data-accent="pink"] {
+  --color-accent: #bf3989;
+  --color-accent-hover: #99286e;
+  --color-accent-text: #99286e;
+  --color-accent-soft: rgba(191, 57, 137, 0.1);
+  --color-on-accent: #ffffff;
+  --color-focus: #bf3989;
+}
+
+/* High contrast: stronger text, borders and focus rings; the surfaces stay put */
+:root[data-contrast="high"] {
+  --color-bg: #010409;
+  --color-surface: #0d1117;
+  --color-surface-raised: #151b23;
+  --color-surface-hover: #1c2330;
+  --color-border: #7d8590;
+  --color-border-strong: #b7bdc8;
+  --color-text: #ffffff;
+  --color-text-muted: #e6edf3;
+  --color-text-subtle: #d1d7e0;
+}
+:root[data-theme="light"][data-contrast="high"] {
+  --color-bg: #ffffff;
+  --color-surface: #f6f8fa;
+  --color-surface-raised: #eef1f4;
+  --color-surface-hover: #e9edf1;
+  --color-border: #6e7781;
+  --color-border-strong: #32383f;
+  --color-text: #010409;
+  --color-text-muted: #1f2328;
+  --color-text-subtle: #32383f;
+}
+:root[data-contrast="high"] :focus-visible {
+  outline-width: 3px;
+}

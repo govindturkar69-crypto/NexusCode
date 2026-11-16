@@ -73,7 +73,7 @@ function CodeEditor() {
   const { projectId } = useParams();
   const { role, canEdit, isOwner } = useProject(projectId);
   const { user } = useAuth();
-  const { theme } = useTheme();
+  const { theme, accent, contrast } = useTheme();
   const [files, setFiles] = useState([]);
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
   const [error, setError] = useState("");
@@ -697,7 +697,7 @@ function CodeEditor() {
               onChange={handleCodeChange}
               onMount={(editor) => setEditorInstance(editor)}
               beforeMount={defineNexusThemes}
-              theme={monacoTheme(theme)}
+              theme={monacoTheme(theme, accent, contrast)}
               // Room above the first line for other people's name labels
               options={{ fontSize: 14, minimap: { enabled: false }, padding: { top: 18 }, readOnly: !canEdit || activeLiveState.readOnly }}
             />

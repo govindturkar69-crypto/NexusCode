@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Monitor, Moon, Palette, Sun } from "lucide-react";
+import { Check, Contrast, Monitor, Moon, Palette, Sun } from "lucide-react";
 import { setMotionPreference, storedMotion } from "../motion/motion";
+import { ACCENTS } from "../theme/appearance";
 import { useTheme } from "../theme/useTheme";
 import Card from "./ui/Card";
 
@@ -23,9 +24,28 @@ function Segmented({ legend, name, value, options, onChange, hint }) {
   );
 }
 
-// Theme and motion. Both apply at once and are remembered on this device.
+// Accent presets as colour swatches: a radio group, so arrow keys move between them
+function AccentPicker({ value, onChange, theme }) {
+  return (
+    <fieldset className="segmented-field">
+      <legend className="field__label">Accent colour</legend>
+      <div className="accent-swatches">
+        {Object.entries(ACCENTS).map(([name, accent]) => (
+          <label key={name} className={`accent-swatch ${value === name ? "is-checked" : ""}`} style={{ "--swatch": accent[theme === "light" ? "light" : "dark"][0] }}>
+            <input type="radio" name="accent" value={name} checked={value === name} onChange={() => onChange(name)} className="visually-hidden" />
+            <span className="accent-swatch__dot" aria-hidden="true">{value === name && <Check size={14} />}</span>
+            <span className="accent-swatch__label">{accent.label}</span>
+          </label>
+        ))}
+      </div>
+      <p className="field__hint">Buttons, links, focus rings and the code editor's cursor use it.</p>
+    </fieldset>
+  );
+}
+
+// Theme, accent, contrast and motion. All apply at once and are remembered on this device.
 function AppearanceSection() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, accent, setAccent, contrast, setContrast } = useTheme();
   const [motion, setMotion] = useState(() => storedMotion() ?? "system");
 
   function chooseMotion(value) {
@@ -45,6 +65,18 @@ function AppearanceSection() {
           options={[
             { value: "light", label: "Light", icon: <Sun size={14} aria-hidden="true" /> },
             { value: "dark", label: "Dark", icon: <Moon size={14} aria-hidden="true" /> },
+          ]}
+        />
+        <AccentPicker value={accent} onChange={setAccent} theme={theme} />
+        <Segmented
+          legend="Contrast"
+          name="contrast"
+          value={contrast}
+          onChange={setContrast}
+          hint="High contrast makes text, borders and focus rings stronger, in both themes."
+          options={[
+            { value: "normal", label: "Standard" },
+            { value: "high", label: "High", icon: <Contrast size={14} aria-hidden="true" /> },
           ]}
         />
         <Segmented

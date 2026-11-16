@@ -6,11 +6,13 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { initSentry } from './observability.js'
 import { applyMotion } from './motion/motion.js'
 import { applyInitialTheme } from './theme/theme.js'
+import { applyInitialAppearance } from './theme/appearance.js'
 import { hasValidToken } from './api/client.js'
 import { warmUpServer } from './api/warmup.js'
 
 // index.html already did both before the first paint; this keeps them in step
 applyInitialTheme()
+applyInitialAppearance()
 applyMotion()
 
 // No-op unless VITE_SENTRY_DSN is set; never blocks rendering

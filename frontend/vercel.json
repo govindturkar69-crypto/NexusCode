@@ -40,7 +40,7 @@
     {
       "source": "/((?!assets/|pyodide/).*)",
       "headers": [
-        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'sha256-LaO7qYYUeQEcUHsuiQLFQ6H0YBaZ29zto+E4mk785TI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://res.cloudinary.com; font-src 'self' data:; connect-src 'self' https://nexuscode-backend-wbt4.onrender.com wss://nexuscode-backend-wbt4.onrender.com https://*.livekit.cloud wss://*.livekit.cloud https://*.sentry.io; media-src 'self' blob: mediastream:; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
+        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'sha256-/SRUc97b0OUDNUaOTMZgxMU0T3XI+DQO/YkOT2twKi4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://res.cloudinary.com; font-src 'self' data:; connect-src 'self' https://nexuscode-backend-wbt4.onrender.com wss://nexuscode-backend-wbt4.onrender.com https://*.livekit.cloud wss://*.livekit.cloud https://*.sentry.io; media-src 'self' blob: mediastream:; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
       ]
     }
   ]
