@@ -3,8 +3,8 @@ import { cloneElement, useEffect, useId, useRef, useState } from "react";
 // A short text tip for an icon button or similar. Shows after a short hover delay,
 // at once on keyboard focus, hides on Escape/blur/leave. Linked with
 // aria-describedby; for icon-only buttons still give the button an aria-label.
-// side: "top" (default) | "bottom"
-function Tooltip({ label, side = "top", children }) {
+// side: "top" (default) | "bottom"; shortcut: a key hint shown after the label ("Shift T")
+function Tooltip({ label, side = "top", shortcut, children }) {
   const id = useId();
   const [visible, setVisible] = useState(false);
   const timer = useRef(null);
@@ -42,6 +42,7 @@ function Tooltip({ label, side = "top", children }) {
       {visible && (
         <span role="tooltip" id={id} className={`tooltip tooltip--${side}`}>
           {label}
+          {shortcut && <span className="tooltip__kbd">{shortcut}</span>}
         </span>
       )}
     </span>

@@ -1,7 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router-dom";
-import { ChartColumn, Check, ChevronRight, ChevronsUpDown, CodeXml, FolderKanban, LogOut, Menu as MenuIcon, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, SquareKanban, Video, X } from "lucide-react";
+import { ChartColumn, Check, Keyboard, ChevronRight, ChevronsUpDown, CodeXml, FolderKanban, LogOut, Menu as MenuIcon, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, SquareKanban, Video, X } from "lucide-react";
 import { apiFetchAll } from "../../api/client";
+import { isTypingTarget, plainKey, sequenceHandler } from "../../shortcuts/shortcuts";
+import { useTheme } from "../../theme/useTheme";
 import { useAuth } from "../../auth/useAuth";
 import GithubIcon from "../icons/GithubIcon";
 import NotificationBell from "../NotificationBell";
@@ -12,6 +14,7 @@ import { useToast } from "../ui/toastContext";
 
 // Loaded on first open: nothing of it is in the main bundle
 const CommandPalette = lazy(() => import("../../palette/CommandPalette"));
+const ShortcutsDialog = lazy(() => import("../../shortcuts/ShortcutsDialog"));
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 const PROJECT_PAGES = { "": "Board", editor: "Code editor", meeting: "Video meeting", analytics: "Analytics" };
@@ -42,6 +45,8 @@ function AppShell() {
   const toast = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { toggleTheme } = useTheme();
 
   // Ctrl/Cmd+K opens the command palette from anywhere, form fields included,
   // except inside the Monaco editor: there Ctrl/Cmd+K starts Monaco's own
@@ -58,6 +63,34 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
   const [projects, setProjects] = useState(null);
+
+  // Single-key shortcuts (see shortcuts/shortcuts.js): only when not typing, and
+  // not while a dialog is open (it has its own keys)
+  useEffect(() => {
+    // "g then x": go to a page; b, e and m need a project in the address
+    const sequence = sequenceHandler((letter) => {
+      const route = matchPath("/projects/:projectId/*", pathname);
+      const base = route ? `/projects/${route.params.projectId}` : null;
+      const targets = { p: "/projects", d: "/dashboard", a: "/ai", s: "/settings", b: base, e: base && `${base}/editor`, m: base && `${base}/meeting` };
+      if (!targets[letter]) return false;
+      navigate(targets[letter]);
+      return true;
+    });
+    function onKeyDown(event) {
+      if (event.defaultPrevented || isTypingTarget(event.target) || document.querySelector('[role="dialog"]')) return;
+      if (event.key === "?" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        setShortcutsOpen(true);
+      } else if (plainKey(event, "t", { shift: true })) {
+        event.preventDefault();
+        toggleTheme();
+      } else if (sequence(event)) {
+        event.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleTheme, navigate, pathname]);
   const sidebarId = useId();
   const menuButtonRef = useRef(null);
   const sidebarRef = useRef(null);
@@ -239,6 +272,7 @@ function AppShell() {
                 items={[
                   { label: "Settings", icon: <SettingsIcon size={14} aria-hidden="true" />, onSelect: () => navigate("/settings") },
                   { label: "Connect GitHub", icon: <GithubIcon size={14} />, onSelect: connectGithub },
+                  { label: "Keyboard shortcuts", icon: <Keyboard size={14} aria-hidden="true" />, onSelect: () => setShortcutsOpen(true), hint: "?" },
                   { separator: true },
                   { label: "Log out", icon: <LogOut size={14} aria-hidden="true" />, onSelect: logout, keepFocus: true },
                 ]}
@@ -268,9 +302,14 @@ function AppShell() {
           </div>
         </main>
       </div>
+      {shortcutsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+        </Suspense>
+      )}
       {paletteOpen && (
         <Suspense fallback={null}>
-          <CommandPalette onClose={() => setPaletteOpen(false)} project={currentProject ?? null} projects={projects} />
+          <CommandPalette onClose={() => setPaletteOpen(false)} onShowShortcuts={() => setShortcutsOpen(true)} project={currentProject ?? null} projects={projects} />
         </Suspense>
       )}
     </div>

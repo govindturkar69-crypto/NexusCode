@@ -15,6 +15,7 @@ import { collectPythonFiles } from "../runners/pythonProject";
 import { runnerFor, UNSUPPORTED_MESSAGE } from "../runners/runnerFor";
 import { useCodeRunner } from "../runners/useCodeRunner";
 import { useDoParam } from "../utils/useDoParam";
+import { altKey, hint } from "../shortcuts/shortcuts";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
 import AgentPanel from "../components/AgentPanel";
@@ -533,6 +534,41 @@ function CodeEditor() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
+  // Alt+N new file, Alt+1/2/3 move focus between the file tree, the code and the
+  // side panel. Alt+letter/digit is free in Monaco, so these work while typing code.
+  const panelShortcut = useRef(null);
+  useEffect(() => {
+    panelShortcut.current = (event) => {
+      if (altKey(event, "N")) {
+        if (!canEdit || loadState !== "ready") return false;
+        setDialog({ kind: "new-file", folder: "" });
+        return true;
+      }
+      if (altKey(event, "2")) {
+        if (!editorInstance) return false;
+        editorInstance.focus();
+        return true;
+      }
+      const target = altKey(event, "1") ? ".editor-grid__tree" : altKey(event, "3") ? ".editor-grid__ai" : null;
+      const panel = target && document.querySelector(target);
+      const focusable = panel?.querySelector('button:not([disabled]), [href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
+      if (!focusable) return false;
+      focusable.focus();
+      return true;
+    };
+  });
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (document.querySelector('[role="dialog"]')) return;
+      if (panelShortcut.current?.(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
   return (
     <Page width={1400}>
       <PageHeader
@@ -591,7 +627,7 @@ function CodeEditor() {
           {canEdit && (
             <div className="editor-tree__actions">
               <span className="editor-tree__title">Files</span>
-              <Button size="sm" variant="secondary" aria-label="+ File" title="New file" icon={<FilePlus size={13} aria-hidden="true" />} onClick={() => setDialog({ kind: "new-file", folder: "" })} disabled={loadState !== "ready"}>File</Button>
+              <Button size="sm" variant="secondary" aria-label="+ File" title={`New file (${hint("new-file")})`} aria-keyshortcuts="Alt+N" icon={<FilePlus size={13} aria-hidden="true" />} onClick={() => setDialog({ kind: "new-file", folder: "" })} disabled={loadState !== "ready"}>File</Button>
               <Button size="sm" variant="secondary" aria-label="+ Folder" title="New folder" icon={<FolderPlus size={13} aria-hidden="true" />} onClick={() => setDialog({ kind: "new-folder" })} disabled={loadState !== "ready"}>Folder</Button>
             </div>
           )}
