@@ -1,7 +1,7 @@
 /* Welcome tour: a getting-started checklist in the bottom corner (not modal) */
 .tour { position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: calc(var(--z-dropdown) - 1); width: min(380px, calc(100vw - 2 * var(--space-4))); max-height: calc(100vh - var(--header-height) - 2 * var(--space-4)); overflow-y: auto; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: var(--color-surface); box-shadow: var(--shadow-lg); animation: nx-rise-in var(--duration-slow) var(--ease-out) both; }
 .tour:focus { outline: none; }
-.tour:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* Focus moves here when it opens; the panel is not a control, so no ring */
 .tour__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
 .tour__title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--color-text); }
 .tour__progress-text { margin-top: 2px; color: var(--color-text-muted); font-size: var(--text-xs); }

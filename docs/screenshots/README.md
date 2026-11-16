@@ -15,14 +15,25 @@ halfway: `00`, `01`, `02`, `03`, `04` and `08`, plus `frontend/public/og-image.p
 - `10` needs a real LiveKit call.
 Re-taking those is a manual step and is listed below.
 
+**Updated on 2026-11-16 after the C12 UI upgrades.** `01` and `02` were re-taken, and
+`15`, `16` and `17` were added. They were captured from the production build served with
+`vercel.json`'s headers, in the dark theme with reduced motion. The landing page's four
+`.webp` images were re-made from the same run.
+
+| File | What it shows | How it was made |
+|------|---------------|-----------------|
+| `15-shortcuts.png` | The `?` keyboard shortcuts overlay over the board. | Automated. |
+| `16-welcome-tour.png` | The welcome tour for a new account (`demo_empty`, no projects). | Automated. |
+| `17-appearance.png` | Settings > Appearance with the violet accent chosen. | Automated. |
+
 The landing page's own screenshots (`frontend/public/landing/*.webp`, board and editor in
 both themes) come from the same local demo stack.
 
 | File | What it shows | How it was made |
 |------|---------------|-----------------|
 | `00-landing.png` | The public landing page at `/` (signed out). | Automated. |
-| `01-dashboard.png` | The project list after signing in as `demo_priya`. | Automated. |
-| `02-board.png` | The Kanban board with the seeded tasks across To Do / In Progress / Done. | Automated. |
+| `01-dashboard.png` | The dashboard home as `demo_priya`: quick actions, the task assigned to her, recent activity, recent projects and totals (re-taken in C12). | Automated. |
+| `02-board.png` | The Kanban board with the seeded tasks across To Do / In Progress / Done, with the C12 filters and progress bar. | Automated. |
 | `03-members-roles.png` | The Members panel: owner, editor, viewer. | Automated (element). |
 | `04-editor-collab.png` | `src/weather.py` open as `demo_priya`, with `demo_alex`'s live cursor and name ("2 people editing"). | Automated: two signed-in browser sessions on the same file. |
 | `06-agent-fix.png` | A real AI-agent run on the seeded bug: goal, quota ("1 of 2 runs left today"), step counter, timeline, and a change waiting for review. | Automated, one real agent run (Gemini). The bottom edge cuts the review buttons; `07` shows them. |

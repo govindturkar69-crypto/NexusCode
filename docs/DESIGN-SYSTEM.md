@@ -132,6 +132,54 @@ Every page has loading, empty and error states. Its skeleton has the same size a
 | Meeting | Speaking ring pulses (opacity); tiles scale in; status dot blinks while joining or reconnecting | `nx-blink`; steady under reduced motion |
 | Landing | Hero staggers in (CSS only, so the LCP text paints immediately); sections reveal once; feature cards lift on hover | `.motion-stagger`, `useReveal`, transitions |
 
+## Accents and contrast
+
+`theme/appearance.js` is the source of truth for five accent presets (blue, the default,
+then violet, green, orange and pink) and a high-contrast mode. They are chosen in
+Settings > Appearance, kept on this device, and applied as `data-accent` and
+`data-contrast` on `<html>`. `index.html` applies them before the first paint, like the
+theme. `styles/accents.css` holds the matching token overrides:
+
+- Each accent sets `--color-accent`, `-hover`, `-text`, `-soft`, `--color-on-accent` and
+  `--color-focus`.
+- High contrast sets stronger text, borders and focus rings.
+
+`theme/appearance.test.jsx` checks that the CSS matches the JS. It also checks WCAG AA for
+all 20 combinations (light or dark × accent × contrast):
+
+| What | Minimum |
+| --- | --- |
+| Body text in high contrast | 7:1 |
+| Body text otherwise | 4.5:1 |
+| Muted text, subtle text and accent text, on every surface and on the accent tint | 4.5:1 |
+| Text on a filled accent button | 4.5:1 |
+| The accent as a UI colour (focus rings) | 3:1 |
+
+Add an accent in `ACCENTS`, regenerate the CSS block, and the test covers it.
+
+## Keyboard shortcuts
+
+`shortcuts/shortcuts.js` lists every shortcut once. The `?` overlay (`ShortcutsDialog`,
+lazy), tooltips (`<Tooltip shortcut={hint("theme")}>`), menus (`hint` on a menu item) and
+the palette read from it. The rules:
+
+- Single keys (`?`, `n`, `/`, `Shift+T`, `g` then a letter) never fire while you type in
+  a field or in Monaco (`isTypingTarget`), or while a dialog is open.
+- Editor shortcuts use Alt+key (matched by `event.code`, so Mac Option characters work)
+  or Ctrl/Cmd+Enter. Monaco leaves both free.
+- Show keys with `<Kbd keys={["Mod", "K"]} />`. `Mod` renders as Ctrl, or ⌘ on a Mac.
+
+## Shared pieces added in C12
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| `Kbd` | `components/ui/Kbd.jsx` | Keycaps; `"then"` between keys for sequences. |
+| `ShortcutsDialog` | `shortcuts/` | Built on `Modal` (`size="lg"`), so it is a bottom sheet on phones. |
+| `WelcomeTour` | `onboarding/` | A non-modal checklist in the corner. Escape closes it, and progress is kept per user (`tour.js`). |
+| Bottom navigation | `AppShell`, `.bottom-nav` | Under 760 px wide. Targets are 44 px and it respects the safe area. Sets `--bottom-nav-height` so the tour, toasts and the update prompt sit above it. |
+| Update prompt | `pwa/register.js` | Plain DOM: no React needed, and not in the main bundle. |
+| Dashboard rows | `styles/home.css` | Lazy with the page. |
+
 ## Icons
 
 Icons come from `lucide-react` 1.65, imported per icon: `import { Bot } from "lucide-react"`.
@@ -142,10 +190,16 @@ Icons come from `lucide-react` 1.65, imported per icon: `import { Bot } from "lu
 
 ## Monaco
 
-The editor, the AI diff and the agent diffs use `nexus-light` and `nexus-dark`. These are defined from the token values in `editor/monacoThemes.js`; Monaco cannot read CSS variables. Pass these two props to any new `<Editor>` or `<DiffEditor>`:
+The editor, the AI diff and the agent diffs use one theme per light/dark × accent ×
+contrast (`nexus-dark-blue`, `nexus-light-violet-hc`, and so on). They are defined from
+the token values in `editor/monacoThemes.js`, because Monaco cannot read CSS variables.
+Pass these two props to any new `<Editor>` or `<DiffEditor>`:
 
 - `beforeMount={defineNexusThemes}`
-- `theme={monacoTheme(theme)}`
+- `theme={monacoTheme(theme, accent, contrast)}`, all three from `useTheme()`
+
+The editor's text size, word wrap and minimap come from `editor/viewSettings.js`, which
+keeps them on this device.
 
 ## Bundle rules
 

@@ -76,3 +76,24 @@ lazy-loaded.
 - The main bundle stays within +5 kB gzip. The tour, the shortcuts dialog and the
   service-worker registration are all lazy.
 - `prefers-reduced-motion` and the in-app motion switch govern every new animation.
+
+## Status after C12
+
+| # | Status |
+| --- | --- |
+| 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 14 | Done |
+| 6 | Already in place: dialogs were bottom sheets on phones since C6 |
+| 13 | Not done: creating a task can't set its column, so a per-column add would need a second request or an API change |
+| 15 | Not done: labels and inline edit need API fields |
+
+**Bundle.** The main JS went from 294.08 kB (94.37 kB gzip) to 306.94 kB (98.68 kB gzip),
+which is +4.31 kB gzip. The main CSS went from 12.34 kB to 13.64 kB gzip. Everything else
+is in lazy chunks:
+
+| Chunk | Size (gzip) |
+| --- | --- |
+| Shortcuts overlay | about 1 kB |
+| Welcome tour | about 2 kB |
+| Service-worker registration | 0.73 kB |
+| Dashboard | its page chunk, plus `home.css` |
+
