@@ -52,6 +52,7 @@ const STATUS = { todo: "To do", in_progress: "In progress", done: "Done" };
 export function buildItems(ctx) {
   const { project, projects = [], tasks = [], files = [] } = ctx;
   const items = [];
+  const act0 = (key, label, hint, run, keywords = "") => items.push({ key, group: "Actions", kind: "action", label, hint, keywords, run });
   const nav = (key, label, to, hint, keywords = "") => items.push({ key, group: "Navigation", kind: "nav", label, hint, keywords, run: () => ctx.navigate(to) });
 
   if (project) {
@@ -64,7 +65,8 @@ export function buildItems(ctx) {
     nav(`nav:analytics:${project.id}`, "Analytics", `${base}/analytics`, project.name, "charts burndown throughput stats");
   }
   nav("nav:projects", "Projects", "/projects", "All your projects", "home list");
-  nav("nav:dashboard", "Dashboard", "/dashboard", "Totals across projects", "stats");
+  act0("act:new-project", "New project", "Create a project", () => ctx.navigate("/projects?do=new-project"), "add create project");
+  nav("nav:dashboard", "Dashboard", "/dashboard", "Your tasks, activity and totals", "stats home overview");
   nav("nav:ai", "AI Assistant", "/ai", "Generate code, find bugs", "gemini");
   nav("nav:settings", "Settings", "/settings", "Password, email, GitHub, appearance", "preferences account");
   nav("nav:profile", "Profile", "/settings", "Your account", "me user account");

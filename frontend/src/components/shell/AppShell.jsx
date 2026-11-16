@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from 
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { ChartColumn, Check, Keyboard, ChevronRight, ChevronsUpDown, CodeXml, FolderKanban, LogOut, Menu as MenuIcon, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, SquareKanban, Video, X } from "lucide-react";
 import { apiFetchAll } from "../../api/client";
+import { rememberProject } from "../../projects/home";
 import { isTypingTarget, plainKey, sequenceHandler } from "../../shortcuts/shortcuts";
 import { useTheme } from "../../theme/useTheme";
 import { useAuth } from "../../auth/useAuth";
@@ -106,6 +107,12 @@ function AppShell() {
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  // The dashboard lists recently opened projects first
+  const openedProjectId = projectRoute?.id;
+  useEffect(() => {
+    if (openedProjectId && user?.username) rememberProject(user.username, openedProjectId);
+  }, [openedProjectId, user?.username]);
 
   // A project we don't know yet (just created, or just added to): refresh the list
   useEffect(() => {
