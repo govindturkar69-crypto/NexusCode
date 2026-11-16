@@ -84,6 +84,7 @@ export function buildItems(ctx) {
     act(`act:export:${project.id}`, "Export project as ZIP", project.name, () => ctx.exportProject(project.id), "download backup zip");
   }
   act("act:theme", "Toggle theme", "Light or dark · Shift T", () => ctx.toggleTheme(), "dark light mode appearance");
+  if (ctx.showTour) act("act:tour", "Getting started tour", "Five first steps", () => ctx.showTour(), "welcome onboarding help tour");
   if (ctx.showShortcuts) act("act:shortcuts", "Keyboard shortcuts", "Every shortcut · ?", () => ctx.showShortcuts(), "keys hotkeys help keyboard");
   act("act:motion", ctx.motionReduced ? "Turn animations back on" : "Reduce motion", "Animations", () => ctx.toggleMotion(), "animation accessibility reduced motion");
   act("act:signout", "Sign out", "End this session", () => ctx.signOut(), "log out logout");

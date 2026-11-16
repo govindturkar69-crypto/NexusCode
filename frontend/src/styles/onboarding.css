@@ -1,0 +1,24 @@
+/* Welcome tour: a getting-started checklist in the bottom corner (not modal) */
+.tour { position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: calc(var(--z-dropdown) - 1); width: min(380px, calc(100vw - 2 * var(--space-4))); max-height: calc(100vh - var(--header-height) - 2 * var(--space-4)); overflow-y: auto; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: var(--color-surface); box-shadow: var(--shadow-lg); animation: nx-rise-in var(--duration-slow) var(--ease-out) both; }
+.tour:focus { outline: none; }
+.tour:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.tour__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.tour__title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--color-text); }
+.tour__progress-text { margin-top: 2px; color: var(--color-text-muted); font-size: var(--text-xs); }
+.tour__bar { height: 6px; margin: var(--space-3) 0; border-radius: var(--radius-full); background: var(--color-surface-raised); overflow: hidden; }
+.tour__bar > span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); transition: width var(--duration-slow) var(--ease-out); }
+.tour__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.tour__step { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-2); border-radius: var(--radius); }
+.tour__step:not(.is-done):hover { background: var(--color-surface-hover); }
+.tour__check { display: grid; place-items: center; width: 20px; height: 20px; margin-top: 1px; flex-shrink: 0; border: 2px solid var(--color-border-strong); border-radius: var(--radius-full); color: var(--color-on-accent); transition: background-color var(--duration-base) var(--ease-out), border-color var(--duration-base) var(--ease-out); }
+.tour__step.is-done .tour__check { border-color: var(--color-accent); background: var(--color-accent); animation: nx-pop var(--duration-base) var(--ease-spring); }
+.tour__body { flex: 1; min-width: 0; }
+.tour__step-title { color: var(--color-text); font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.tour__step.is-done .tour__step-title { color: var(--color-text-muted); text-decoration: line-through; }
+.tour__step-text { margin-top: 2px; color: var(--color-text-muted); font-size: var(--text-xs); }
+.tour__step.is-done .tour__step-text { display: none; }
+.tour__step-text--hint { font-style: italic; }
+.tour__foot { display: flex; justify-content: flex-end; margin-top: var(--space-2); }
+@media (max-width: 760px) {
+  .tour { right: var(--space-2); left: var(--space-2); width: auto; bottom: calc(var(--bottom-nav-height, 0px) + var(--space-2)); }
+}

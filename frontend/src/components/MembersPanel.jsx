@@ -63,6 +63,7 @@ function MembersPanel({ projectId, members, currentUserId, isOwner, onChanged, o
         {isOwner && (
           <form onSubmit={addMember} className="member-add">
             <Input
+              id="new-member-username"
               label="Add a member by username"
               hideLabel
               placeholder="Add by username"

@@ -126,6 +126,12 @@ function Board() {
   useDoParam(
     {
       "new-task": () => canEdit && document.getElementById("new-task-title")?.focus(),
+      // From the welcome tour: the owner's "add a member" field
+      invite: () => {
+        const field = document.getElementById("new-member-username");
+        field?.scrollIntoView?.({ block: "center" });
+        field?.focus({ preventScroll: true });
+      },
       task: () => {
         const found = tasks.find((t) => t.id === wantedTask);
         if (found) setEditingTask(found);
