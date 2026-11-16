@@ -26,6 +26,9 @@ vi.mock('@monaco-editor/react', async () => {
         data-path={path}
         data-live={value === undefined ? 'yes' : 'no'}
         readOnly={options.readOnly}
+        data-font-size={options.fontSize}
+        data-word-wrap={options.wordWrap}
+        data-minimap={String(options.minimap?.enabled)}
         value={value ?? defaultValue ?? ''}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -173,6 +176,43 @@ describe('CodeEditor', () => {
       await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
       await waitFor(() => expect(screen.getByLabelText('Code')).toHaveValue('print(1)'))
       expect(calls(fetchMock, 'GET', '/code-files/1')).toHaveLength(2)
+    })
+
+    it('"Close other tabs" and "Close all tabs" from the view menu', async () => {
+      setup()
+      await screen.findByLabelText('Code')
+      await userEvent.click(within(tree()).getByRole('button', { name: 'a.py' }))
+      await waitFor(() => expect(tabs()).toEqual(['b.js', 'a.py']))
+      await userEvent.click(screen.getByRole('button', { name: 'Editor view and tabs' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Close other tabs' }))
+      expect(tabs()).toEqual(['a.py'])
+      await userEvent.click(screen.getByRole('button', { name: 'Editor view and tabs' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Close all tabs' }))
+      expect(screen.queryByLabelText('Code')).not.toBeInTheDocument()
+    })
+
+    it('text size, word wrap and the minimap are remembered on this device', async () => {
+      setup()
+      const code = await screen.findByLabelText('Code')
+      expect(code).toHaveAttribute('data-font-size', '14')
+      expect(code).toHaveAttribute('data-word-wrap', 'off')
+      await userEvent.click(screen.getByRole('button', { name: 'Editor view and tabs' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: /Larger text/ }))
+      await userEvent.click(screen.getByRole('button', { name: 'Editor view and tabs' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Turn word wrap on' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Editor view and tabs' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Show the minimap' }))
+      expect(screen.getByLabelText('Code')).toHaveAttribute('data-font-size', '15')
+      expect(screen.getByLabelText('Code')).toHaveAttribute('data-word-wrap', 'on')
+      expect(screen.getByLabelText('Code')).toHaveAttribute('data-minimap', 'true')
+      expect(JSON.parse(localStorage.getItem('editor-view'))).toEqual({ fontSize: 15, wordWrap: true, minimap: true })
+    })
+
+    it("shows the open file's path", async () => {
+      setup()
+      await screen.findByLabelText('Code')
+      const path = screen.getByRole('navigation', { name: 'File path' })
+      expect(within(path).getAllByRole('listitem').at(-1)).toHaveAttribute('aria-current', 'location')
     })
 
     it('closing the last tab shows a prompt', async () => {
