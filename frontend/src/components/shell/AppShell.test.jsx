@@ -100,3 +100,26 @@ describe('AppShell', () => {
     expect(localStorage.getItem('token')).toBeNull()
   })
 })
+
+describe('bottom navigation (phones)', () => {
+  beforeEach(() => localStorage.setItem('token', fakeJwt({ sub: 'olivia', exp: inOneHour() })))
+  afterEach(() => {
+    localStorage.clear()
+    vi.unstubAllGlobals()
+  })
+
+  it('has the main places, the project\'s board and code inside a project, and search', async () => {
+    renderShell('/projects/1/editor')
+    const nav = screen.getByRole('navigation', { name: 'Quick' })
+    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Projects', 'Board', 'Code'])
+    expect(within(nav).getByRole('link', { name: 'Code' })).toHaveAttribute('aria-current', 'page')
+    await userEvent.click(within(nav).getByRole('button', { name: 'Search everything' }))
+    expect(await screen.findByRole('combobox')).toBeInTheDocument()
+  })
+
+  it('outside a project it offers the AI assistant instead', () => {
+    renderShell('/projects')
+    const nav = screen.getByRole('navigation', { name: 'Quick' })
+    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Projects', 'AI'])
+  })
+})

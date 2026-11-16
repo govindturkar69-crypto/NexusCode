@@ -41,7 +41,7 @@ const absolute = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: "
  *   onRestored(content)
  */
 function HistoryPanel({ file, currentContent, canRestore, beforeRestore, onRestored, onClose }) {
-  const { theme } = useTheme();
+  const { theme, accent, contrast } = useTheme();
   const toast = useToast();
   const listId = useId();
   const [versions, setVersions] = useState(null);
@@ -216,7 +216,7 @@ function HistoryPanel({ file, currentContent, canRestore, beforeRestore, onResto
                   modified={currentContent ?? ""}
                   beforeMount={defineNexusThemes}
                   onMount={nameDiffEditors}
-                  theme={monacoTheme(theme)}
+                  theme={monacoTheme(theme, accent, contrast)}
                   options={{
                     readOnly: true,
                     renderSideBySide: !narrow,

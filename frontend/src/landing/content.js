@@ -55,6 +55,11 @@ export const FEATURES = [
     title: "Chat, activity and notifications",
     text: "Project chat with history, an activity feed of what changed, and notifications when you are added, assigned a task or given a new role.",
   },
+  {
+    icon: "keyboard",
+    title: "Keyboard first, installable",
+    text: "A command palette and shortcuts for everything (press ? to see them), five accent colours and a high-contrast mode, and an app you can install on desktop or phone.",
+  },
 ];
 
 // Real screenshots of the app (docs/screenshots, re-captured with the demo data),

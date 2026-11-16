@@ -1,7 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router-dom";
-import { ChartColumn, Check, ChevronRight, ChevronsUpDown, CodeXml, FolderKanban, LogOut, Menu as MenuIcon, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, SquareKanban, Video, X } from "lucide-react";
+import { ChartColumn, Check, Keyboard, Rocket, ChevronRight, ChevronsUpDown, CodeXml, FolderKanban, LogOut, Menu as MenuIcon, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, SquareKanban, Video, X } from "lucide-react";
 import { apiFetchAll } from "../../api/client";
+import { markDone, readTour, shouldOfferTour, stepsDoneByVisiting, writeTour } from "../../onboarding/tour";
+import { rememberProject } from "../../projects/home";
+import { isTypingTarget, plainKey, sequenceHandler } from "../../shortcuts/shortcuts";
+import { useTheme } from "../../theme/useTheme";
 import { useAuth } from "../../auth/useAuth";
 import GithubIcon from "../icons/GithubIcon";
 import NotificationBell from "../NotificationBell";
@@ -12,6 +16,8 @@ import { useToast } from "../ui/toastContext";
 
 // Loaded on first open: nothing of it is in the main bundle
 const CommandPalette = lazy(() => import("../../palette/CommandPalette"));
+const ShortcutsDialog = lazy(() => import("../../shortcuts/ShortcutsDialog"));
+const WelcomeTour = lazy(() => import("../../onboarding/WelcomeTour"));
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 const PROJECT_PAGES = { "": "Board", editor: "Code editor", meeting: "Video meeting", analytics: "Analytics" };
@@ -42,6 +48,8 @@ function AppShell() {
   const toast = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { toggleTheme } = useTheme();
 
   // Ctrl/Cmd+K opens the command palette from anywhere, form fields included,
   // except inside the Monaco editor: there Ctrl/Cmd+K starts Monaco's own
@@ -58,6 +66,34 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
   const [projects, setProjects] = useState(null);
+
+  // Single-key shortcuts (see shortcuts/shortcuts.js): only when not typing, and
+  // not while a dialog is open (it has its own keys)
+  useEffect(() => {
+    // "g then x": go to a page; b, e and m need a project in the address
+    const sequence = sequenceHandler((letter) => {
+      const route = matchPath("/projects/:projectId/*", pathname);
+      const base = route ? `/projects/${route.params.projectId}` : null;
+      const targets = { p: "/projects", d: "/dashboard", a: "/ai", s: "/settings", b: base, e: base && `${base}/editor`, m: base && `${base}/meeting` };
+      if (!targets[letter]) return false;
+      navigate(targets[letter]);
+      return true;
+    });
+    function onKeyDown(event) {
+      if (event.defaultPrevented || isTypingTarget(event.target) || document.querySelector('[role="dialog"]')) return;
+      if (event.key === "?" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        setShortcutsOpen(true);
+      } else if (plainKey(event, "t", { shift: true })) {
+        event.preventDefault();
+        toggleTheme();
+      } else if (sequence(event)) {
+        event.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleTheme, navigate, pathname]);
   const sidebarId = useId();
   const menuButtonRef = useRef(null);
   const sidebarRef = useRef(null);
@@ -73,6 +109,34 @@ function AppShell() {
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  // Welcome tour: offered to people with no projects yet; steps tick themselves
+  // off as they're visited. Progress is per user, on this device.
+  const username = user?.username;
+  const [tour, setTour] = useState(null); // { username, state, open }
+  if (username && projects && tour?.username !== username) {
+    const state = readTour(username);
+    setTour({ username, state, open: shouldOfferTour(state, projects.length) });
+  }
+  const projectCount = projects?.length ?? 0;
+  if (tour) {
+    const visited = stepsDoneByVisiting(pathname, projectCount);
+    if (visited.some((id) => !tour.state.done.includes(id))) {
+      setTour({ ...tour, state: visited.reduce(markDone, tour.state) });
+    }
+  }
+  const tourState = tour?.state;
+  useEffect(() => {
+    if (username && tourState) writeTour(username, tourState);
+  }, [username, tourState]);
+  const updateTour = useCallback((change) => setTour((current) => (current ? change(current) : current)), []);
+  const openTour = useCallback(() => updateTour((t) => ({ ...t, open: true, state: { ...t.state, dismissed: false } })), [updateTour]);
+
+  // The dashboard lists recently opened projects first
+  const openedProjectId = projectRoute?.id;
+  useEffect(() => {
+    if (openedProjectId && user?.username) rememberProject(user.username, openedProjectId);
+  }, [openedProjectId, user?.username]);
 
   // A project we don't know yet (just created, or just added to): refresh the list
   useEffect(() => {
@@ -239,6 +303,8 @@ function AppShell() {
                 items={[
                   { label: "Settings", icon: <SettingsIcon size={14} aria-hidden="true" />, onSelect: () => navigate("/settings") },
                   { label: "Connect GitHub", icon: <GithubIcon size={14} />, onSelect: connectGithub },
+                  { label: "Getting started", icon: <Rocket size={14} aria-hidden="true" />, onSelect: openTour },
+                  { label: "Keyboard shortcuts", icon: <Keyboard size={14} aria-hidden="true" />, onSelect: () => setShortcutsOpen(true), hint: "?" },
                   { separator: true },
                   { label: "Log out", icon: <LogOut size={14} aria-hidden="true" />, onSelect: logout, keepFocus: true },
                 ]}
@@ -267,10 +333,53 @@ function AppShell() {
             <Outlet />
           </div>
         </main>
+
+        {/* Phones: the main places one tap away, at thumb height (CSS shows it under 760 px) */}
+        <nav aria-label="Quick" className="bottom-nav">
+          <NavLink to="/dashboard" className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+            <ChartColumn size={20} aria-hidden="true" /><span>Home</span>
+          </NavLink>
+          <NavLink to="/projects" end className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+            <FolderKanban size={20} aria-hidden="true" /><span>Projects</span>
+          </NavLink>
+          {projectRoute ? (
+            <>
+              <NavLink to={`/projects/${projectRoute.id}`} end className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+                <SquareKanban size={20} aria-hidden="true" /><span>Board</span>
+              </NavLink>
+              <NavLink to={`/projects/${projectRoute.id}/editor`} className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+                <CodeXml size={20} aria-hidden="true" /><span>Code</span>
+              </NavLink>
+            </>
+          ) : (
+            <NavLink to="/ai" className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+              <Sparkles size={20} aria-hidden="true" /><span>AI</span>
+            </NavLink>
+          )}
+          <button type="button" className="bottom-nav__item" onClick={() => setPaletteOpen(true)} aria-haspopup="dialog" aria-label="Search everything">
+            <Search size={20} aria-hidden="true" /><span>Search</span>
+          </button>
+        </nav>
       </div>
+      {tour?.open && (
+        <Suspense fallback={null}>
+          <WelcomeTour
+            state={tour.state}
+            project={currentProject ?? projects?.[0] ?? null}
+            onDone={(id) => updateTour((t) => ({ ...t, state: markDone(t.state, id) }))}
+            onClose={() => updateTour((t) => ({ ...t, open: false, state: { ...t.state, dismissed: true } }))}
+            onOpenPalette={() => setPaletteOpen(true)}
+          />
+        </Suspense>
+      )}
+      {shortcutsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+        </Suspense>
+      )}
       {paletteOpen && (
         <Suspense fallback={null}>
-          <CommandPalette onClose={() => setPaletteOpen(false)} project={currentProject ?? null} projects={projects} />
+          <CommandPalette onClose={() => setPaletteOpen(false)} onShowShortcuts={() => setShortcutsOpen(true)} onShowTour={openTour} project={currentProject ?? null} projects={projects} />
         </Suspense>
       )}
     </div>

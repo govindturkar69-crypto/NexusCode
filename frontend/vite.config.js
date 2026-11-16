@@ -1,4 +1,5 @@
-import { copyFileSync, createReadStream, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
@@ -42,6 +43,27 @@ function selfHostPyodide() {
       const target = resolve(HERE, outDir, `.${PYODIDE_BASE}`)
       mkdirSync(target, { recursive: true })
       for (const file of Object.keys(PYODIDE_TYPES)) copyFileSync(join(PYODIDE_DIR, file), join(target, file))
+    },
+  }
+}
+
+// Stamps the service worker with this build's id (a hash of index.html, which
+// changes whenever any code does), so each deploy gets fresh cache names and the
+// browser sees a new worker. See public/sw.js.
+function stampServiceWorker() {
+  let outDir = 'dist'
+  return {
+    name: 'stamp-service-worker',
+    apply: 'build',
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    closeBundle() {
+      const sw = resolve(HERE, outDir, 'sw.js')
+      const html = resolve(HERE, outDir, 'index.html')
+      if (!existsSync(sw) || !existsSync(html)) return
+      const id = createHash('sha256').update(readFileSync(html)).digest('hex').slice(0, 12)
+      writeFileSync(sw, readFileSync(sw, 'utf-8').replace('__BUILD_ID__', id))
     },
   }
 }
@@ -102,7 +124,7 @@ function monacoUsesNpmDompurify() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), monacoUsesNpmDompurify(), selfHostPyodide(), previewWithVercelHeaders()],
+  plugins: [react(), monacoUsesNpmDompurify(), selfHostPyodide(), stampServiceWorker(), previewWithVercelHeaders()],
   define: {
     __PYODIDE_BASE__: JSON.stringify(PYODIDE_BASE),
     __PYODIDE_DOWNLOAD_BYTES__: PYODIDE_DOWNLOAD_BYTES,

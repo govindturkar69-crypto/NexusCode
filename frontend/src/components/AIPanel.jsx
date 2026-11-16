@@ -27,7 +27,7 @@ function matchFinalNewline(code, current) {
 }
 
 function DiffDialog({ path, language, original, modified, onApply, onClose }) {
-  const { theme } = useTheme();
+  const { theme, accent, contrast } = useTheme();
   return (
     <Modal
       title={`Apply to ${path}?`}
@@ -49,7 +49,7 @@ function DiffDialog({ path, language, original, modified, onApply, onClose }) {
         original={original}
         modified={modified}
         beforeMount={defineNexusThemes}
-        theme={monacoTheme(theme)}
+        theme={monacoTheme(theme, accent, contrast)}
         options={{ readOnly: true, minimap: { enabled: false }, fontSize: 13 }}
       />
     </Modal>

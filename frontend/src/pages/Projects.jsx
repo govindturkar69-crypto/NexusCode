@@ -12,6 +12,7 @@ import Page from "../components/ui/Page";
 import PageHeader from "../components/ui/PageHeader";
 import Skeleton, { LoadingRegion } from "../components/ui/Skeleton";
 import { EmptyState, ErrorState } from "../components/ui/States";
+import { useDoParam } from "../utils/useDoParam";
 import { useToast } from "../components/ui/toastContext";
 import Tooltip from "../components/ui/Tooltip";
 import RoleBadge from "../components/RoleBadge";
@@ -137,6 +138,9 @@ function Projects() {
     setLoading(true);
     fetchProjects();
   }
+
+  // ?do=new-project (dashboard, welcome tour, command palette) opens the dialog
+  useDoParam({ "new-project": () => setCreating(true) });
 
   function created(project) {
     setCreating(false);

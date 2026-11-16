@@ -96,6 +96,7 @@ function Menu({ label, items, renderTrigger, align = "end", header, className = 
                   >
                     {item.icon}
                     <span>{item.label}</span>
+                    {item.hint && <kbd className="kbd menu__hint" aria-hidden="true">{item.hint}</kbd>}
                   </button>
                 </li>
               ),

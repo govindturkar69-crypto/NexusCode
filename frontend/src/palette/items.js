@@ -52,6 +52,7 @@ const STATUS = { todo: "To do", in_progress: "In progress", done: "Done" };
 export function buildItems(ctx) {
   const { project, projects = [], tasks = [], files = [] } = ctx;
   const items = [];
+  const act0 = (key, label, hint, run, keywords = "") => items.push({ key, group: "Actions", kind: "action", label, hint, keywords, run });
   const nav = (key, label, to, hint, keywords = "") => items.push({ key, group: "Navigation", kind: "nav", label, hint, keywords, run: () => ctx.navigate(to) });
 
   if (project) {
@@ -64,7 +65,8 @@ export function buildItems(ctx) {
     nav(`nav:analytics:${project.id}`, "Analytics", `${base}/analytics`, project.name, "charts burndown throughput stats");
   }
   nav("nav:projects", "Projects", "/projects", "All your projects", "home list");
-  nav("nav:dashboard", "Dashboard", "/dashboard", "Totals across projects", "stats");
+  act0("act:new-project", "New project", "Create a project", () => ctx.navigate("/projects?do=new-project"), "add create project");
+  nav("nav:dashboard", "Dashboard", "/dashboard", "Your tasks, activity and totals", "stats home overview");
   nav("nav:ai", "AI Assistant", "/ai", "Generate code, find bugs", "gemini");
   nav("nav:settings", "Settings", "/settings", "Password, email, GitHub, appearance", "preferences account");
   nav("nav:profile", "Profile", "/settings", "Your account", "me user account");
@@ -81,7 +83,9 @@ export function buildItems(ctx) {
     act(`act:meeting:${project.id}`, "Start meeting", project.name, () => ctx.navigate(`${base}/meeting?do=join`), "call join video");
     act(`act:export:${project.id}`, "Export project as ZIP", project.name, () => ctx.exportProject(project.id), "download backup zip");
   }
-  act("act:theme", "Toggle theme", "Light or dark", () => ctx.toggleTheme(), "dark light mode appearance");
+  act("act:theme", "Toggle theme", "Light or dark · Shift T", () => ctx.toggleTheme(), "dark light mode appearance");
+  if (ctx.showTour) act("act:tour", "Getting started tour", "Five first steps", () => ctx.showTour(), "welcome onboarding help tour");
+  if (ctx.showShortcuts) act("act:shortcuts", "Keyboard shortcuts", "Every shortcut · ?", () => ctx.showShortcuts(), "keys hotkeys help keyboard");
   act("act:motion", ctx.motionReduced ? "Turn animations back on" : "Reduce motion", "Animations", () => ctx.toggleMotion(), "animation accessibility reduced motion");
   act("act:signout", "Sign out", "End this session", () => ctx.signOut(), "log out logout");
 

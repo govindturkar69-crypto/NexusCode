@@ -3,10 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
-    <!-- Theme and motion before the first paint, so a light-theme user never sees a dark
-         flash. Same keys as src/theme/theme.js and src/motion/motion.js. -->
+    <!-- Theme, accent, contrast and motion before the first paint, so a light-theme user
+         never sees a dark flash. Same keys as src/theme/theme.js, src/theme/appearance.js
+         and src/motion/motion.js. The script's hash is in vercel.json's CSP. -->
     <script>
       (function () {
         try {
@@ -23,6 +28,9 @@
           root.dataset.theme = theme;
           var motion = localStorage.getItem("motion");
           if (motion === "reduce" || motion === "full") root.dataset.motion = motion;
+          var accent = localStorage.getItem("accent");
+          if (/^(violet|green|orange|pink)$/.test(accent || "")) root.dataset.accent = accent;
+          if (localStorage.getItem("contrast") === "high") root.dataset.contrast = "high";
         } catch (e) {}
       })();
     </script>

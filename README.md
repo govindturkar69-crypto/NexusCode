@@ -27,6 +27,10 @@
 | 📰 | **Activity feed and notifications** | See what changed in a project, and get notified when you are added, assigned a task or given a new role. |
 | 💬 | **Project chat** | Per-project chat over WebSockets, with history and who is online. |
 | 📂 | **Files, dashboards** | Upload project files (Cloudinary), a personal analytics dashboard, and an admin dashboard for admin accounts. |
+| 🏠 | **Dashboard home** | Open tasks assigned to you across your recent projects (overdue first), a combined activity feed, recent projects and quick actions, above the totals. New accounts get a short, skippable **welcome tour** (create a project, invite a teammate, open the editor, try the palette, start a meeting). |
+| ⌨️ | **Keyboard first** | Press **?** for every shortcut: `g` then `p`/`d`/`b`/`e`/`m` to move around, `n` new task, `/` filter the board, **Shift+T** theme, **Alt+N** new file and **Alt+1/2/3** for the editor's panels (none clash with Monaco). Hints appear in tooltips and menus. |
+| 🎨 | **Themes** | Light or dark, five accent colours and a high-contrast mode, applied before the first paint and to Monaco too. Every combination meets WCAG AA (checked by a test). |
+| 📲 | **Installable app** | A web app manifest and an app-shell service worker: install NexusCode on desktop or phone, with an offline page. It never caches API or sign-in data, and pages always come from the network, so a deploy is never hidden behind stale code. Phones get a bottom navigation bar. |
 | ⌨️ | **Command palette** | **Ctrl/Cmd+K** (or the header's Search button) finds pages, actions, projects and the current project's tasks and files with fuzzy matching and recent items. Editing actions only appear for owners and editors. |
 | 📈 | **Project analytics** | Per project, for the last 7, 14 or 30 days: burn-up/down, throughput, cycle time (median and 90th percentile), workload per member, overdue tasks, activity and recently edited files. Every chart has a text summary and a data table. |
 | 🕘 | **File version history** | Every code file keeps up to 50 versions, snapshotted on the server as it is saved (at most one a minute, never duplicates, plus the state everyone leaves it in). Browse them with author and time, diff any version against the current text in Monaco, and (owners and editors) restore it: people editing live see the restore at once, and the old text stays in the history. |
@@ -48,6 +52,10 @@
   <tr>
     <td><img src="docs/screenshots/14-version-history.png" alt="The version history of src/weather.py: a timeline of three versions and a diff of one against the current text, with Restore this version" /></td>
     <td><img src="docs/screenshots/13-zip-import.png" alt="The ZIP import preview with new files, a duplicate and skipped entries" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/01-dashboard.png" alt="The dashboard home: quick actions, tasks assigned to you, recent activity and recent projects" /></td>
+    <td><img src="docs/screenshots/15-shortcuts.png" alt="The keyboard shortcuts overlay, opened with the question mark key" /></td>
   </tr>
 </table>
 
@@ -229,9 +237,9 @@ Current results (run on this branch):
 
 | Suite | Result |
 |---|---|
-| Backend, SQLite | 1410 passed |
-| Backend, Postgres (throwaway) | 1410 passed |
-| Frontend (Vitest) | 817 passed (59 files) |
+| Backend, SQLite | 1438 passed |
+| Backend, Postgres (throwaway) | 1438 passed |
+| Frontend (Vitest) | 907 passed (66 files) |
 | ruff · eslint · vite build | clean |
 
 CI runs the same on every push and pull request (backend against Postgres 16).

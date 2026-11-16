@@ -3,7 +3,53 @@
 Notable changes, newest first. The project was built in phases (C1 to C11), each merged
 as one pull request into `main`. Tags mark the stable points.
 
-## C11b: hardening (unreleased)
+## C12: UI upgrades (unreleased)
+
+Frontend only: no API, database or backend behaviour changed. The plan and audit are in
+[docs/UI-UPGRADE-PLAN.md](docs/UI-UPGRADE-PLAN.md).
+
+- **Dashboard home:** open tasks assigned to you across your recent projects (overdue
+  first), a combined activity feed, recent projects and quick actions, above the
+  existing totals. It has skeletons, empty states, and per-project failure isolation.
+- **Welcome tour:** new accounts get a skippable getting-started checklist with five
+  steps. It is not modal, Escape closes it, progress is kept per user on the device,
+  and you can reopen it from the account menu or the palette.
+- **Keyboard first:**
+  - Press `?` for every shortcut.
+  - Navigation: `g` then a letter.
+  - Board: `n` for a new task, `/` to filter.
+  - Shift+T switches the theme.
+  - Editor: Alt+N for a new file, Alt+1/2/3 for the panels.
+  - Single keys never fire while you are typing or in Monaco.
+  - Hints appear in tooltips, menus and the palette.
+- **Themes:** five accent colours and a high-contrast mode, applied before the first
+  paint and to Monaco. A test checks WCAG AA for all 20 combinations.
+- **Board:** filter by text, priority and assignee ("Assigned to me"), see the match
+  count, clear in one click, and a done/total progress bar.
+- **Editor:** text size, word wrap and minimap, remembered; close other or all tabs;
+  the open file's path is shown above the code.
+- **Mobile:** a bottom navigation bar on phones, with 44 px targets. Dialogs were
+  already bottom sheets.
+- **Installable app (PWA):**
+  - A manifest, app icons (the in-app N mark, replacing Vite's default favicon) and
+    theme-color.
+  - An offline page.
+  - An app-shell service worker that never caches API or auth data, always fetches
+    pages from the network, and caches only content-hashed `/assets` under per-build
+    names.
+  - A "new version" prompt: the new worker takes over only when you click Reload.
+- **Fix:** the CSP hash for `index.html`'s inline script is now taken from the file as
+  committed (LF).
+- **Verified:**
+  - axe-core, 192 runs: 16 pages × light/dark × 6 looks (default, four accents, high
+    contrast). There were 0 violations of any impact.
+  - No horizontal scroll at 320 or 390 px.
+  - Smoke run: 11/11 steps, with 0 console errors and 0 failed requests.
+  - The report-only CSP shows only the known preview follow-up, F1.
+  - Tests: frontend 907, backend 1438 on SQLite and 1438 on a fresh Postgres.
+  - The main JS bundle grew by 4.31 kB gzip (94.37 to 98.68), inside the +5 kB budget.
+
+
 
 - **Security:** per-IP rate limits key on the address Render's proxy appended to
   `X-Forwarded-For` (`TRUSTED_PROXY_HOPS`, default 1), never the caller's own entry.

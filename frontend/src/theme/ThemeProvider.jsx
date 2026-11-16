@@ -4,6 +4,7 @@ import { durationMs, motionAllowed } from "../motion/motion";
 import { tokenSubject } from "../api/client";
 import { useAuth } from "../auth/useAuth";
 import { applyTheme, storedTheme, storeTheme, systemTheme, watchSystemTheme } from "./theme";
+import { storeAccent, storeContrast, storedAccent, storedContrast } from "./appearance";
 import { ThemeContext } from "./themeContext";
 
 function ThemeProvider({ children }) {
@@ -45,7 +46,16 @@ function ThemeProvider({ children }) {
     window.setTimeout(() => root.classList.remove("theme-transition"), durationMs("--duration-base") + 50);
   }, [theme, username]);
 
-  const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
+  // Accent and contrast are per device, like motion (see appearance.js)
+  const [accent, setAccentState] = useState(storedAccent);
+  const [contrast, setContrastState] = useState(storedContrast);
+  const setAccent = useCallback((value) => setAccentState(storeAccent(value)), []);
+  const setContrast = useCallback((value) => setContrastState(storeContrast(value)), []);
+
+  const value = useMemo(
+    () => ({ theme, toggleTheme, accent, setAccent, contrast, setContrast }),
+    [theme, toggleTheme, accent, setAccent, contrast, setContrast],
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

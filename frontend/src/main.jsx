@@ -6,11 +6,13 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { initSentry } from './observability.js'
 import { applyMotion } from './motion/motion.js'
 import { applyInitialTheme } from './theme/theme.js'
+import { applyInitialAppearance } from './theme/appearance.js'
 import { hasValidToken } from './api/client.js'
 import { warmUpServer } from './api/warmup.js'
 
 // index.html already did both before the first paint; this keeps them in step
 applyInitialTheme()
+applyInitialAppearance()
 applyMotion()
 
 // No-op unless VITE_SENTRY_DSN is set; never blocks rendering
@@ -20,6 +22,14 @@ initSentry().catch(() => {})
 // background, so it's up by the time they sign in. Signed-in users' first real
 // request does the same job.
 if (!hasValidToken()) warmUpServer()
+
+// Installable app: the service worker caches the app shell only (see public/sw.js).
+// Production builds only, after the page has loaded, as its own small chunk.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    import('./pwa/register.js').then((pwa) => pwa.start()).catch(() => {})
+  })
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

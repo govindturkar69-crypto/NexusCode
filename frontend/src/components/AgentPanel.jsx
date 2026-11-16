@@ -200,7 +200,7 @@ function ChangeCard({ entry, store, files, theme }) {
             original={entry.before ?? ""}
             modified={entry.after}
             beforeMount={defineNexusThemes}
-            theme={monacoTheme(theme)}
+            theme={theme}
             options={{ readOnly: true, minimap: { enabled: false }, fontSize: 13, renderSideBySide: false }}
           />
         </div>
@@ -237,7 +237,8 @@ function TaskCard({ task, store }) {
  *   createTask(task)          add a task to the board
  */
 function AgentPanel({ projectId, files, readLive, applyFile, deleteFile, createTask, onClose }) {
-  const { theme } = useTheme();
+  const { theme: mode, accent, contrast } = useTheme();
+  const theme = monacoTheme(mode, accent, contrast);
   const [goal, setGoal] = useState("");
   const [timeline, setTimeline] = useState([]);
   const [running, setRunning] = useState(false);

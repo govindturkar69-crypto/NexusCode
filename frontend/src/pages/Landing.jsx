@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowRight, Bot, Code2, KeyRound, LayoutGrid, MessageSquare, Play, Sparkles, Users, Video,
+  ArrowRight, Bot, Code2, Keyboard, KeyRound, LayoutGrid, MessageSquare, Play, Sparkles, Users, Video,
 } from "lucide-react";
 import GithubIcon from "../components/icons/GithubIcon";
 import { loadLogin, prefetchOn } from "../routes/prefetch";
@@ -11,7 +11,7 @@ import { useReveal } from "../motion/useReveal";
 
 const FEATURE_ICONS = {
   board: LayoutGrid, editor: Code2, collab: Users, agent: Bot, ai: Sparkles,
-  run: Play, github: GithubIcon, auth: KeyRound, video: Video, chat: MessageSquare,
+  run: Play, github: GithubIcon, auth: KeyRound, video: Video, chat: MessageSquare, keyboard: Keyboard,
 };
 
 // A section that fades up the first time it scrolls into view

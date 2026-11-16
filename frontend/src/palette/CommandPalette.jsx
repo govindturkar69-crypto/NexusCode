@@ -34,7 +34,7 @@ function Label({ text, indices }) {
  * Up/Down move, Enter runs, Escape closes, Tab stays in the dialog. Focus goes
  * back where it was on close.
  */
-function CommandPalette({ onClose, project, projects }) {
+function CommandPalette({ onClose, onShowShortcuts, onShowTour, project, projects }) {
   const navigate = useNavigate();
   const { signOut } = useAuth();
   const { toggleTheme } = useTheme();
@@ -85,6 +85,8 @@ function CommandPalette({ onClose, project, projects }) {
         files: data.files,
         navigate,
         toggleTheme,
+        showShortcuts: onShowShortcuts,
+        showTour: onShowTour,
         motionReduced,
         toggleMotion: () => setMotionPreference(motionReduced ? "full" : "reduce"),
         signOut: () => {
@@ -98,7 +100,7 @@ function CommandPalette({ onClose, project, projects }) {
             .catch((err) => toast({ title: "Couldn't export the project", description: err.message, tone: "error" }));
         },
       }),
-    [project, projects, data, navigate, toggleTheme, motionReduced, signOut, toast],
+    [project, projects, data, navigate, toggleTheme, onShowShortcuts, onShowTour, motionReduced, signOut, toast],
   );
 
   // Filter, score, group. Empty query: recent items first, then everything grouped.

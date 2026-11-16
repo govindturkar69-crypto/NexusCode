@@ -15,6 +15,9 @@ import { collectPythonFiles } from "../runners/pythonProject";
 import { runnerFor, UNSUPPORTED_MESSAGE } from "../runners/runnerFor";
 import { useCodeRunner } from "../runners/useCodeRunner";
 import { useDoParam } from "../utils/useDoParam";
+import { altKey, hint } from "../shortcuts/shortcuts";
+import { DEFAULT_VIEW, FONT_SIZES, monacoViewOptions, readView, stepFontSize, storeView } from "../editor/viewSettings";
+import Menu from "../components/ui/Menu";
 import { useAutosave } from "../editor/useAutosave";
 import { useProject } from "../projects/useProject";
 import AgentPanel from "../components/AgentPanel";
@@ -24,7 +27,7 @@ import PathDialog from "../components/PathDialog";
 import PreviewPanel from "../components/PreviewPanel";
 import PushToGithubDialog from "../components/PushToGithubDialog";
 import RunPanel from "../components/RunPanel";
-import { Bot, Download, FilePlus, FolderPlus, History, Monitor, Play, Square, Upload, Users, X } from "lucide-react";
+import { AArrowDown, AArrowUp, Bot, Download, FilePlus, FolderPlus, History, Map as MapIcon, Monitor, Play, RotateCcw, Settings2, Square, Upload, Users, WrapText, X } from "lucide-react";
 import FileIcon from "../components/FileIcon";
 import GithubIcon from "../components/icons/GithubIcon";
 import Alert from "../components/ui/Alert";
@@ -73,7 +76,7 @@ function CodeEditor() {
   const { projectId } = useParams();
   const { role, canEdit, isOwner } = useProject(projectId);
   const { user } = useAuth();
-  const { theme } = useTheme();
+  const { theme, accent, contrast } = useTheme();
   const [files, setFiles] = useState([]);
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
   const [error, setError] = useState("");
@@ -269,6 +272,10 @@ function CodeEditor() {
     },
     [projectId, forget, collab]
   );
+
+  // Text size, word wrap and minimap, remembered on this device
+  const [view, setView] = useState(readView);
+  const changeView = (change) => setView((current) => storeView({ ...current, ...change(current) }));
 
   const closeTabs = useCallback((ids) => {
     const closing = new Set(ids);
@@ -533,6 +540,41 @@ function CodeEditor() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
+  // Alt+N new file, Alt+1/2/3 move focus between the file tree, the code and the
+  // side panel. Alt+letter/digit is free in Monaco, so these work while typing code.
+  const panelShortcut = useRef(null);
+  useEffect(() => {
+    panelShortcut.current = (event) => {
+      if (altKey(event, "N")) {
+        if (!canEdit || loadState !== "ready") return false;
+        setDialog({ kind: "new-file", folder: "" });
+        return true;
+      }
+      if (altKey(event, "2")) {
+        if (!editorInstance) return false;
+        editorInstance.focus();
+        return true;
+      }
+      const target = altKey(event, "1") ? ".editor-grid__tree" : altKey(event, "3") ? ".editor-grid__ai" : null;
+      const panel = target && document.querySelector(target);
+      const focusable = panel?.querySelector('button:not([disabled]), [href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
+      if (!focusable) return false;
+      focusable.focus();
+      return true;
+    };
+  });
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (document.querySelector('[role="dialog"]')) return;
+      if (panelShortcut.current?.(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
   return (
     <Page width={1400}>
       <PageHeader
@@ -591,7 +633,7 @@ function CodeEditor() {
           {canEdit && (
             <div className="editor-tree__actions">
               <span className="editor-tree__title">Files</span>
-              <Button size="sm" variant="secondary" aria-label="+ File" title="New file" icon={<FilePlus size={13} aria-hidden="true" />} onClick={() => setDialog({ kind: "new-file", folder: "" })} disabled={loadState !== "ready"}>File</Button>
+              <Button size="sm" variant="secondary" aria-label="+ File" title={`New file (${hint("new-file")})`} aria-keyshortcuts="Alt+N" icon={<FilePlus size={13} aria-hidden="true" />} onClick={() => setDialog({ kind: "new-file", folder: "" })} disabled={loadState !== "ready"}>File</Button>
               <Button size="sm" variant="secondary" aria-label="+ Folder" title="New folder" icon={<FolderPlus size={13} aria-hidden="true" />} onClick={() => setDialog({ kind: "new-folder" })} disabled={loadState !== "ready"}>Folder</Button>
             </div>
           )}
@@ -641,7 +683,38 @@ function CodeEditor() {
                 </span>
               );
             })}
+            <Menu
+              label="Editor view and tabs"
+              className="editor-tabs__menu"
+              items={[
+                { label: `Larger text (${stepFontSize(view.fontSize, 1)} px)`, icon: <AArrowUp size={14} aria-hidden="true" />, disabled: view.fontSize === FONT_SIZES.at(-1), onSelect: () => changeView((v) => ({ fontSize: stepFontSize(v.fontSize, 1) })), keepFocus: true },
+                { label: `Smaller text (${stepFontSize(view.fontSize, -1)} px)`, icon: <AArrowDown size={14} aria-hidden="true" />, disabled: view.fontSize === FONT_SIZES[0], onSelect: () => changeView((v) => ({ fontSize: stepFontSize(v.fontSize, -1) })), keepFocus: true },
+                { label: view.wordWrap ? "Turn word wrap off" : "Turn word wrap on", icon: <WrapText size={14} aria-hidden="true" />, onSelect: () => changeView((v) => ({ wordWrap: !v.wordWrap })), keepFocus: true },
+                { label: view.minimap ? "Hide the minimap" : "Show the minimap", icon: <MapIcon size={14} aria-hidden="true" />, onSelect: () => changeView((v) => ({ minimap: !v.minimap })), keepFocus: true },
+                { label: "Reset view", icon: <RotateCcw size={14} aria-hidden="true" />, disabled: JSON.stringify(view) === JSON.stringify(DEFAULT_VIEW), onSelect: () => changeView(() => DEFAULT_VIEW), keepFocus: true },
+                { separator: true },
+                { label: "Close other tabs", icon: <X size={14} aria-hidden="true" />, disabled: openIds.length < 2 || activeId === null, onSelect: () => closeTabs(openIds.filter((id) => id !== activeId)) },
+                { label: "Close all tabs", icon: <X size={14} aria-hidden="true" />, disabled: openIds.length === 0, onSelect: () => closeTabs(openIds) },
+              ]}
+              renderTrigger={(props) => (
+                <button type="button" className="editor-tabs__menu-button" {...props}>
+                  <Settings2 size={14} aria-hidden="true" />
+                </button>
+              )}
+            />
           </div>
+          {activeFile && (
+            <nav aria-label="File path" className="editor-path">
+              <ol>
+                {activeFile.path.split("/").map((part, i, parts) => (
+                  <li key={`${part}-${i}`} aria-current={i === parts.length - 1 ? "location" : undefined}>
+                    {i === parts.length - 1 && <FileIcon name={part} size={12} />}
+                    {part}
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          )}
           {activeLoaded && activeLiveState.notice && <p className="hint" role="note" style={{ padding: "0 1rem" }}>{activeLiveState.notice}</p>}
           {activeLive && activePeople.length > 0 && (
             <div className="presence-bar" aria-label="People in this file">
@@ -697,9 +770,9 @@ function CodeEditor() {
               onChange={handleCodeChange}
               onMount={(editor) => setEditorInstance(editor)}
               beforeMount={defineNexusThemes}
-              theme={monacoTheme(theme)}
+              theme={monacoTheme(theme, accent, contrast)}
               // Room above the first line for other people's name labels
-              options={{ fontSize: 14, minimap: { enabled: false }, padding: { top: 18 }, readOnly: !canEdit || activeLiveState.readOnly }}
+              options={{ ...monacoViewOptions(view), padding: { top: 18 }, readOnly: !canEdit || activeLiveState.readOnly }}
             />
           ) : (
             <p role="status" className="muted editor-placeholder">
