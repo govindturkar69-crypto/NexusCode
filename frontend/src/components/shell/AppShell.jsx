@@ -333,6 +333,33 @@ function AppShell() {
             <Outlet />
           </div>
         </main>
+
+        {/* Phones: the main places one tap away, at thumb height (CSS shows it under 760 px) */}
+        <nav aria-label="Quick" className="bottom-nav">
+          <NavLink to="/dashboard" className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+            <ChartColumn size={20} aria-hidden="true" /><span>Home</span>
+          </NavLink>
+          <NavLink to="/projects" end className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+            <FolderKanban size={20} aria-hidden="true" /><span>Projects</span>
+          </NavLink>
+          {projectRoute ? (
+            <>
+              <NavLink to={`/projects/${projectRoute.id}`} end className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+                <SquareKanban size={20} aria-hidden="true" /><span>Board</span>
+              </NavLink>
+              <NavLink to={`/projects/${projectRoute.id}/editor`} className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+                <CodeXml size={20} aria-hidden="true" /><span>Code</span>
+              </NavLink>
+            </>
+          ) : (
+            <NavLink to="/ai" className={({ isActive }) => `bottom-nav__item ${isActive ? "is-active" : ""}`}>
+              <Sparkles size={20} aria-hidden="true" /><span>AI</span>
+            </NavLink>
+          )}
+          <button type="button" className="bottom-nav__item" onClick={() => setPaletteOpen(true)} aria-haspopup="dialog" aria-label="Search everything">
+            <Search size={20} aria-hidden="true" /><span>Search</span>
+          </button>
+        </nav>
       </div>
       {tour?.open && (
         <Suspense fallback={null}>
