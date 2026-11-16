@@ -431,3 +431,22 @@ None of these was implemented in C11. They were done in C11b.
   the HTML preview's own inline scripts (its sandboxed `srcdoc` frame inherits the
   policy). Enforcing needs the preview moved to its own document first. The live
   watch and the switch to enforcing are in `docs/DEPLOY.md`.
+
+### Follow-up F1 🟨 Move the HTML preview to its own document before enforcing the CSP
+
+- **Where:** `frontend/src/components/PreviewPanel.jsx` (`<iframe sandbox="allow-scripts" srcDoc=…>`).
+- **Evidence:** the local CSP crawl (16 pages and flows) reports exactly one thing:
+  in the editor's Preview, the previewed project's inline `<script>` and the
+  console-capture script violate `script-src`. A `srcdoc` document inherits its
+  parent's policy, so an enforced policy would break every preview with scripts.
+  Report-only blocks nothing, and the preview still runs.
+- **Fix (recommended):** serve a static, sandboxed `/preview-frame.html`:
+  - exclude it from the app policy;
+  - give it its own policy: inline scripts allowed, no network
+    (`default-src 'none'; script-src 'unsafe-inline'; …`);
+  - send it the HTML by `postMessage`.
+  
+  The alternative is to serve that frame from a separate origin. Details are in
+  `docs/DEPLOY.md` ("Switching to enforcing", step 1).
+- **Status:** not started. This is a behaviour change to the preview, so it gets its
+  own branch and tests. **Don't enforce the CSP until this lands.**

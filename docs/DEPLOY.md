@@ -127,10 +127,26 @@ be checked on the live site.
    directive, and add the origin to that directive in `vercel.json` (and the test).
 
 **Switching to enforcing** (a later, separate change):
-1. Give the HTML preview its own document first: for example a static
-   `/preview-frame.html`, excluded from the policy like `/assets/`, which receives
-   the HTML by `postMessage`. Otherwise enforcing breaks every preview that has
-   scripts.
+1. **Give the HTML preview its own document first** (follow-up F1 in
+   `docs/FINAL-REVIEW.md`). Today the preview is an `<iframe sandbox="allow-scripts"
+   srcdoc=…>`. A `srcdoc` document **inherits the page's policy**, so once it is
+   enforced, every `<script>` in a previewed project, and the console-capture
+   script, is blocked. Pick one:
+   - **(Recommended) A sandboxed route with its own policy.** Serve a static
+     `/preview-frame.html` that is excluded from the app policy, like `/assets/` (add
+     it to the rule's except list in `vercel.json` and in `vite.config.js`). Give it
+     its own `Content-Security-Policy` that allows inline scripts but **no network**:
+     `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
+     img-src data: blob:`. Keep the iframe `sandbox="allow-scripts"` (an opaque
+     origin, no cookies, no storage). PreviewPanel sends the HTML by `postMessage`,
+     and the frame writes it with `document.open()/write()`. A frame loaded from a
+     URL gets its own response's policy, not the parent's.
+   - **A separate origin** (for example a second Vercel project on its own domain)
+     serving the same frame. This is stronger isolation, at the cost of another
+     deployment.
+
+   Until then the preview shows up in report-only as the one expected entry
+   (`Executing inline script violates … script-src`), and it keeps working.
 2. Watch report-only on the live site for a few days of normal use with no
    unexplained `[Report Only]` lines.
 3. In `frontend/vercel.json`, rename the key `Content-Security-Policy-Report-Only`
